@@ -63,13 +63,7 @@ fun ReportScreen(onBack: () -> Unit) {
     }
 
     Column(Modifier.fillMaxSize()) {
-        Row(
-            Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 6.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            TextButton(onClick = onBack) { Text("← Back") }
-            Text("Day report", fontSize = 18.sp, fontWeight = FontWeight.ExtraBold, modifier = Modifier.weight(1f))
-        }
+        com.pavbhaji.pos.ui.AppHeader(title = "Day report", onBack = onBack)
         Row(
             Modifier.fillMaxWidth().padding(horizontal = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -149,13 +143,7 @@ fun AuditScreen(onBack: () -> Unit) {
     }
 
     Column(Modifier.fillMaxSize()) {
-        Row(
-            Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 6.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            TextButton(onClick = onBack) { Text("← Back") }
-            Text("Audit log", fontSize = 18.sp, fontWeight = FontWeight.ExtraBold, modifier = Modifier.weight(1f))
-        }
+        com.pavbhaji.pos.ui.AppHeader(title = "Audit log", onBack = onBack)
         LazyColumn(Modifier.fillMaxSize(), contentPadding = androidx.compose.foundation.layout.PaddingValues(12.dp)) {
             events.forEach { e ->
                 item(key = e.id) {

@@ -236,7 +236,7 @@ func (s *Server) handleAdminTables(w http.ResponseWriter, r *http.Request) {
 
 // ---- Staff ----
 
-var pinRe = regexp.MustCompile(`^[0-9]{4,6}$`)
+var pinRe = regexp.MustCompile(`^[0-9]{4}$`)
 
 func (s *Server) handleStaffList(w http.ResponseWriter, r *http.Request) {
 	out := []Staff{}
@@ -268,7 +268,7 @@ func (s *Server) handleStaffCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !pinRe.MatchString(req.Pin) {
-		fail(w, http.StatusBadRequest, "PIN must be 4–6 digits")
+		fail(w, http.StatusBadRequest, "PIN must be 4 digits")
 		return
 	}
 	if req.Role != "admin" && req.Role != "waiter" && req.Role != "chef" {
@@ -322,7 +322,7 @@ func (s *Server) handleStaffPatch(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.Pin != nil {
 		if !pinRe.MatchString(*req.Pin) {
-			fail(w, http.StatusBadRequest, "PIN must be 4–6 digits")
+			fail(w, http.StatusBadRequest, "PIN must be 4 digits")
 			return
 		}
 		salt := getMeta(s.db, "pin_salt", "")

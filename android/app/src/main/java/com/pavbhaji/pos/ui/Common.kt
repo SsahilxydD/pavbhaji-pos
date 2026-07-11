@@ -1,19 +1,27 @@
 package com.pavbhaji.pos.ui
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -30,12 +38,15 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
 fun rupees(paise: Long): String =
     if (paise % 100 == 0L) "₹${paise / 100}"
     else "₹${paise / 100}.${(paise % 100).toString().padStart(2, '0')}"
+
+fun items(n: Long): String = if (n == 1L) "1 item" else "$n items"
 
 fun ageMinutes(sinceMs: Long): String {
     val m = ((System.currentTimeMillis() - sinceMs) / 60000).coerceAtLeast(0)
@@ -49,9 +60,63 @@ fun ageMinutes(sinceMs: Long): String {
 fun clockTime(ms: Long): String {
     val cal = java.util.Calendar.getInstance()
     cal.timeInMillis = ms
-    val h = cal.get(java.util.Calendar.HOUR_OF_DAY)
-    val min = cal.get(java.util.Calendar.MINUTE)
-    return "%02d:%02d".format(h, min)
+    return "%02d:%02d".format(cal.get(java.util.Calendar.HOUR_OF_DAY), cal.get(java.util.Calendar.MINUTE))
+}
+
+// The one header used by every screen. Gives the app its identity (deep red bar),
+// a 48dp back button that's easy to hit, and — crucially — wires the system
+// back gesture/button to the same onBack, so "swipe back" always works.
+@Composable
+fun AppHeader(
+    title: String,
+    subtitle: String? = null,
+    onBack: (() -> Unit)? = null,
+    actions: @Composable RowScope.() -> Unit = {}
+) {
+    if (onBack != null) BackHandler(onBack = onBack)
+    Surface(color = BhajiRed) {
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .statusBarsPadding()
+                .height(60.dp)
+                .padding(horizontal = 4.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            if (onBack != null) {
+                IconButton(onClick = onBack, modifier = Modifier.size(48.dp)) {
+                    Icon(
+                        Icons.AutoMirrored.Filled.ArrowBack,
+                        contentDescription = "Back",
+                        tint = Color.White
+                    )
+                }
+            } else {
+                Text("🍛", fontSize = 22.sp, modifier = Modifier.padding(start = 12.dp, end = 4.dp))
+            }
+            Column(Modifier.weight(1f).padding(start = 6.dp)) {
+                Text(
+                    title, color = Color.White, fontSize = 19.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    maxLines = 1, overflow = TextOverflow.Ellipsis
+                )
+                if (subtitle != null) {
+                    Text(
+                        subtitle, color = Color(0xFFFFD9C4), fontSize = 12.sp,
+                        maxLines = 1, overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+            actions()
+        }
+    }
+}
+
+@Composable
+fun HeaderTextAction(label: String, onClick: () -> Unit) {
+    TextButton(onClick = onClick) {
+        Text(label, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+    }
 }
 
 @Composable
@@ -66,9 +131,7 @@ fun ConnBanner(connected: Boolean) {
         ) {
             Text(
                 "reconnecting to server… check WiFi",
-                color = Color.White,
-                fontSize = 13.sp,
-                fontWeight = FontWeight.Medium
+                color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Medium
             )
         }
     }
@@ -86,25 +149,24 @@ fun StatusChip(status: String) {
     }
     Surface(color = bg, shape = RoundedCornerShape(6.dp)) {
         Text(
-            status,
-            color = fg,
-            fontSize = 11.sp,
-            fontWeight = FontWeight.SemiBold,
+            status, color = fg, fontSize = 11.sp, fontWeight = FontWeight.SemiBold,
             modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
         )
     }
 }
 
-// Numeric PIN pad used by the login screen.
+// 4-digit PIN pad. Submits by itself on the 4th digit — no OK button.
 @Composable
 fun PinPad(onSubmit: (String) -> Unit, error: String?) {
     var pin by remember { mutableStateOf("") }
+    androidx.compose.runtime.LaunchedEffect(error) { if (error != null) pin = "" }
+
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            repeat(6) { i ->
+        Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+            repeat(4) { i ->
                 Box(
                     Modifier
-                        .size(16.dp)
+                        .size(18.dp)
                         .background(
                             if (i < pin.length) MaterialTheme.colorScheme.primary
                             else MaterialTheme.colorScheme.surfaceVariant,
@@ -113,34 +175,41 @@ fun PinPad(onSubmit: (String) -> Unit, error: String?) {
                 )
             }
         }
-        if (error != null) {
-            Text(error, color = MaterialTheme.colorScheme.error, fontSize = 13.sp,
-                modifier = Modifier.padding(top = 8.dp))
-        }
-        Column(Modifier.padding(top = 18.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            val rows = listOf(listOf("1", "2", "3"), listOf("4", "5", "6"), listOf("7", "8", "9"), listOf("⌫", "0", "OK"))
+        Text(
+            error ?: " ",
+            color = MaterialTheme.colorScheme.error, fontSize = 13.sp,
+            modifier = Modifier.padding(top = 10.dp)
+        )
+        Column(Modifier.padding(top = 10.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            val rows = listOf(listOf("1", "2", "3"), listOf("4", "5", "6"), listOf("7", "8", "9"), listOf("", "0", "⌫"))
             rows.forEach { row ->
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     row.forEach { key ->
-                        val isOk = key == "OK"
-                        Button(
-                            onClick = {
-                                when (key) {
-                                    "⌫" -> if (pin.isNotEmpty()) pin = pin.dropLast(1)
-                                    "OK" -> if (pin.length >= 4) { onSubmit(pin); pin = "" }
-                                    else -> if (pin.length < 6) pin += key
-                                }
-                            },
-                            modifier = Modifier.size(width = 84.dp, height = 60.dp),
-                            shape = RoundedCornerShape(14.dp),
-                            colors = if (isOk)
-                                androidx.compose.material3.ButtonDefaults.buttonColors()
-                            else androidx.compose.material3.ButtonDefaults.buttonColors(
-                                containerColor = MaterialTheme.colorScheme.surfaceVariant,
-                                contentColor = MaterialTheme.colorScheme.onSurface
-                            )
-                        ) {
-                            Text(key, fontSize = if (isOk) 17.sp else 22.sp, fontWeight = FontWeight.Bold)
+                        if (key.isEmpty()) {
+                            Box(Modifier.size(width = 88.dp, height = 62.dp))
+                        } else {
+                            Button(
+                                onClick = {
+                                    if (key == "⌫") {
+                                        if (pin.isNotEmpty()) pin = pin.dropLast(1)
+                                    } else if (pin.length < 4) {
+                                        pin += key
+                                        if (pin.length == 4) {
+                                            val p = pin
+                                            onSubmit(p)
+                                        }
+                                    }
+                                },
+                                modifier = Modifier.size(width = 88.dp, height = 62.dp),
+                                shape = RoundedCornerShape(16.dp),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                                    contentColor = MaterialTheme.colorScheme.onSurface
+                                ),
+                                elevation = ButtonDefaults.buttonElevation(defaultElevation = 0.dp)
+                            ) {
+                                Text(key, fontSize = 24.sp, fontWeight = FontWeight.Bold)
+                            }
                         }
                     }
                 }
@@ -149,7 +218,6 @@ fun PinPad(onSubmit: (String) -> Unit, error: String?) {
     }
 }
 
-// Dialog that demands a reason — used for every cancellation.
 @Composable
 fun ReasonDialog(title: String, onConfirm: (String) -> Unit, onDismiss: () -> Unit) {
     var reason by remember { mutableStateOf("") }
@@ -162,16 +230,15 @@ fun ReasonDialog(title: String, onConfirm: (String) -> Unit, onDismiss: () -> Un
                 OutlinedTextField(
                     value = reason, onValueChange = { reason = it },
                     label = { Text("Reason") },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 8.dp)
+                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
                 )
             }
         },
         confirmButton = {
-            Button(onClick = { if (reason.trim().length >= 2) onConfirm(reason.trim()) }) {
-                Text("Cancel item")
-            }
+            Button(
+                onClick = { if (reason.trim().length >= 2) onConfirm(reason.trim()) },
+                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+            ) { Text("Cancel item") }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Back") } }
     )
@@ -182,7 +249,7 @@ fun ConfirmDialog(title: String, body: String, confirmLabel: String, onConfirm: 
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(title) },
-        text = { Text(body) },
+        text = { Text(body, fontSize = 15.sp) },
         confirmButton = { Button(onClick = onConfirm) { Text(confirmLabel) } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Back") } }
     )
@@ -205,25 +272,25 @@ fun StatCard(label: String, value: String, modifier: Modifier = Modifier, accent
 
 @Composable
 fun QtyStepper(qty: Long, onChange: (Long) -> Unit) {
-    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
         OutlinedButton(
             onClick = { onChange(qty - 1) },
-            modifier = Modifier.size(38.dp),
+            modifier = Modifier.size(42.dp),
             shape = CircleShape,
             contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp)
-        ) { Text("−", fontSize = 18.sp) }
+        ) { Text("−", fontSize = 20.sp) }
         Text(
             qty.toString(),
-            fontSize = 17.sp, fontWeight = FontWeight.Bold,
-            modifier = Modifier.width(28.dp),
+            fontSize = 18.sp, fontWeight = FontWeight.ExtraBold,
+            modifier = Modifier.width(34.dp),
             textAlign = TextAlign.Center
         )
         OutlinedButton(
             onClick = { onChange(qty + 1) },
-            modifier = Modifier.size(38.dp),
+            modifier = Modifier.size(42.dp),
             shape = CircleShape,
             contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp)
-        ) { Text("+", fontSize = 18.sp) }
+        ) { Text("+", fontSize = 20.sp) }
     }
 }
 
@@ -231,16 +298,17 @@ fun QtyStepper(qty: Long, onChange: (Long) -> Unit) {
 fun SectionTitle(text: String) {
     Text(
         text,
-        fontSize = 13.sp,
-        fontWeight = FontWeight.Bold,
+        fontSize = 12.sp,
+        fontWeight = FontWeight.ExtraBold,
+        letterSpacing = 1.2.sp,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
-        modifier = Modifier.padding(top = 14.dp, bottom = 6.dp)
+        modifier = Modifier.padding(top = 16.dp, bottom = 6.dp)
     )
 }
 
 @Composable
 fun EmptyHint(text: String) {
-    Box(Modifier.fillMaxWidth().height(80.dp), contentAlignment = Alignment.Center) {
+    Box(Modifier.fillMaxWidth().height(90.dp), contentAlignment = Alignment.Center) {
         Text(text, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 14.sp)
     }
 }

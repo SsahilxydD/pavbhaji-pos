@@ -92,22 +92,14 @@ fun KitchenScreen(onLogout: () -> Unit, embedded: Boolean = false, onBack: (() -
     }
 
     Column(Modifier.fillMaxSize()) {
-        Row(
-            Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            if (onBack != null) TextButton(onClick = onBack) { Text("← Back") }
-            Text(
-                "Kitchen",
-                fontSize = 20.sp, fontWeight = FontWeight.ExtraBold,
-                modifier = Modifier.weight(1f).padding(start = 4.dp)
-            )
-            Text(
-                Deps.session.staffName, fontSize = 13.sp,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            if (onBack == null) TextButton(onClick = onLogout) { Text("Logout") }
-        }
+        com.pavbhaji.pos.ui.AppHeader(
+            title = "Kitchen",
+            subtitle = Deps.session.staffName,
+            onBack = onBack,
+            actions = {
+                if (onBack == null) com.pavbhaji.pos.ui.HeaderTextAction("Logout", onLogout)
+            }
+        )
         ConnBanner(connected)
         TabRow(selectedTabIndex = tab) {
             Tab(selected = tab == 0, onClick = { tab = 0 },

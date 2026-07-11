@@ -50,14 +50,11 @@ fun StaffAdmin(onBack: () -> Unit) {
     LaunchedEffect(Unit) { refresh() }
 
     Column(Modifier.fillMaxSize()) {
-        Row(
-            Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 6.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            TextButton(onClick = onBack) { Text("← Back") }
-            Text("Staff & PINs", fontSize = 18.sp, fontWeight = FontWeight.ExtraBold, modifier = Modifier.weight(1f))
-            TextButton(onClick = { addOpen = true }) { Text("+ staff") }
-        }
+        com.pavbhaji.pos.ui.AppHeader(
+            title = "Staff & PINs",
+            onBack = onBack,
+            actions = { com.pavbhaji.pos.ui.HeaderTextAction("+ staff") { addOpen = true } }
+        )
         err?.let { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(horizontal = 14.dp)) }
         LazyColumn(Modifier.fillMaxSize(), contentPadding = androidx.compose.foundation.layout.PaddingValues(12.dp)) {
             staff.forEach { s ->
@@ -106,8 +103,8 @@ fun StaffAdmin(onBack: () -> Unit) {
                 Column {
                     OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Name") })
                     OutlinedTextField(
-                        value = pin, onValueChange = { pin = it.filter { c -> c.isDigit() }.take(6) },
-                        label = { Text("PIN (4–6 digits)") }, modifier = Modifier.padding(top = 8.dp)
+                        value = pin, onValueChange = { pin = it.filter { c -> c.isDigit() }.take(4) },
+                        label = { Text("PIN (4 digits)") }, modifier = Modifier.padding(top = 8.dp)
                     )
                     Row(Modifier.padding(top = 10.dp)) {
                         listOf("waiter", "chef", "admin").forEach { r ->
@@ -143,8 +140,8 @@ fun StaffAdmin(onBack: () -> Unit) {
             text = {
                 Column {
                     OutlinedTextField(
-                        value = pin, onValueChange = { pin = it.filter { c -> c.isDigit() }.take(6) },
-                        label = { Text("PIN (4–6 digits)") }
+                        value = pin, onValueChange = { pin = it.filter { c -> c.isDigit() }.take(4) },
+                        label = { Text("PIN (4 digits)") }
                     )
                     dErr?.let { Text(it, color = MaterialTheme.colorScheme.error, fontSize = 13.sp) }
                 }
@@ -182,14 +179,11 @@ fun TablesAdmin(onBack: () -> Unit) {
     LaunchedEffect(Unit) { refresh() }
 
     Column(Modifier.fillMaxSize()) {
-        Row(
-            Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 6.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            TextButton(onClick = onBack) { Text("← Back") }
-            Text("Tables", fontSize = 18.sp, fontWeight = FontWeight.ExtraBold, modifier = Modifier.weight(1f))
-            TextButton(onClick = { addOpen = true }) { Text("+ table") }
-        }
+        com.pavbhaji.pos.ui.AppHeader(
+            title = "Tables setup",
+            onBack = onBack,
+            actions = { com.pavbhaji.pos.ui.HeaderTextAction("+ table") { addOpen = true } }
+        )
         err?.let { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(horizontal = 14.dp)) }
         LazyColumn(Modifier.fillMaxSize(), contentPadding = androidx.compose.foundation.layout.PaddingValues(12.dp)) {
             tables.forEach { t ->

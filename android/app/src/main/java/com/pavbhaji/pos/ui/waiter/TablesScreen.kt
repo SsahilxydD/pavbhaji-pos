@@ -7,7 +7,6 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -17,7 +16,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -34,9 +32,13 @@ import androidx.compose.ui.unit.sp
 import com.pavbhaji.pos.Deps
 import com.pavbhaji.pos.data.ApiResult
 import com.pavbhaji.pos.data.TableStateDto
+import com.pavbhaji.pos.ui.AppHeader
 import com.pavbhaji.pos.ui.ConnBanner
 import com.pavbhaji.pos.ui.GoodGreen
+import com.pavbhaji.pos.ui.HeaderTextAction
+import com.pavbhaji.pos.ui.WarnAmber
 import com.pavbhaji.pos.ui.ageMinutes
+import com.pavbhaji.pos.ui.items as itemsLabel
 import com.pavbhaji.pos.ui.rupees
 import kotlinx.coroutines.delay
 
@@ -49,11 +51,7 @@ fun WaiterHome(onLogout: () -> Unit, onBack: (() -> Unit)? = null) {
     if (sel != null) {
         TableOrderScreen(tableId = sel.id, tableName = sel.name, onBack = { selected = null })
     } else {
-        TablesScreen(
-            onOpenTable = { selected = it },
-            onLogout = onLogout,
-            onBack = onBack
-        )
+        TablesScreen(onOpenTable = { selected = it }, onLogout = onLogout, onBack = onBack)
     }
 }
 
@@ -81,32 +79,23 @@ fun TablesScreen(
         while (true) { delay(25_000); refresh() }
     }
 
+    val busy = tables.count { it.order != null }
     Column(Modifier.fillMaxSize()) {
-        Row(
-            Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            if (onBack != null) TextButton(onClick = onBack) { Text("← Back") }
-            Text(
-                "Tables",
-                fontSize = 20.sp, fontWeight = FontWeight.ExtraBold,
-                modifier = Modifier.weight(1f).padding(start = 4.dp)
-            )
-            Text(
-                Deps.session.staffName,
-                fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            if (onBack == null) TextButton(onClick = onLogout) { Text("Logout") }
-        }
+        AppHeader(
+            title = "Tables",
+            subtitle = "${Deps.session.staffName} · $busy of ${tables.size} occupied",
+            onBack = onBack,
+            actions = { if (onBack == null) HeaderTextAction("Logout", onLogout) }
+        )
         ConnBanner(connected)
         if (loadError != null) {
             Text(
                 loadError!!, color = MaterialTheme.colorScheme.error, fontSize = 13.sp,
-                modifier = Modifier.padding(horizontal = 14.dp)
+                modifier = Modifier.padding(horizontal = 14.dp, vertical = 4.dp)
             )
         }
         LazyVerticalGrid(
-            columns = GridCells.Adaptive(150.dp),
+            columns = GridCells.Adaptive(160.dp),
             contentPadding = PaddingValues(12.dp),
             horizontalArrangement = Arrangement.spacedBy(10.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
@@ -120,47 +109,64 @@ fun TablesScreen(
 }
 
 @Composable
+private fun Pill(text: String, bg: Color, fg: Color) {
+    Surface(color = bg, shape = RoundedCornerShape(8.dp)) {
+        Text(
+            text, color = fg, fontSize = 11.sp, fontWeight = FontWeight.ExtraBold,
+            modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp)
+        )
+    }
+}
+
+@Composable
 private fun TableCard(t: TableStateDto, onClick: () -> Unit) {
     val o = t.order
-    val free = o == null
     val hasReady = (o?.readyCount ?: 0) > 0
+    val cooking = (o?.pendingCount ?: 0) > 0
     Surface(
         onClick = onClick,
-        shape = RoundedCornerShape(16.dp),
+        shape = RoundedCornerShape(18.dp),
         color = when {
-            free -> MaterialTheme.colorScheme.surface
+            o == null -> MaterialTheme.colorScheme.surface
             hasReady -> Color(0xFFE8F5E9)
-            else -> MaterialTheme.colorScheme.primaryContainer
+            else -> Color(0xFFFFEFE3)
         },
-        border = if (hasReady) BorderStroke(2.dp, GoodGreen) else null,
-        shadowElevation = 1.dp
+        border = when {
+            hasReady -> BorderStroke(2.dp, GoodGreen)
+            o != null -> BorderStroke(1.dp, Color(0xFFF0C9AE))
+            else -> BorderStroke(1.dp, Color(0xFFEDE5DD))
+        },
+        shadowElevation = if (o != null) 2.dp else 0.dp,
+        modifier = Modifier.height(118.dp)
     ) {
-        Column(Modifier.padding(12.dp)) {
+        Column(Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(t.name, fontSize = 20.sp, fontWeight = FontWeight.ExtraBold, modifier = Modifier.weight(1f))
-                if (o != null) Text("#${o.orderNo}", fontSize = 13.sp, fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(t.name, fontSize = 22.sp, fontWeight = FontWeight.ExtraBold, modifier = Modifier.weight(1f))
+                if (o != null) {
+                    Text(
+                        "#${o.orderNo}", fontSize = 13.sp, fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
             }
-            Spacer(Modifier.height(6.dp))
+            Spacer(Modifier.weight(1f))
             if (o == null) {
-                Text("free", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("free", fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             } else {
                 Text(
-                    "${o.itemCount} items · ${rupees(o.total)}",
-                    fontSize = 14.sp, fontWeight = FontWeight.SemiBold
+                    "${rupees(o.total)} · ${itemsLabel(o.itemCount)}",
+                    fontSize = 15.sp, fontWeight = FontWeight.Bold
                 )
-                Text(
-                    buildString {
-                        append(ageMinutes(o.openedAt))
-                        append(" · ")
-                        append(o.openedByName)
-                        if (hasReady) append(" · ${o.readyCount} READY")
-                        else if (o.pendingCount > 0) append(" · ${o.pendingCount} cooking")
-                    },
-                    fontSize = 12.sp,
-                    color = if (hasReady) GoodGreen else MaterialTheme.colorScheme.onSurfaceVariant,
-                    fontWeight = if (hasReady) FontWeight.Bold else FontWeight.Normal
-                )
+                Spacer(Modifier.height(5.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(5.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        "${ageMinutes(o.openedAt)} · ${o.openedByName}",
+                        fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.weight(1f, fill = false)
+                    )
+                    if (hasReady) Pill("${o.readyCount} READY", Color(0xFFC8E6C9), Color(0xFF1B5E20))
+                    else if (cooking) Pill("${o.pendingCount} cooking", Color(0xFFFFECB3), WarnAmber)
+                }
             }
         }
     }

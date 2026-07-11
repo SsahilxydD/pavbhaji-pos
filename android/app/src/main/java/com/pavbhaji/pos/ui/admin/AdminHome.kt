@@ -90,14 +90,11 @@ private fun Dashboard(onLogout: () -> Unit, onOpen: (AdminScreen) -> Unit) {
     LaunchedEffect(Unit) { while (true) { delay(20_000); refresh() } }
 
     Column(Modifier.fillMaxSize()) {
-        Row(
-            Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text("Admin", fontSize = 20.sp, fontWeight = FontWeight.ExtraBold, modifier = Modifier.weight(1f))
-            Text(Deps.session.staffName, fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            TextButton(onClick = onLogout) { Text("Logout") }
-        }
+        com.pavbhaji.pos.ui.AppHeader(
+            title = "Admin",
+            subtitle = Deps.session.staffName,
+            actions = { com.pavbhaji.pos.ui.HeaderTextAction("Logout", onLogout) }
+        )
         ConnBanner(connected)
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(12.dp)) {
             Text("Today (${rep.date})", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -136,7 +133,13 @@ private fun Dashboard(onLogout: () -> Unit, onOpen: (AdminScreen) -> Unit) {
                     shadowElevation = 1.dp,
                     modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
                 ) {
-                    Text(label, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(14.dp))
+                    Row(
+                        Modifier.padding(horizontal = 14.dp, vertical = 15.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(label, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                        Text("›", fontSize = 22.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
                 }
             }
             Surface(

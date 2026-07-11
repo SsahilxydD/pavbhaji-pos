@@ -66,14 +66,11 @@ fun MenuAdmin(onBack: () -> Unit) {
     }
 
     Column(Modifier.fillMaxSize()) {
-        Row(
-            Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 6.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            TextButton(onClick = onBack) { Text("← Back") }
-            Text("Menu & prices", fontSize = 18.sp, fontWeight = FontWeight.ExtraBold, modifier = Modifier.weight(1f))
-            TextButton(onClick = { addCategory = true }) { Text("+ category") }
-        }
+        com.pavbhaji.pos.ui.AppHeader(
+            title = "Menu & prices",
+            onBack = onBack,
+            actions = { com.pavbhaji.pos.ui.HeaderTextAction("+ category") { addCategory = true } }
+        )
         err?.let { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(horizontal = 14.dp)) }
 
         LazyColumn(Modifier.fillMaxSize(), contentPadding = androidx.compose.foundation.layout.PaddingValues(12.dp)) {

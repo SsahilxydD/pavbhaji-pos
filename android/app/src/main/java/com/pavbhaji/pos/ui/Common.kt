@@ -10,9 +10,13 @@ import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -75,11 +79,16 @@ fun AppHeader(
 ) {
     if (onBack != null) BackHandler(onBack = onBack)
     Surface(color = BhajiRed) {
+        // safeDrawing (status bar ∪ display cutout) instead of just the status
+        // bar: on notch/full-screen phones the cutout can be taller than the
+        // reported status bar, and the bar's content must start below BOTH.
         Row(
             Modifier
                 .fillMaxWidth()
-                .statusBarsPadding()
-                .height(60.dp)
+                .windowInsetsPadding(
+                    WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal)
+                )
+                .height(56.dp)
                 .padding(horizontal = 4.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -92,11 +101,11 @@ fun AppHeader(
                     )
                 }
             } else {
-                Text("🍛", fontSize = 22.sp, modifier = Modifier.padding(start = 12.dp, end = 4.dp))
+                Text("🍛", fontSize = 21.sp, modifier = Modifier.padding(start = 12.dp, end = 4.dp))
             }
             Column(Modifier.weight(1f).padding(start = 6.dp)) {
                 Text(
-                    title, color = Color.White, fontSize = 19.sp,
+                    title, color = Color.White, fontSize = 18.sp,
                     fontWeight = FontWeight.ExtraBold,
                     maxLines = 1, overflow = TextOverflow.Ellipsis
                 )

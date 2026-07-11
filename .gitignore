@@ -1,0 +1,7 @@
+dist/*
+!dist/*.bat
+server/data/
+server/pbpos-server*
+*.log
+.gradle/
+build/

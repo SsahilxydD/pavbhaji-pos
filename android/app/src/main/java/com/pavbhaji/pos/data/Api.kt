@@ -72,6 +72,8 @@ class Api(private val session: Session) {
     }
 
     // ---- auth ----
+    suspend fun ping(): ApiResult<PingDto> = call("GET", "/api/ping", auth = false)
+
     suspend fun login(pin: String): ApiResult<LoginResp> =
         call("POST", "/api/login", """{"pin":"$pin"}""", auth = false)
 

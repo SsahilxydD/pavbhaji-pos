@@ -31,9 +31,14 @@ func (s *Server) info() serverInfo {
 }
 
 // GET /api/ping — public. The app calls this to recognise a PavBhaji server
-// (and to tell *which one*) before trusting an address it discovered.
+// (and to tell *which one*) before trusting an address it discovered. Also
+// carries the laptop's clock so phones can spot drift — an offline laptop
+// never syncs time, but phones usually do (cell network).
 func (s *Server) handlePing(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, s.info())
+	i := s.info()
+	writeJSON(w, http.StatusOK, map[string]any{
+		"app": i.App, "name": i.Name, "id": i.ID, "port": i.Port, "time": nowMs(),
+	})
 }
 
 // discoveryResponder answers UDP broadcasts from the app. The reply's source

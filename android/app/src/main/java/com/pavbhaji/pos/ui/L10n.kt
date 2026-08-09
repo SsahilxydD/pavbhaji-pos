@@ -205,6 +205,11 @@ object S {
     val navMenu get() = t("Menu & colours", "मेनू और रंग", "મેનૂ અને રંગ")
     val navStaff get() = t("Staff", "स्टाफ़", "સ્ટાફ")
     val navReport get() = t("Day report", "दिन की रिपोर्ट", "દિવસનો રિપોર્ટ")
+    fun clockSkew(laptop: String, phone: String) = t(
+        "⚠ Laptop time ($laptop) differs from this phone ($phone). Fix the laptop clock in Windows settings — reports and the day boundary trust it.",
+        "⚠ लैपटॉप का समय ($laptop) इस फ़ोन ($phone) से अलग है। Windows सेटिंग्स में लैपटॉप की घड़ी ठीक करो — रिपोर्ट इसी पर चलती है।",
+        "⚠ લેપટોપનો સમય ($laptop) આ ફોન ($phone) થી અલગ છે. Windows સેટિંગ્સમાં લેપટોપની ઘડિયાળ ઠીક કરો — રિપોર્ટ એના પર ચાલે છે."
+    )
     val savingBackup get() = t("saving backup…", "बैकअप सेव हो रहा…", "બેકઅપ સેવ થાય છે…")
     val saveBackup get() = t("save a backup to this phone", "इस फ़ोन में बैकअप सेव करो", "આ ફોનમાં બેકઅપ સેવ કરો")
     fun backupSaved(where: String) = t("Backup saved: $where", "बैकअप सेव हुआ: $where", "બેકઅપ સેવ થયો: $where")

@@ -18,7 +18,10 @@ The **laptop is the brain** — it holds the only copy of the data. Phones are j
 
 1. Make a folder, e.g. `C:\PavBhajiPOS`, and copy **`PavBhajiPOS-server.exe`** into it
    (from the `dist` folder of this project).
-2. Double-click the exe. A black window opens — **keep it open while the shop runs**.
+2. Double-click the exe. The **first** time, Windows may show a blue
+   "**Windows protected your PC**" box (normal for a small unsigned program) —
+   click **More info → Run anyway**. It only asks once.
+   A black window opens — **keep it open while the shop runs**.
    It shows something like:
 
    ```

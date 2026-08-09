@@ -9,6 +9,12 @@ data class StaffDto(val id: Long, val name: String, val role: String, val active
 data class LoginResp(val token: String, val staff: StaffDto)
 
 @Serializable
+data class PingDto(
+    val app: String = "", val name: String = "", val id: String = "",
+    val port: Int = 0, val time: Long = 0 // laptop's clock, for drift detection
+)
+
+@Serializable
 data class MenuItemDto(
     val id: Long, val name: String, val price: Long,
     val available: Boolean = true, val sort: Int = 0,

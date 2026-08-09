@@ -65,8 +65,10 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 <img src="/qr.png" width="220" height="220" alt="QR">
 <div class="row">Devices connected: <b>%d</b> · Orders today: <b>%d</b> · Open tables: <b>%d</b></div>
 <div class="row">Last backup: <b>%s</b> · pen-drive copy: <b>%s</b></div>
+<div class="row">Server clock: <b>%s</b> — reports and the day boundary trust this; fix it in Windows if it's wrong.</div>
 <div class="row">Backups refresh every 20 min into the <b>data</b> folder — leave a pen drive plugged in for an automatic second copy.</div>
-</body></html>`, addr, s.hub.Count(), ordersToday, openOrders, lastBackup, usbBackup)
+</body></html>`, addr, s.hub.Count(), ordersToday, openOrders, lastBackup, usbBackup,
+		time.Now().Format("15:04, Mon 2 Jan"))
 }
 
 func (s *Server) handleQR(w http.ResponseWriter, r *http.Request) {

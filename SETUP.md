@@ -42,10 +42,17 @@ The **laptop is the brain** — it holds the only copy of the data. Phones are j
 
 **Where's my data?** In the `data` folder next to the exe:
 - `pbpos.db` — the live database
-- `backups\auto-YYYY-MM-DD.db` — automatic daily backup (written at 23:45)
+- `backups\auto-YYYY-MM-DD.db` — automatic backup, refreshed **every 20 minutes**
+  (one file per day, last 30 days kept)
 
-**Backing up = copying that folder.** Do it to a pen drive once a week. The admin
-app can also download a backup to a phone anytime (Admin → Download backup).
+**Best backup habit: leave a pen drive plugged into the laptop.** Every backup is
+automatically copied onto it (`PavBhajiPOS-backups` folder) — if the laptop's disk
+dies, the stick has everything up to the last 20 minutes. The status page
+(`http://localhost:8177`) shows when the last backup and last pen-drive copy
+happened. The admin app can also download a backup to a phone anytime.
+
+**If the server program ever crashes, it restarts itself within 3 seconds** —
+closing its window on purpose still stops it normally.
 
 ---
 
@@ -130,3 +137,4 @@ chef's board, they land straight on the waiters' serve list.
 | App can't find the laptop automatically | Some routers block "broadcast" chatter. Scan the QR instead — and check the router doesn't have "AP/client isolation" turned on (that blocks phones from the laptop entirely). |
 | Forgot admin PIN | On the laptop: stop the server, rename `data\pbpos.db` to something else, start server — it creates a fresh DB with PIN 1111. Then copy your old file back if needed (ask your developer). |
 | "That PIN is already taken" | Two people can't share a PIN — pick a different one. |
+| "Too many wrong PINs — wait 30s" | After 5 wrong tries a phone must wait 30 seconds (protection against PIN guessing). Wait, then type carefully. Repeated lockouts appear in the audit log. |

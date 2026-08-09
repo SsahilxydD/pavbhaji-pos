@@ -3,6 +3,10 @@ package main
 import (
 	"fmt"
 	"net/http"
+	"os"
+	"path/filepath"
+	"sort"
+	"strconv"
 	"time"
 
 	qrcode "github.com/skip2/go-qrcode"
@@ -27,6 +31,21 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 	s.db.QueryRow(`SELECT COUNT(*) FROM orders WHERE status='open'`).Scan(&openOrders)
 	s.db.QueryRow(`SELECT COUNT(*) FROM orders WHERE biz_date=?`, today).Scan(&ordersToday)
 
+	// Backup freshness — the owner's one-glance "is my data safe?" check.
+	lastBackup := "none yet"
+	if m, _ := filepath.Glob(filepath.Join(s.dataDir, "backups", "auto-*.db")); len(m) > 0 {
+		sort.Strings(m)
+		if fi, err := os.Stat(m[len(m)-1]); err == nil {
+			lastBackup = fi.ModTime().Format("15:04 (2 Jan)")
+		}
+	}
+	usbBackup := "no pen drive seen"
+	if v := getMeta(s.db, "last_usb_backup", ""); v != "" {
+		if ms, err := strconv.ParseInt(v, 10, 64); err == nil {
+			usbBackup = time.UnixMilli(ms).Format("15:04 (2 Jan)")
+		}
+	}
+
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	fmt.Fprintf(w, `<!doctype html>
 <html><head><meta charset="utf-8"><meta http-equiv="refresh" content="10">
@@ -45,8 +64,9 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 <div class="row">If one asks: tap <b>📷 Scan QR</b> in the app and point it here (or type the address).</div>
 <img src="/qr.png" width="220" height="220" alt="QR">
 <div class="row">Devices connected: <b>%d</b> · Orders today: <b>%d</b> · Open tables: <b>%d</b></div>
-<div class="row">Database and backups live in the <b>data</b> folder next to the .exe — copy that folder to back everything up.</div>
-</body></html>`, addr, s.hub.Count(), ordersToday, openOrders)
+<div class="row">Last backup: <b>%s</b> · pen-drive copy: <b>%s</b></div>
+<div class="row">Backups refresh every 20 min into the <b>data</b> folder — leave a pen drive plugged in for an automatic second copy.</div>
+</body></html>`, addr, s.hub.Count(), ordersToday, openOrders, lastBackup, usbBackup)
 }
 
 func (s *Server) handleQR(w http.ResponseWriter, r *http.Request) {

@@ -6,21 +6,81 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"os/exec"
+	"os/signal"
 	"path/filepath"
 	"strconv"
+	"sync/atomic"
+	"syscall"
+	"time"
 )
 
 func main() {
 	var port int
 	var dataDir string
 	var headless bool
+	var worker bool
 	flag.IntVar(&port, "port", 8177, "port to listen on")
 	flag.StringVar(&dataDir, "data", "", "data directory (default: 'data' next to the exe)")
 	flag.BoolVar(&headless, "headless", false, "run without the desktop window (console / service mode)")
+	flag.BoolVar(&worker, "worker", false, "internal: run as the supervised worker process")
 	flag.Parse()
 
+	if !worker {
+		supervise() // never returns
+	}
 	dataDir = resolveDataDir(dataDir)
 	run(port, dataDir, headless)
+}
+
+// The exe supervises itself: the process you start is a tiny parent that runs
+// the real server as a -worker child and restarts it if it CRASHES (non-zero
+// exit). Deliberate stops — window closed, Ctrl+C, kill — stop everything.
+// This is what turns "the exe crashed at 7pm on a Saturday" from a shop
+// outage into a 3-second blip nobody notices.
+func supervise() {
+	exe, err := os.Executable()
+	if err != nil {
+		return // can't find ourselves: run unsupervised rather than not at all
+	}
+	var child atomic.Pointer[os.Process]
+	var stopping atomic.Bool
+	sig := make(chan os.Signal, 1)
+	signal.Notify(sig, os.Interrupt, syscall.SIGTERM)
+	go func() {
+		s := <-sig
+		stopping.Store(true)
+		if p := child.Load(); p != nil {
+			p.Signal(s) // best effort; on Windows console events reach the child anyway
+		}
+	}()
+
+	rapid := 0
+	for {
+		cmd := exec.Command(exe, append([]string{"-worker"}, os.Args[1:]...)...)
+		cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
+		started := time.Now()
+		runErr := cmd.Start()
+		if runErr == nil {
+			child.Store(cmd.Process)
+			runErr = cmd.Wait()
+			child.Store(nil)
+		}
+		if runErr == nil || stopping.Load() {
+			os.Exit(0) // clean exit or requested stop — really stop
+		}
+		if time.Since(started) < 5*time.Second {
+			rapid++
+		} else {
+			rapid = 0
+		}
+		if rapid >= 5 {
+			log.Println("server keeps dying immediately — giving up. Run it from a console to see the error.")
+			os.Exit(1)
+		}
+		log.Printf("server stopped unexpectedly (%v) — restarting in 3s. Close the window / Ctrl+C to stop.", runErr)
+		time.Sleep(3 * time.Second)
+	}
 }
 
 // resolveDataDir returns the effective data directory: the -data override, or a

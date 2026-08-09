@@ -3,8 +3,11 @@ package main
 import (
 	"context"
 	"database/sql"
+	"fmt"
+	"net"
 	"net/http"
 	"strings"
+	"sync"
 )
 
 type Staff struct {
@@ -23,6 +26,27 @@ type Server struct {
 	serverID     string // stable random id so phones can re-recognise this install
 }
 
+// Brute-force brake: a 4-digit PIN space is only 10,000 guesses — without a
+// limiter anyone on the shop WiFi could walk it in minutes. Per IP: 5 free
+// tries, then every further failure arms a 30s lockout. Success clears it.
+type loginGate struct {
+	fails        int
+	blockedUntil int64
+}
+
+var (
+	gatesMu sync.Mutex
+	gates   = map[string]*loginGate{}
+)
+
+func loginIP(r *http.Request) string {
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return r.RemoteAddr
+	}
+	return host
+}
+
 // POST /api/login {pin} -> {token, staff}
 func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	var req struct {
@@ -36,15 +60,44 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		fail(w, http.StatusBadRequest, "PIN must be at least 4 digits")
 		return
 	}
+	ip := loginIP(r)
+	gatesMu.Lock()
+	g := gates[ip]
+	if g == nil {
+		g = &loginGate{}
+		gates[ip] = g
+	}
+	if now := nowMs(); now < g.blockedUntil {
+		wait := (g.blockedUntil - now + 999) / 1000
+		gatesMu.Unlock()
+		fail(w, http.StatusTooManyRequests, fmt.Sprintf("too many wrong PINs — wait %ds", wait))
+		return
+	}
+	gatesMu.Unlock()
+
 	salt := getMeta(s.db, "pin_salt", "")
 	var st Staff
 	err := s.db.QueryRow(
 		`SELECT id, name, role FROM staff WHERE pin_hash=? AND active=1`,
 		hashPin(salt, req.Pin)).Scan(&st.ID, &st.Name, &st.Role)
 	if err != nil {
+		gatesMu.Lock()
+		g.fails++
+		if g.fails >= 5 {
+			g.blockedUntil = nowMs() + 30_000
+		}
+		fails := g.fails
+		gatesMu.Unlock()
+		// The owner should see a guessing spree in the log — but not 10,000 rows of it.
+		if fails == 5 || fails%50 == 0 {
+			audit(s.db, 0, "system", "login:blocked", fmt.Sprintf("%d wrong PINs from %s — 30s lockouts armed", fails, ip))
+		}
 		fail(w, http.StatusUnauthorized, "wrong PIN")
 		return
 	}
+	gatesMu.Lock()
+	delete(gates, ip)
+	gatesMu.Unlock()
 	st.Active = true
 	token := randomHex(24)
 	now := nowMs()

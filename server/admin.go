@@ -2,10 +2,12 @@ package main
 
 import (
 	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -645,21 +647,78 @@ func (s *Server) handleBackup(w http.ResponseWriter, r *http.Request) {
 }
 
 // autoBackup writes a daily snapshot into data/backups/ at 23:45.
+// One backup file per day, refreshed every 20 minutes — the old 23:45-only
+// schedule silently produced ZERO backups in any shop that shuts the laptop
+// at closing time. Now the worst case after a disk death is 20 minutes of
+// orders, and each refresh also lands on any plugged-in pen drive, so
+// "leave a stick in the laptop" = automatic second copy off the disk.
 func (s *Server) autoBackup() {
 	dir := filepath.Join(s.dataDir, "backups")
 	os.MkdirAll(dir, 0o755)
+	lastAuditDay := ""
 	for {
-		now := time.Now()
-		next := time.Date(now.Year(), now.Month(), now.Day(), 23, 45, 0, 0, time.Local)
-		if !next.After(now) {
-			next = next.AddDate(0, 0, 1)
+		day := time.Now().Format("2006-01-02")
+		name := filepath.Join(dir, "auto-"+day+".db")
+		tmp := name + ".tmp"
+		os.Remove(tmp)
+		if _, err := s.db.Exec(`VACUUM INTO ?`, tmp); err == nil {
+			os.Remove(name) // Windows cannot rename over an existing file
+			if err := os.Rename(tmp, name); err == nil {
+				if lastAuditDay != day {
+					audit(s.db, 0, "system", "backup", "automatic backup running (refreshes every 20 min)")
+					lastAuditDay = day
+				}
+				s.copyBackupToRemovable(name)
+				pruneOldBackups(dir, 30)
+			}
+		} else {
+			log.Printf("auto backup failed: %v", err)
 		}
-		time.Sleep(time.Until(next))
-		name := filepath.Join(dir, "auto-"+time.Now().Format("2006-01-02")+".db")
-		os.Remove(name)
-		if _, err := s.db.Exec(`VACUUM INTO ?`, name); err == nil {
-			audit(s.db, 0, "system", "backup", "automatic daily backup written")
+		time.Sleep(20 * time.Minute)
+	}
+}
+
+// copyBackupToRemovable mirrors the newest backup onto every plugged-in pen
+// drive (folder PavBhajiPOS-backups). Silent no-op when no drive is present;
+// the status page shows when a stick last got a copy.
+func (s *Server) copyBackupToRemovable(src string) {
+	for _, root := range removableDirs() {
+		destDir := filepath.Join(root, "PavBhajiPOS-backups")
+		if err := os.MkdirAll(destDir, 0o755); err != nil {
+			continue
 		}
+		dest := filepath.Join(destDir, filepath.Base(src))
+		if err := copyFile(src, dest); err != nil {
+			log.Printf("pen-drive backup to %s failed: %v", destDir, err)
+			continue
+		}
+		setMeta(s.db, "last_usb_backup", fmt.Sprintf("%d", nowMs()))
+		pruneOldBackups(destDir, 30)
+	}
+}
+
+func copyFile(src, dest string) error {
+	data, err := os.ReadFile(src)
+	if err != nil {
+		return err
+	}
+	tmp := dest + ".tmp"
+	if err := os.WriteFile(tmp, data, 0o644); err != nil {
+		return err
+	}
+	os.Remove(dest)
+	return os.Rename(tmp, dest)
+}
+
+// pruneOldBackups keeps the newest `keep` auto-*.db files in dir.
+func pruneOldBackups(dir string, keep int) {
+	m, _ := filepath.Glob(filepath.Join(dir, "auto-*.db"))
+	if len(m) <= keep {
+		return
+	}
+	sort.Strings(m) // names embed the date, so lexical order = date order
+	for _, old := range m[:len(m)-keep] {
+		os.Remove(old)
 	}
 }
 

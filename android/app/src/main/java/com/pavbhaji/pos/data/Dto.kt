@@ -88,11 +88,16 @@ data class KitchenDto(
 data class PickupLineDto(
     val itemId: Long, val name: String, val qty: Long, val note: String = "",
     val colour: String = "", val station: String = "kitchen",
-    val tableName: String = "", val sinceMs: Long = 0
+    val tableName: String = "", val sinceMs: Long = 0,
+    val servedBy: String = "" // only on history lines
 )
 
 @Serializable
-data class PickupDto(val lines: List<PickupLineDto> = emptyList(), val serverTime: Long = 0)
+data class PickupDto(
+    val lines: List<PickupLineDto> = emptyList(),
+    val served: List<PickupLineDto> = emptyList(), // last hour, newest first
+    val serverTime: Long = 0
+)
 
 @Serializable
 data class ReportLineDto(val name: String, val qty: Long, val value: Long)

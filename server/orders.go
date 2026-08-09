@@ -956,6 +956,7 @@ type PickupLine struct {
 	Station   string `json:"station"` // 'counter' lines appear the moment they're punched
 	TableName string `json:"tableName"`
 	SinceMs   int64  `json:"sinceMs"` // when it became carryable (ready_at, or punch time for counter)
+	ServedBy  string `json:"servedBy"` // only on history lines: who carried it
 }
 
 // GET /api/pickup — everything a waiter should be carrying right now, as one
@@ -980,5 +981,28 @@ func (s *Server) handlePickup(w http.ResponseWriter, r *http.Request) {
 		}
 		rows.Close()
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"lines": lines, "serverTime": nowMs()})
+	// The waiter's memory: what already went out in the last hour (newest
+	// first, max 30), with who carried it. Closed tables stay visible — a
+	// "did that plate go out?" doubt outlives the order.
+	served := []PickupLine{}
+	rows, err = s.db.Query(`
+		SELECT ti.id, ti.name, ti.qty, ti.note, ti.status_at, dt.name, COALESCE(m.colour,''), ti.station,
+		       COALESCE(st.name,'')
+		FROM ticket_items ti
+		JOIN tickets tk ON tk.id=ti.ticket_id
+		JOIN orders o ON o.id=tk.order_id
+		JOIN dining_tables dt ON dt.id=o.table_id
+		LEFT JOIN menu_items m ON m.id=ti.menu_item_id
+		LEFT JOIN staff st ON st.id=ti.status_by
+		WHERE ti.status='served' AND ti.status_at > ?
+		ORDER BY ti.status_at DESC, ti.id DESC LIMIT 30`, nowMs()-60*60*1000)
+	if err == nil {
+		for rows.Next() {
+			var l PickupLine
+			rows.Scan(&l.ItemID, &l.Name, &l.Qty, &l.Note, &l.SinceMs, &l.TableName, &l.Colour, &l.Station, &l.ServedBy)
+			served = append(served, l)
+		}
+		rows.Close()
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"lines": lines, "served": served, "serverTime": nowMs()})
 }

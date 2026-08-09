@@ -115,6 +115,8 @@ object S {
     val servedTick get() = t("Served ✓", "परोसा ✓", "પીરસ્યું ✓")
     fun allN(n: Int) = t("All $n ✓", "सब $n ✓", "બધા $n ✓")
     val readyTitle get() = t("Ready", "तैयार", "તૈયાર")
+    val servedSection get() = t("SERVED — for checking", "परोसा हुआ — देखने के लिए", "પીરસેલું — જોવા માટે")
+    val serveNow get() = t("SERVE NOW", "अभी परोसो", "હમણાં પીરસો")
 
     // ---- tables / manager ----
     val tablesTitle get() = t("Tables", "टेबल", "ટેબલ")

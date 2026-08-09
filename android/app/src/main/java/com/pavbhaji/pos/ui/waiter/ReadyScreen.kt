@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -27,6 +28,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -47,6 +49,7 @@ import com.pavbhaji.pos.ui.GoodGreen
 import com.pavbhaji.pos.ui.HeaderTextAction
 import com.pavbhaji.pos.ui.S
 import com.pavbhaji.pos.ui.WarnAmber
+import com.pavbhaji.pos.ui.ageMinutes
 import com.pavbhaji.pos.ui.dishColour
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -236,11 +239,12 @@ fun ServeScreen(onLogout: () -> Unit) {
     val scope = rememberCoroutineScope()
     val connected by Deps.live.connected.collectAsState()
     var lines by remember { mutableStateOf<List<PickupLineDto>>(emptyList()) }
+    var served by remember { mutableStateOf<List<PickupLineDto>>(emptyList()) }
     var toast by remember { mutableStateOf<String?>(null) }
 
     suspend fun refresh() {
         when (val r = Deps.api.pickup()) {
-            is ApiResult.Ok -> lines = r.value.lines
+            is ApiResult.Ok -> { lines = r.value.lines; served = r.value.served }
             is ApiResult.Err -> {}
         }
     }
@@ -252,6 +256,23 @@ fun ServeScreen(onLogout: () -> Unit) {
     toast?.let { LaunchedEffect(it) { delay(2500); toast = null } }
 
     val sorted = lines.sortedWith(compareBy({ it.sinceMs }, { it.itemId }))
+    // History renders oldest→newest, so the most recent serve sits directly
+    // above the live list — one small scroll up answers "what did I just take?".
+    val history = served.reversed()
+
+    // Keep the live list anchored at the top of the screen even though history
+    // sits above it; re-anchor on changes only when the waiter isn't up reading.
+    val listState = rememberLazyListState()
+    var lastBoundary by remember { mutableIntStateOf(-1) }
+    val boundary = if (history.isEmpty()) 0 else history.size + 2 // two labels bracket history
+    LaunchedEffect(boundary) {
+        if (boundary != lastBoundary) {
+            if (lastBoundary == -1 || listState.firstVisibleItemIndex >= lastBoundary) {
+                listState.scrollToItem(boundary)
+            }
+            lastBoundary = boundary
+        }
+    }
 
     Column(Modifier.fillMaxSize()) {
         AppHeader(
@@ -269,10 +290,18 @@ fun ServeScreen(onLogout: () -> Unit) {
         }
         LazyColumn(
             Modifier.fillMaxSize(),
+            state = listState,
             contentPadding = PaddingValues(12.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            items(sorted.size, key = { sorted[it].itemId }) { i ->
+            if (history.isNotEmpty()) {
+                item(key = "hdrServed") { SectionLabel(S.servedSection) }
+                items(history.size, key = { "h${history[it].itemId}" }) { i ->
+                    HistoryRow(history[i])
+                }
+                item(key = "hdrNow") { SectionLabel(S.serveNow) }
+            }
+            items(sorted.size, key = { "a${sorted[it].itemId}" }) { i ->
                 val l = sorted[i]
                 ServeRow(
                     l,
@@ -288,6 +317,48 @@ fun ServeScreen(onLogout: () -> Unit) {
                 )
             }
             items(1) { Spacer(Modifier.height(20.dp)) }
+        }
+    }
+}
+
+@Composable
+private fun SectionLabel(text: String) {
+    Text(
+        text, fontSize = 11.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 1.sp,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = Modifier.padding(top = 2.dp)
+    )
+}
+
+// A plate that already went out: greyed, no button — pure memory. The table
+// number stays loud because "where did that plate go?" is the question here.
+@Composable
+private fun HistoryRow(l: PickupLineDto) {
+    Surface(
+        shape = RoundedCornerShape(12.dp),
+        color = Color(0xFFF5F1EA),
+        border = BorderStroke(1.dp, Color(0xFFE9E2D6))
+    ) {
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text("✓", color = GoodGreen, fontSize = 15.sp, fontWeight = FontWeight.ExtraBold)
+            Column(Modifier.weight(1f).padding(start = 9.dp)) {
+                Text(
+                    "${l.qty}× ${l.name}", fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
+                    maxLines = 1, color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Text(
+                    listOfNotNull(ageMinutes(l.sinceMs), l.servedBy.ifEmpty { null }).joinToString(" · "),
+                    fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Text(
+                l.tableName, fontSize = 17.sp, fontWeight = FontWeight.ExtraBold,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(start = 8.dp)
+            )
         }
     }
 }

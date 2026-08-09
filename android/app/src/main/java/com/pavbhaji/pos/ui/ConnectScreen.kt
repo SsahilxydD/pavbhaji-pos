@@ -2,9 +2,11 @@ package com.pavbhaji.pos.ui
 
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -91,6 +93,7 @@ fun ConnectScreen(onConnected: () -> Unit) {
         if (found.size == 1) tryAddr(found[0].addr)
     }
 
+    Box(Modifier.fillMaxSize()) {
     Column(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(28.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -181,6 +184,11 @@ fun ConnectScreen(onConnected: () -> Unit) {
             enabled = !busy && addr.length >= 7,
             modifier = Modifier.fillMaxWidth().padding(top = 10.dp)
         ) { Text(S.connect, fontSize = 15.sp) }
+    }
+    LangAction(
+        tint = MaterialTheme.colorScheme.primary,
+        modifier = Modifier.align(Alignment.TopEnd).statusBarsPadding()
+    )
     }
 }
 

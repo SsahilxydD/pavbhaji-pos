@@ -24,6 +24,8 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -120,7 +122,40 @@ fun AppHeader(
                     )
                 }
             }
+            LangAction()
             actions()
+        }
+    }
+}
+
+// Compact language switcher living in every screen's top-right corner:
+// shows the current language's own short mark, opens the three full names.
+@Composable
+fun LangAction(tint: Color = Color.White, modifier: Modifier = Modifier) {
+    var open by remember { mutableStateOf(false) }
+    Box(modifier) {
+        TextButton(onClick = { open = true }) {
+            Text(
+                when (L10n.lang) { "hi" -> "हिं"; "gu" -> "ગુ"; else -> "EN" },
+                color = tint, fontWeight = FontWeight.Bold, fontSize = 14.sp
+            )
+        }
+        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            listOf("en" to "English", "hi" to "हिंदी", "gu" to "ગુજરાતી").forEach { (code, label) ->
+                DropdownMenuItem(
+                    text = {
+                        Text(
+                            label,
+                            fontWeight = if (L10n.lang == code) FontWeight.ExtraBold else FontWeight.Normal
+                        )
+                    },
+                    onClick = {
+                        L10n.lang = code
+                        com.pavbhaji.pos.Deps.session.lang = code
+                        open = false
+                    }
+                )
+            }
         }
     }
 }

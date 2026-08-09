@@ -1,10 +1,11 @@
 package com.pavbhaji.pos.ui
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -28,6 +29,7 @@ fun LoginScreen(onLoggedIn: () -> Unit, onChangeServer: () -> Unit) {
     var error by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
 
+    Box(Modifier.fillMaxSize()) {
     Column(
         Modifier.fillMaxSize().padding(24.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -58,32 +60,13 @@ fun LoginScreen(onLoggedIn: () -> Unit, onChangeServer: () -> Unit) {
             },
             error = error
         )
-        LanguageRow()
-        TextButton(onClick = onChangeServer, modifier = Modifier.padding(top = 2.dp)) {
+        TextButton(onClick = onChangeServer, modifier = Modifier.padding(top = 14.dp)) {
             Text("server: ${Deps.session.serverAddr}  ·  ${S.changeServer}", fontSize = 12.sp)
         }
     }
-}
-
-// Per-phone language switch. Each label names itself in its own script so a
-// waiter who reads only Gujarati can still find their language.
-@Composable
-private fun LanguageRow() {
-    Row(Modifier.padding(top = 14.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-        listOf("en" to "English", "hi" to "हिंदी", "gu" to "ગુજરાતી").forEach { (code, label) ->
-            val selected = L10n.lang == code
-            TextButton(onClick = {
-                L10n.lang = code
-                Deps.session.lang = code
-            }) {
-                Text(
-                    label,
-                    fontSize = 13.sp,
-                    fontWeight = if (selected) FontWeight.ExtraBold else FontWeight.Normal,
-                    color = if (selected) MaterialTheme.colorScheme.primary
-                    else MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-        }
+    LangAction(
+        tint = MaterialTheme.colorScheme.primary,
+        modifier = Modifier.align(Alignment.TopEnd).statusBarsPadding()
+    )
     }
 }

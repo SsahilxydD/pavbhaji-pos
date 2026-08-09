@@ -59,8 +59,9 @@ app can also download a backup to a phone anytime (Admin → Download backup).
      status page (`http://localhost:8177` in the laptop browser). Typing the address
      still works too, as a last resort.
 5. Log in with your PIN.
-6. **Language**: every phone picks its own — tap **English / हिंदी / ગુજરાતી** at the
-   bottom of the PIN screen. Changes apply instantly, per phone.
+6. **Language**: every phone picks its own — tap the **EN / हिं / ગુ** button in the
+   top-right corner of any screen and choose English / हिंदी / ગુજરાતી. Changes
+   apply instantly, per phone.
 
 ## First login — default PINs (CHANGE THESE!)
 

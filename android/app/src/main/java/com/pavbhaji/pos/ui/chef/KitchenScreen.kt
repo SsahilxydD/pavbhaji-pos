@@ -147,6 +147,7 @@ fun KitchenScreen(onLogout: () -> Unit, embedded: Boolean = false, onBack: (() -
                 S.bucketsSub(data.buckets.size, Deps.session.staffName),
                 color = Kc.ink2, fontSize = 12.sp, modifier = Modifier.padding(start = 8.dp).weight(1f)
             )
+            com.pavbhaji.pos.ui.LangAction(tint = Kc.ink2)
             Box(Modifier.size(7.dp).background(if (connected) Kc.ready else Kc.late, CircleShape))
             if (onBack == null) {
                 TextButton(onClick = onLogout) {

@@ -51,7 +51,7 @@ private fun shiftDate(date: String, days: Int): String {
 }
 
 @Composable
-fun ReportScreen(onBack: () -> Unit) {
+fun ReportScreen(onBack: () -> Unit, onOpenLog: () -> Unit) {
     var date by remember { mutableStateOf<String?>(null) } // null = today
     var rep by remember { mutableStateOf(ReportDto()) }
 
@@ -63,7 +63,11 @@ fun ReportScreen(onBack: () -> Unit) {
     }
 
     Column(Modifier.fillMaxSize()) {
-        com.pavbhaji.pos.ui.AppHeader(title = "Day report", onBack = onBack)
+        com.pavbhaji.pos.ui.AppHeader(
+            title = "Day report",
+            onBack = onBack,
+            actions = { com.pavbhaji.pos.ui.HeaderTextAction("log", onOpenLog) }
+        )
         Row(
             Modifier.fillMaxWidth().padding(horizontal = 12.dp),
             verticalAlignment = Alignment.CenterVertically,

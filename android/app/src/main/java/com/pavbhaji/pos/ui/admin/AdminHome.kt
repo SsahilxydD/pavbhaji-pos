@@ -6,6 +6,7 @@ import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
 import android.widget.Toast
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -38,9 +39,11 @@ import androidx.compose.ui.unit.sp
 import com.pavbhaji.pos.Deps
 import com.pavbhaji.pos.data.ApiResult
 import com.pavbhaji.pos.data.ReportDto
+import com.pavbhaji.pos.ui.AppHeader
+import com.pavbhaji.pos.ui.CardLine
 import com.pavbhaji.pos.ui.ConnBanner
 import com.pavbhaji.pos.ui.GoodGreen
-import com.pavbhaji.pos.ui.StatCard
+import com.pavbhaji.pos.ui.HeaderTextAction
 import com.pavbhaji.pos.ui.chef.KitchenScreen
 import com.pavbhaji.pos.ui.rupees
 import com.pavbhaji.pos.ui.waiter.WaiterHome
@@ -53,22 +56,20 @@ private enum class AdminScreen { Home, Floor, Kitchen, Menu, Staff, Tables, Repo
 @Composable
 fun AdminHome(onLogout: () -> Unit) {
     var screen by remember { mutableStateOf(AdminScreen.Home) }
-    val back = { screen = AdminScreen.Home }
+    val home = { screen = AdminScreen.Home }
     when (screen) {
-        AdminScreen.Floor -> WaiterHome(onLogout = {}, onBack = back)
-        AdminScreen.Kitchen -> KitchenScreen(onLogout = {}, embedded = true, onBack = back)
-        AdminScreen.Menu -> MenuAdmin(onBack = back)
-        AdminScreen.Staff -> StaffAdmin(onBack = back)
-        AdminScreen.Tables -> TablesAdmin(onBack = back)
-        AdminScreen.Report -> ReportScreen(onBack = back)
-        AdminScreen.Audit -> AuditScreen(onBack = back)
-        AdminScreen.Home -> Dashboard(
-            onLogout = onLogout,
-            onOpen = { screen = it }
-        )
+        AdminScreen.Floor -> WaiterHome(onLogout = {}, onBack = home)
+        AdminScreen.Kitchen -> KitchenScreen(onLogout = {}, embedded = true, onBack = home)
+        AdminScreen.Menu -> MenuAdmin(onBack = home)
+        AdminScreen.Staff -> StaffAdmin(onBack = home)
+        AdminScreen.Tables -> TablesAdmin(onBack = home)
+        AdminScreen.Report -> ReportScreen(onBack = home, onOpenLog = { screen = AdminScreen.Audit })
+        AdminScreen.Audit -> AuditScreen(onBack = { screen = AdminScreen.Report })
+        AdminScreen.Home -> Dashboard(onLogout = onLogout, onOpen = { screen = it })
     }
 }
 
+// The whole admin home: one number that matters, six doors, a quiet backup.
 @Composable
 private fun Dashboard(onLogout: () -> Unit, onOpen: (AdminScreen) -> Unit) {
     val connected by Deps.live.connected.collectAsState()
@@ -90,59 +91,45 @@ private fun Dashboard(onLogout: () -> Unit, onOpen: (AdminScreen) -> Unit) {
     LaunchedEffect(Unit) { while (true) { delay(20_000); refresh() } }
 
     Column(Modifier.fillMaxSize()) {
-        com.pavbhaji.pos.ui.AppHeader(
+        AppHeader(
             title = "Admin",
             subtitle = Deps.session.staffName,
-            actions = { com.pavbhaji.pos.ui.HeaderTextAction("Logout", onLogout) }
+            actions = { HeaderTextAction("Logout", onLogout) }
         )
         ConnBanner(connected)
-        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(12.dp)) {
-            Text("Today (${rep.date})", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Spacer(Modifier.height(8.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                StatCard("sales (served)", rupees(rep.soldTotal), Modifier.weight(1f), GoodGreen)
-                StatCard("orders", "${rep.ordersOpened}", Modifier.weight(1f))
-            }
-            Spacer(Modifier.height(8.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                StatCard("open now", "${rep.ordersOpen}", Modifier.weight(1f))
-                StatCard("kitchen queue", "${rep.kitchenPending}", Modifier.weight(1f))
-                StatCard("cancelled", rupees(rep.cancelledTotal), Modifier.weight(1f), MaterialTheme.colorScheme.error)
-            }
-            Spacer(Modifier.height(8.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                StatCard("devices online", "${rep.devicesOnline}", Modifier.weight(1f))
-                StatCard("items sold", "${rep.soldQty}", Modifier.weight(1f))
-            }
-
-            Spacer(Modifier.height(18.dp))
-            val navItems = listOf(
-                Triple("🍽  Floor — take & serve orders", AdminScreen.Floor, true),
-                Triple("👨‍🍳  Kitchen view", AdminScreen.Kitchen, true),
-                Triple("📋  Menu & prices", AdminScreen.Menu, true),
-                Triple("👥  Staff & PINs", AdminScreen.Staff, true),
-                Triple("🪑  Tables setup", AdminScreen.Tables, true),
-                Triple("📊  Day report", AdminScreen.Report, true),
-                Triple("🧾  Audit log", AdminScreen.Audit, true),
-            )
-            navItems.forEach { (label, target, _) ->
-                Surface(
-                    onClick = { onOpen(target) },
-                    shape = RoundedCornerShape(12.dp),
-                    color = MaterialTheme.colorScheme.surface,
-                    shadowElevation = 1.dp,
-                    modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
-                ) {
-                    Row(
-                        Modifier.padding(horizontal = 14.dp, vertical = 15.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(label, fontSize = 16.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
-                        Text("›", fontSize = 22.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(14.dp)) {
+            Surface(
+                onClick = { onOpen(AdminScreen.Report) },
+                shape = RoundedCornerShape(16.dp),
+                color = MaterialTheme.colorScheme.surface,
+                border = BorderStroke(1.dp, CardLine)
+            ) {
+                Column(Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 16.dp)) {
+                    Text(
+                        "TODAY", fontSize = 11.sp, fontWeight = FontWeight.ExtraBold,
+                        letterSpacing = 1.2.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Text(rupees(rep.soldTotal), fontSize = 36.sp, fontWeight = FontWeight.ExtraBold, color = GoodGreen)
+                    val sub = buildString {
+                        append("${rep.ordersOpened} orders")
+                        if (rep.ordersOpen > 0) append(" · ${rep.ordersOpen} open")
+                        if (rep.kitchenPending > 0) append(" · ${rep.kitchenPending} cooking")
                     }
+                    Text(sub, fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
-            Surface(
+
+            Spacer(Modifier.height(14.dp))
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                NavRow("Floor") { onOpen(AdminScreen.Floor) }
+                NavRow("Kitchen") { onOpen(AdminScreen.Kitchen) }
+                NavRow("Menu & colours") { onOpen(AdminScreen.Menu) }
+                NavRow("Tables") { onOpen(AdminScreen.Tables) }
+                NavRow("Staff") { onOpen(AdminScreen.Staff) }
+                NavRow("Day report") { onOpen(AdminScreen.Report) }
+            }
+
+            TextButton(
                 onClick = {
                     if (!busyBackup) {
                         busyBackup = true
@@ -160,16 +147,33 @@ private fun Dashboard(onLogout: () -> Unit, onOpen: (AdminScreen) -> Unit) {
                         }
                     }
                 },
-                shape = RoundedCornerShape(12.dp),
-                color = MaterialTheme.colorScheme.secondaryContainer,
-                modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)
+                modifier = Modifier.fillMaxWidth().padding(top = 10.dp)
             ) {
                 Text(
-                    if (busyBackup) "💾  Downloading backup…" else "💾  Download backup to this phone",
-                    fontSize = 16.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(14.dp)
+                    if (busyBackup) "saving backup…" else "save a backup to this phone",
+                    fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
-            Spacer(Modifier.height(30.dp))
+            Spacer(Modifier.height(20.dp))
+        }
+    }
+}
+
+@Composable
+private fun NavRow(label: String, onClick: () -> Unit) {
+    Surface(
+        onClick = onClick,
+        shape = RoundedCornerShape(12.dp),
+        color = MaterialTheme.colorScheme.surface,
+        border = BorderStroke(1.dp, CardLine),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Row(
+            Modifier.padding(horizontal = 16.dp, vertical = 15.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(label, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+            Text("›", fontSize = 20.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }

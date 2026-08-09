@@ -22,6 +22,14 @@ Windows laptop on the shop WiFi is the server; Android phones are the clients.
 - **Append-only.** Items are never deleted — `cancelled` with who/when/reason.
   Menu name+price are snapshotted into each line, so price edits never rewrite history.
 - **Server-side roles.** Every endpoint declares allowed roles; the UI is only a convenience.
+- **Colour buckets (cook by colour, serve by clock).** Every kitchen line drops into its
+  dish's open batch inside the punch transaction. A bucket seals at 15 plates
+  (`meta.batch_cap`) or the moment a chef takes it; taking is an atomic claim — a second
+  chef gets a 409 naming the holder, and a chef holding an unfinished bucket cannot take
+  another (one bucket per chef). "Bucket ready" flips every line to `ready` with one
+  timestamp, which is exactly the order the waiter's pickup queue (`/api/pickup`) sorts by.
+  Counter items (drinks etc., `menu_items.station`) skip the kitchen and appear on the
+  waiter's Ready line the moment they're punched.
 - **Close = reconciled.** An order can close only when each line is served or cancelled,
   so `punched = served + cancelled` always holds in the day report.
 - Business day rolls at 06:00 (`meta.day_start_hour`) so a 1 AM order counts to the

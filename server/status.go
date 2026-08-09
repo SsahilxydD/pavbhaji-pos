@@ -41,7 +41,8 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 </style></head><body>
 <h2>🍛 PavBhaji POS server is running</h2>
 <div class="addr">%s</div>
-<div class="row">Type this address in the app on each phone — or scan:</div>
+<div class="row">Phones on this WiFi find the server by themselves — just open the app.</div>
+<div class="row">If one asks: tap <b>📷 Scan QR</b> in the app and point it here (or type the address).</div>
 <img src="/qr.png" width="220" height="220" alt="QR">
 <div class="row">Devices connected: <b>%d</b> · Orders today: <b>%d</b> · Open tables: <b>%d</b></div>
 <div class="row">Database and backups live in the <b>data</b> folder next to the .exe — copy that folder to back everything up.</div>

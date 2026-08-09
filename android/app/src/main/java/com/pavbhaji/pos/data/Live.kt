@@ -14,6 +14,7 @@ import okhttp3.Request
 import okhttp3.Response
 import okhttp3.WebSocket
 import okhttp3.WebSocketListener
+import java.util.concurrent.atomic.AtomicBoolean
 
 @Serializable
 private data class TopicMsg(val topic: String = "")
@@ -34,17 +35,19 @@ class Live(private val session: Session, private val api: Api) {
         val s = CoroutineScope(SupervisorJob() + Dispatchers.IO)
         scope = s
         s.launch {
+            var deadDials = 0 // consecutive dials that never even opened
             while (true) {
                 if (session.token.isEmpty() || session.serverAddr.isEmpty()) {
                     delay(1000); continue
                 }
                 val opened = MutableStateFlow(true)
+                val sawOpen = AtomicBoolean(false)
                 val req = Request.Builder()
                     .url("ws://" + session.serverAddr + "/ws?token=" + session.token)
                     .build()
                 ws = api.http.newWebSocket(req, object : WebSocketListener() {
                     override fun onOpen(webSocket: WebSocket, response: Response) {
-                        connected.value = true
+                        sawOpen.set(true); connected.value = true
                     }
                     override fun onMessage(webSocket: WebSocket, text: String) {
                         val t = try { json.decodeFromString<TopicMsg>(text).topic } catch (_: Exception) { "" }
@@ -60,8 +63,26 @@ class Live(private val session: Session, private val api: Api) {
                 // wait until this socket dies, then loop and re-dial
                 while (opened.value) delay(500)
                 ws?.cancel()
+                if (sawOpen.get()) deadDials = 0 else deadDials++
+                // Can't even reach the server several dials in a row? Its IP may
+                // have changed (router restart) — hunt for it and repoint.
+                if (deadDials > 0 && deadDials % 3 == 0) rediscover(deep = deadDials >= 9)
                 delay(2000)
             }
+        }
+    }
+
+    // Every API call and the next dial read session.serverAddr fresh, so
+    // updating it here heals the whole app. Only trusts a server proving the
+    // same identity — or any single one if this install never saw an id.
+    private suspend fun rediscover(deep: Boolean) {
+        val lastPort = session.serverAddr.substringAfterLast(':', "").toIntOrNull()
+        val found = if (deep) Discovery.search(listOfNotNull(lastPort)) else Discovery.broadcast()
+        val ours = found.firstOrNull { it.id.isNotEmpty() && it.id == session.serverId }
+            ?: if (session.serverId.isEmpty()) found.singleOrNull() else null
+        if (ours != null && ours.addr != session.serverAddr) {
+            session.serverAddr = ours.addr
+            if (ours.id.isNotEmpty()) session.serverId = ours.id
         }
     }
 

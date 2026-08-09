@@ -20,6 +20,7 @@ type Server struct {
 	port         int
 	dataDir      string
 	dayStartHour int
+	serverID     string // stable random id so phones can re-recognise this install
 }
 
 // POST /api/login {pin} -> {token, staff}

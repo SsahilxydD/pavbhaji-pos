@@ -1,5 +1,6 @@
 package com.pavbhaji.pos.ui.waiter
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -56,8 +57,11 @@ import com.pavbhaji.pos.ui.QtyStepper
 import com.pavbhaji.pos.ui.ReasonDialog
 import com.pavbhaji.pos.ui.SectionTitle
 import com.pavbhaji.pos.ui.StatusChip
+import com.pavbhaji.pos.ui.WarnAmber
 import com.pavbhaji.pos.ui.clockTime
+import com.pavbhaji.pos.ui.dishColour
 import com.pavbhaji.pos.ui.items as itemsLabel
+import com.pavbhaji.pos.ui.pricesVisible
 import com.pavbhaji.pos.ui.rupees
 import kotlinx.coroutines.launch
 import java.util.UUID
@@ -156,7 +160,11 @@ fun TableOrderScreen(tableId: Long, tableName: String, onBack: () -> Unit) {
         val o = order
         AppHeader(
             title = tableName,
-            subtitle = if (o == null) "new order" else "order #${o.orderNo} · ${rupees(o.total)} · ${o.openedByName}",
+            subtitle = when {
+                o == null -> "new order"
+                pricesVisible() -> "order #${o.orderNo} · ${rupees(o.total)} · ${o.openedByName}"
+                else -> "order #${o.orderNo} · ${o.openedByName}"
+            },
             onBack = onBack
         )
         ConnBanner(connected)
@@ -183,13 +191,17 @@ fun TableOrderScreen(tableId: Long, tableName: String, onBack: () -> Unit) {
                     }
                     tk.items.forEach { it ->
                         item(key = "it${it.id}") {
+                            // Waiters serve what's READY (from the kitchen's buckets) and
+                            // hand counter items over directly; admin can force anything.
                             SentItemRow(
                                 it,
-                                canServe = it.status == "ready" || it.status == "pending",
+                                canServe = it.status == "ready" ||
+                                    (it.status == "pending" && it.station == "counter") ||
+                                    (isAdmin && (it.status == "pending" || it.status == "preparing")),
                                 onServe = {
                                     scope.launch { Deps.api.itemStatus(it.id, "served"); refresh() }
                                 },
-                                canCancel = it.status != "cancelled" &&
+                                canCancel = it.status != "cancelled" && it.status != "served" &&
                                     (it.status == "pending" || isAdmin),
                                 onCancel = { cancelTarget = it }
                             )
@@ -218,9 +230,12 @@ fun TableOrderScreen(tableId: Long, tableName: String, onBack: () -> Unit) {
                                             .padding(end = 4.dp)
                                     ) {
                                         Text(line.name, fontSize = 15.sp, fontWeight = FontWeight.Bold)
-                                        Text(
-                                            if (line.note.isEmpty()) rupees(line.price)
-                                            else "${rupees(line.price)} · ✎ ${line.note}",
+                                        val sub = listOfNotNull(
+                                            if (pricesVisible()) rupees(line.price) else null,
+                                            if (line.note.isNotEmpty()) "✎ ${line.note}" else null
+                                        ).joinToString(" · ")
+                                        if (sub.isNotEmpty()) Text(
+                                            sub,
                                             fontSize = 12.sp,
                                             color = if (line.note.isEmpty()) MaterialTheme.colorScheme.onSurfaceVariant
                                             else MaterialTheme.colorScheme.error
@@ -271,6 +286,8 @@ fun TableOrderScreen(tableId: Long, tableName: String, onBack: () -> Unit) {
                                 name = m.name,
                                 price = m.price,
                                 available = m.available,
+                                colour = dishColour(m.colour, m.id),
+                                counter = m.station == "counter",
                                 inCart = cartQty[m.id] ?: 0,
                                 onClick = { if (m.available) addToCart(m.id, m.name, m.price) },
                                 modifier = Modifier.weight(1f)
@@ -309,7 +326,8 @@ fun TableOrderScreen(tableId: Long, tableName: String, onBack: () -> Unit) {
                             when {
                                 sending -> "Sending…"
                                 sendError != null -> "Try again — ${itemsLabel(count)}"
-                                else -> "Send to kitchen 🍳  ${itemsLabel(count)} · ${rupees(total)}"
+                                else -> "Send to kitchen 🍳  ${itemsLabel(count)}" +
+                                    if (pricesVisible()) " · ${rupees(total)}" else ""
                             },
                             fontSize = 16.sp, fontWeight = FontWeight.ExtraBold
                         )
@@ -328,7 +346,12 @@ fun TableOrderScreen(tableId: Long, tableName: String, onBack: () -> Unit) {
                             modifier = Modifier.weight(1f).height(50.dp),
                             shape = RoundedCornerShape(16.dp),
                             colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.tertiary)
-                        ) { Text("Close · ${rupees(o.total)}", fontSize = 15.sp, fontWeight = FontWeight.ExtraBold) }
+                        ) {
+                            Text(
+                                if (pricesVisible()) "Close · ${rupees(o.total)}" else "Close table",
+                                fontSize = 15.sp, fontWeight = FontWeight.ExtraBold
+                            )
+                        }
                     }
                 } else {
                     Text(
@@ -360,7 +383,8 @@ fun TableOrderScreen(tableId: Long, tableName: String, onBack: () -> Unit) {
     if (confirmClose) {
         ConfirmDialog(
             title = "Close $tableName?",
-            body = "Total: ${rupees(order?.total ?: 0)}\nCollect payment before closing.",
+            body = (if (pricesVisible()) "Total: ${rupees(order?.total ?: 0)}\n" else "") +
+                "Collect payment before closing.",
             confirmLabel = "Close table",
             onConfirm = { confirmClose = false; closeNow() },
             onDismiss = { confirmClose = false }
@@ -416,7 +440,8 @@ fun TableOrderScreen(tableId: Long, tableName: String, onBack: () -> Unit) {
 
 @Composable
 private fun MenuCard(
-    name: String, price: Long, available: Boolean, inCart: Long,
+    name: String, price: Long, available: Boolean,
+    colour: Color, counter: Boolean, inCart: Long,
     onClick: () -> Unit, modifier: Modifier = Modifier
 ) {
     Surface(
@@ -434,13 +459,25 @@ private fun MenuCard(
     ) {
         Box {
             Column(Modifier.padding(horizontal = 12.dp, vertical = 12.dp)) {
-                Text(
-                    name, fontSize = 14.sp, fontWeight = FontWeight.Bold,
-                    color = if (available) MaterialTheme.colorScheme.onSurface
-                    else MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Text(
-                    if (available) rupees(price) else "out of stock",
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        Modifier.size(9.dp)
+                            .background(colour.copy(alpha = if (available) 1f else 0.4f), CircleShape)
+                    )
+                    Text(
+                        name, fontSize = 14.sp, fontWeight = FontWeight.Bold,
+                        color = if (available) MaterialTheme.colorScheme.onSurface
+                        else MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(start = 6.dp)
+                    )
+                }
+                val sub = when {
+                    !available -> "out of stock"
+                    counter -> if (pricesVisible()) "${rupees(price)} · ✋ counter" else "✋ counter"
+                    else -> if (pricesVisible()) rupees(price) else ""
+                }
+                if (sub.isNotEmpty()) Text(
+                    sub,
                     fontSize = 12.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -468,11 +505,19 @@ private fun SentItemRow(
     canCancel: Boolean,
     onCancel: () -> Unit
 ) {
+    val counter = it.station == "counter"
     Row(
         Modifier.fillMaxWidth().padding(vertical = 3.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Column(Modifier.weight(1f)) {
+        Box(
+            Modifier.size(10.dp).padding(end = 0.dp)
+                .background(
+                    dishColour(it.colour, it.menuItemId).copy(alpha = if (it.status == "cancelled") 0.35f else 1f),
+                    RoundedCornerShape(3.dp)
+                )
+        )
+        Column(Modifier.weight(1f).padding(start = 8.dp)) {
             Text(
                 "${it.qty}× ${it.name}",
                 fontSize = 15.sp,
@@ -481,16 +526,26 @@ private fun SentItemRow(
                 color = if (it.status == "cancelled") MaterialTheme.colorScheme.onSurfaceVariant
                 else MaterialTheme.colorScheme.onSurface
             )
-            val sub = buildString {
-                append(rupees(it.price * it.qty))
-                if (it.note.isNotEmpty()) append(" · ${it.note}")
-                if (it.cancelReason.isNotEmpty()) append(" · ${it.cancelReason}")
-            }
-            Text(sub, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            val sub = listOfNotNull(
+                if (pricesVisible()) rupees(it.price * it.qty) else null,
+                if (counter && it.status == "pending") "✋ you serve this" else null,
+                it.note.ifEmpty { null },
+                it.cancelReason.ifEmpty { null }
+            ).joinToString(" · ")
+            if (sub.isNotEmpty()) Text(
+                sub, fontSize = 12.sp,
+                color = if (counter && it.status == "pending") WarnAmber
+                else MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
         StatusChip(it.status)
         if (canServe) {
-            TextButton(onClick = onServe) { Text("serve ✓", fontSize = 12.sp, color = Color(0xFF2E7D32)) }
+            TextButton(onClick = onServe) {
+                Text(
+                    if (counter && it.status == "pending") "✋ serve" else "serve ✓",
+                    fontSize = 12.sp, color = Color(0xFF2E7D32)
+                )
+            }
         }
         if (canCancel) {
             TextButton(onClick = onCancel) { Text("✕", color = MaterialTheme.colorScheme.error) }

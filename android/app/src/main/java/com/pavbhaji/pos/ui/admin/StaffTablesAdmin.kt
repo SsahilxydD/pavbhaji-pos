@@ -193,7 +193,8 @@ fun TablesAdmin(onBack: () -> Unit) {
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            t.name, fontSize = 15.sp, fontWeight = FontWeight.SemiBold,
+                            if (t.kind == "parcel") "${t.name} · 🥡 parcel" else t.name,
+                            fontSize = 15.sp, fontWeight = FontWeight.SemiBold,
                             modifier = Modifier.weight(1f),
                             color = if (t.active) MaterialTheme.colorScheme.onSurface
                             else MaterialTheme.colorScheme.onSurfaceVariant
@@ -220,14 +221,31 @@ fun TablesAdmin(onBack: () -> Unit) {
 
     if (addOpen) {
         var name by remember { mutableStateOf("") }
+        var kind by remember { mutableStateOf("dine") }
         AlertDialog(
             onDismissRequest = { addOpen = false },
             title = { Text("New table") },
-            text = { OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Name (e.g. T11)") }) },
+            text = {
+                Column {
+                    OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Name (e.g. T11 or P4)") })
+                    // Parcel slots hold walk-up/takeaway orders punched at the
+                    // counter — same flow, own section on the tables grid.
+                    Row(Modifier.padding(top = 10.dp)) {
+                        FilterChip(
+                            selected = kind == "dine", onClick = { kind = "dine" },
+                            label = { Text("🍽 dine-in") }, modifier = Modifier.padding(end = 6.dp)
+                        )
+                        FilterChip(
+                            selected = kind == "parcel", onClick = { kind = "parcel" },
+                            label = { Text("🥡 parcel") }
+                        )
+                    }
+                }
+            },
             confirmButton = {
                 Button(onClick = {
                     if (name.trim().isNotEmpty()) {
-                        scope.launch { Deps.api.tableCreate(name.trim()); addOpen = false; refresh() }
+                        scope.launch { Deps.api.tableCreate(name.trim(), kind); addOpen = false; refresh() }
                     }
                 }) { Text("Add") }
             },

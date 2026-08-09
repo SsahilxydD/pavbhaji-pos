@@ -48,6 +48,7 @@ fun LoginScreen(onLoggedIn: () -> Unit, onChangeServer: () -> Unit) {
                             Deps.session.token = r.value.token
                             Deps.session.staffName = r.value.staff.name
                             Deps.session.staffRole = r.value.staff.role
+                            Deps.session.staffId = r.value.staff.id
                             onLoggedIn()
                         }
                         is ApiResult.Err -> error = r.message

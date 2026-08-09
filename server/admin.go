@@ -64,12 +64,28 @@ func (s *Server) handleCategoryPatch(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
+func validStation(s string) bool { return s == "kitchen" || s == "counter" }
+
+// Dish colours come from the admin's picker as #RRGGBB. Empty means
+// "no colour set" and the app falls back to a stable palette pick.
+var colourRe = regexp.MustCompile(`^#[0-9A-Fa-f]{6}$`)
+
+func normColour(c string) (string, bool) {
+	c = strings.ToUpper(strings.TrimSpace(c))
+	if c != "" && !colourRe.MatchString(c) {
+		return "", false
+	}
+	return c, true
+}
+
 func (s *Server) handleMenuItemCreate(w http.ResponseWriter, r *http.Request) {
 	st := staffFrom(r)
 	var req struct {
 		CategoryID int64  `json:"categoryId"`
 		Name       string `json:"name"`
 		Price      int64  `json:"price"` // paise
+		Colour     string `json:"colour"`
+		Station    string `json:"station"`
 	}
 	if !readJSON(w, r, &req) {
 		return
@@ -79,6 +95,19 @@ func (s *Server) handleMenuItemCreate(w http.ResponseWriter, r *http.Request) {
 		fail(w, http.StatusBadRequest, "valid name and price required")
 		return
 	}
+	if req.Station == "" {
+		req.Station = "kitchen"
+	}
+	if !validStation(req.Station) {
+		fail(w, http.StatusBadRequest, "station must be kitchen or counter")
+		return
+	}
+	colour, ok := normColour(req.Colour)
+	if !ok {
+		fail(w, http.StatusBadRequest, "colour must look like #RRGGBB")
+		return
+	}
+	req.Colour = colour
 	var catName string
 	if err := s.db.QueryRow(`SELECT name FROM categories WHERE id=? AND active=1`, req.CategoryID).Scan(&catName); err != nil {
 		fail(w, http.StatusBadRequest, "category not found")
@@ -86,8 +115,8 @@ func (s *Server) handleMenuItemCreate(w http.ResponseWriter, r *http.Request) {
 	}
 	var maxSort int
 	s.db.QueryRow(`SELECT COALESCE(MAX(sort),0)+1 FROM menu_items WHERE category_id=?`, req.CategoryID).Scan(&maxSort)
-	res, err := s.db.Exec(`INSERT INTO menu_items(category_id, name, price, sort) VALUES(?,?,?,?)`,
-		req.CategoryID, req.Name, req.Price, maxSort)
+	res, err := s.db.Exec(`INSERT INTO menu_items(category_id, name, price, sort, colour, station) VALUES(?,?,?,?,?,?)`,
+		req.CategoryID, req.Name, req.Price, maxSort, req.Colour, req.Station)
 	if err != nil {
 		fail(w, http.StatusInternalServerError, "could not create item")
 		return
@@ -103,11 +132,15 @@ func (s *Server) handleMenuItemPatch(w http.ResponseWriter, r *http.Request) {
 	st := staffFrom(r)
 	id, _ := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	var req struct {
-		Name      *string `json:"name"`
-		Price     *int64  `json:"price"`
-		Available *bool   `json:"available"`
-		Active    *bool   `json:"active"`
-		Sort      *int    `json:"sort"`
+		Name        *string `json:"name"`
+		Price       *int64  `json:"price"`
+		Available   *bool   `json:"available"`
+		Active      *bool   `json:"active"`
+		Sort        *int    `json:"sort"`
+		Colour      *string `json:"colour"`
+		Station     *string `json:"station"`
+		BatchCap    *int64  `json:"batchCap"`    // 0 = back to global default
+		BatchAgeMin *int64  `json:"batchAgeMin"` // 0 = back to global default
 	}
 	if !readJSON(w, r, &req) {
 		return
@@ -143,6 +176,55 @@ func (s *Server) handleMenuItemPatch(w http.ResponseWriter, r *http.Request) {
 	if req.Sort != nil {
 		s.db.Exec(`UPDATE menu_items SET sort=? WHERE id=?`, *req.Sort, id)
 	}
+	if req.Colour != nil {
+		colour, ok := normColour(*req.Colour)
+		if !ok {
+			fail(w, http.StatusBadRequest, "colour must look like #RRGGBB")
+			return
+		}
+		s.db.Exec(`UPDATE menu_items SET colour=? WHERE id=?`, colour, id)
+		changes = append(changes, curName+" colour → "+colour)
+	}
+	if req.BatchCap != nil {
+		n := *req.BatchCap
+		if n < 0 || n > 99 {
+			fail(w, http.StatusBadRequest, "tawa capacity must be 1–99 plates (0 = use default)")
+			return
+		}
+		if n == 0 {
+			s.db.Exec(`UPDATE menu_items SET batch_cap=NULL WHERE id=?`, id)
+			changes = append(changes, curName+" tawa capacity → default")
+		} else {
+			s.db.Exec(`UPDATE menu_items SET batch_cap=? WHERE id=?`, n, id)
+			changes = append(changes, fmt.Sprintf("%s tawa capacity → %d plates", curName, n))
+		}
+	}
+	if req.BatchAgeMin != nil {
+		n := *req.BatchAgeMin
+		if n < 0 || n > 240 {
+			fail(w, http.StatusBadRequest, "seal timer must be 1–240 minutes (0 = use default)")
+			return
+		}
+		if n == 0 {
+			s.db.Exec(`UPDATE menu_items SET batch_age_min=NULL WHERE id=?`, id)
+			changes = append(changes, curName+" bucket seal timer → default")
+		} else {
+			s.db.Exec(`UPDATE menu_items SET batch_age_min=? WHERE id=?`, n, id)
+			changes = append(changes, fmt.Sprintf("%s bucket seals after %d min", curName, n))
+		}
+	}
+	if req.Station != nil {
+		if !validStation(*req.Station) {
+			fail(w, http.StatusBadRequest, "station must be kitchen or counter")
+			return
+		}
+		s.db.Exec(`UPDATE menu_items SET station=? WHERE id=?`, *req.Station, id)
+		if *req.Station == "counter" {
+			changes = append(changes, curName+" → counter (waiter hands it over, skips the kitchen)")
+		} else {
+			changes = append(changes, curName+" → kitchen (cooked in colour buckets)")
+		}
+	}
 	if len(changes) > 0 {
 		audit(s.db, st.ID, st.Name, "menu:item", strings.Join(changes, "; "))
 	}
@@ -152,10 +234,13 @@ func (s *Server) handleMenuItemPatch(w http.ResponseWriter, r *http.Request) {
 
 // ---- Tables ----
 
+func validTableKind(k string) bool { return k == "dine" || k == "parcel" }
+
 func (s *Server) handleTableCreate(w http.ResponseWriter, r *http.Request) {
 	st := staffFrom(r)
 	var req struct {
 		Name string `json:"name"`
+		Kind string `json:"kind"`
 	}
 	if !readJSON(w, r, &req) {
 		return
@@ -165,13 +250,20 @@ func (s *Server) handleTableCreate(w http.ResponseWriter, r *http.Request) {
 		fail(w, http.StatusBadRequest, "name required")
 		return
 	}
+	if req.Kind == "" {
+		req.Kind = "dine"
+	}
+	if !validTableKind(req.Kind) {
+		fail(w, http.StatusBadRequest, "kind must be dine or parcel")
+		return
+	}
 	var maxSort int
 	s.db.QueryRow(`SELECT COALESCE(MAX(sort),0)+1 FROM dining_tables`).Scan(&maxSort)
-	if _, err := s.db.Exec(`INSERT INTO dining_tables(name, sort) VALUES(?,?)`, req.Name, maxSort); err != nil {
+	if _, err := s.db.Exec(`INSERT INTO dining_tables(name, sort, kind) VALUES(?,?,?)`, req.Name, maxSort, req.Kind); err != nil {
 		fail(w, http.StatusConflict, "a table with that name already exists")
 		return
 	}
-	audit(s.db, st.ID, st.Name, "tables", "added table "+req.Name)
+	audit(s.db, st.ID, st.Name, "tables", "added "+req.Kind+" table "+req.Name)
 	s.hub.Broadcast("tables")
 	writeJSON(w, http.StatusCreated, map[string]any{"ok": true})
 }
@@ -183,9 +275,17 @@ func (s *Server) handleTablePatch(w http.ResponseWriter, r *http.Request) {
 		Name   *string `json:"name"`
 		Active *bool   `json:"active"`
 		Sort   *int    `json:"sort"`
+		Kind   *string `json:"kind"`
 	}
 	if !readJSON(w, r, &req) {
 		return
+	}
+	if req.Kind != nil {
+		if !validTableKind(*req.Kind) {
+			fail(w, http.StatusBadRequest, "kind must be dine or parcel")
+			return
+		}
+		s.db.Exec(`UPDATE dining_tables SET kind=? WHERE id=?`, *req.Kind, id)
 	}
 	if req.Active != nil && !*req.Active {
 		var open int
@@ -220,13 +320,14 @@ func (s *Server) handleAdminTables(w http.ResponseWriter, r *http.Request) {
 		Name   string `json:"name"`
 		Active bool   `json:"active"`
 		Sort   int    `json:"sort"`
+		Kind   string `json:"kind"`
 	}
 	out := []row{}
-	rows, _ := s.db.Query(`SELECT id, name, active, sort FROM dining_tables ORDER BY sort, id`)
+	rows, _ := s.db.Query(`SELECT id, name, active, sort, kind FROM dining_tables ORDER BY sort, id`)
 	if rows != nil {
 		for rows.Next() {
 			var t row
-			rows.Scan(&t.ID, &t.Name, &t.Active, &t.Sort)
+			rows.Scan(&t.ID, &t.Name, &t.Active, &t.Sort, &t.Kind)
 			out = append(out, t)
 		}
 		rows.Close()

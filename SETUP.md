@@ -35,9 +35,10 @@ The **laptop is the brain** — it holds the only copy of the data. Phones are j
 **Laptop rules (important):**
 - Keep it **plugged in**.
 - Disable sleep: Settings → System → Power → Screen and sleep → **Never** (when plugged in).
-- Give the laptop a **fixed IP** in your router settings (usually called "DHCP reservation"
-  or "Static lease" — bind the laptop's MAC address to one IP). Otherwise the address
-  can change after a router restart and phones will need the new one typed in.
+- The laptop's address may change after a router restart — **that's fine**: the phones
+  hunt for the laptop and re-connect by themselves within ~30 seconds. (If you like
+  tidiness anyway, a "DHCP reservation" in the router pins the address forever —
+  entirely optional.)
 
 **Where's my data?** In the `data` folder next to the exe:
 - `pbpos.db` — the live database
@@ -53,7 +54,10 @@ app can also download a backup to a phone anytime (Admin → Download backup).
 1. Copy **`PavBhajiPOS.apk`** to each phone (WhatsApp it to yourself, or USB cable).
 2. Open the file on the phone → Android asks to allow installing from unknown source → allow → Install.
 3. Make sure the phone is on the **shop WiFi**.
-4. Open the app → type the address from the laptop's black window (e.g. `192.168.1.50:8177`) → Connect.
+4. Open the app → it **finds the laptop by itself** and connects (takes a few seconds).
+   - If it can't: tap **📷 Scan QR** and point the phone at the QR on the laptop's
+     status page (`http://localhost:8177` in the laptop browser). Typing the address
+     still works too, as a last resort.
 5. Log in with your PIN.
 
 ## First login — default PINs (CHANGE THESE!)
@@ -64,22 +68,41 @@ app can also download a backup to a phone anytime (Admin → Download backup).
 | Waiter 1 | `2222` |
 | Chef | `3333` |
 
-Log in as Admin → **Staff & PINs** → reset every PIN, add your real staff.
-Then: **Menu & prices** → fix the menu (the app ships with a sample pav bhaji menu),
-and **Tables setup** → match your actual table count.
+Log in as Admin → **Staff** → reset every PIN, add your real staff.
+Then: **Menu & colours** → fix the menu (the app ships with a sample pav bhaji menu)
+and pick each dish's bucket colour (tap the colour dot — any colour you like),
+and **Tables** → match your actual table count.
 
 ---
 
 ## Daily use
 
-- **Waiter**: taps a table → adds items → **Send to kitchen**. More items later = send again
-  (each send becomes a numbered KOT on the same order). When food is ready the table
-  card turns green. Mark items served. When guests leave: **Close table** — the app shows
-  the total; collect cash, close.
-- **Chef**: sees every ticket live (with a beep). Taps **Start** → **Ready** per item.
-  The **Batch cook** tab shows totals across tables ("Pav Bhaji × 7") for batch cooking.
-- **Admin**: live dashboard, day report (sold / cancelled / per waiter), audit log of
-  every action, menu & price edits, out-of-stock toggles.
+- **Waiter**: two tabs. **Tables** — tap a table → add items → **Send to kitchen** (more
+  items later = send again; each send is a numbered KOT on the same order). Card colours
+  say what to do next: amber = kitchen has it, **green = plates waiting, blue = collect
+  and close**. Below the dining tables sits a **🥡 PARCEL** section (P1, P2…) — walk-up /
+  takeaway orders anyone (usually the admin) punches at the counter, same flow.
+  **Ready** — plates to carry, **grouped by table**, oldest table on top: each card is
+  one trip, tap **All N ✓** to serve the whole table (or ✓ per line). Drinks and extras
+  appear there instantly (✋ counter — just carry).
+- **Chef**: a queue of **colour buckets** (red = spicy, yellow = cheese…). Orders fill a
+  bucket up to 15 plates; tap a bucket to see which tables are inside; **Take this bucket**
+  locks it to you (another chef must pick the next colour, and you can hold only **one
+  bucket at a time** — finish yours before taking the next); **Bucket ready ✓** sends every
+  plate to the waiters' Ready line in one tap.
+- **Admin**: one screen — today's sales up top, then Floor / Kitchen / Menu & colours /
+  Tables / Staff / Day report (the activity log lives inside the report, top right).
+  In **Menu & colours**, tap a dish's colour dot to repaint it anywhere — pick a ready
+  swatch or mix any colour; every phone updates live. The dialog also sets **station**
+  (kitchen = cooked in buckets, counter = waiter hands it over), out-of-stock is
+  the switch on each card, and kitchen dishes get two tuning knobs: **Tawa cap**
+  (plates per bucket, blank = 15) and **Seal after** (minutes before a waiting
+  bucket seals itself so quiet-hour orders don't wait for a full tawa; blank = 10).
+
+**Who sees money:** only the admin. Chef and waiter screens never show prices —
+waiters punch items and carry plates; the owner handles the bill. Extras and
+drinks are **counter** items: they never appear on the chef's board, they land
+straight on the waiter's Ready line.
 
 **Number accuracy rules baked in:**
 - Order numbers are assigned only by the laptop — no duplicates possible.
@@ -96,6 +119,7 @@ and **Tables setup** → match your actual table count.
 |---------|-----|
 | Phone says "can't reach server" | Is the phone on the shop WiFi (not mobile data)? Is the black window open on the laptop? |
 | All phones lost connection | Laptop asleep? Router restarted? Check `http://localhost:8177` on the laptop. |
-| Address changed after router restart | Set the DHCP reservation (see above), then type the new address once on each phone. |
+| Address changed after router restart | Nothing to do — phones re-find the laptop by themselves within ~30 s. In a hurry: on the PIN screen tap "server … · change" → it searches again (or 📷 Scan QR). |
+| App can't find the laptop automatically | Some routers block "broadcast" chatter. Scan the QR instead — and check the router doesn't have "AP/client isolation" turned on (that blocks phones from the laptop entirely). |
 | Forgot admin PIN | On the laptop: stop the server, rename `data\pbpos.db` to something else, start server — it creates a fresh DB with PIN 1111. Then copy your old file back if needed (ask your developer). |
 | "That PIN is already taken" | Two people can't share a PIN — pick a different one. |

@@ -11,7 +11,9 @@ data class LoginResp(val token: String, val staff: StaffDto)
 @Serializable
 data class MenuItemDto(
     val id: Long, val name: String, val price: Long,
-    val available: Boolean = true, val sort: Int = 0
+    val available: Boolean = true, val sort: Int = 0,
+    val colour: String = "", val station: String = "kitchen",
+    val batchCap: Long? = null, val batchAgeMin: Long? = null
 )
 
 @Serializable
@@ -28,13 +30,17 @@ data class TableOrderDto(
 )
 
 @Serializable
-data class TableStateDto(val id: Long, val name: String, val order: TableOrderDto? = null)
+data class TableStateDto(
+    val id: Long, val name: String, val kind: String = "dine",
+    val order: TableOrderDto? = null
+)
 
 @Serializable
 data class OrderItemDto(
     val id: Long, val menuItemId: Long = 0, val name: String, val price: Long,
     val qty: Long, val note: String = "", val status: String,
-    val cancelReason: String = ""
+    val cancelReason: String = "",
+    val station: String = "kitchen", val colour: String = ""
 )
 
 @Serializable
@@ -60,20 +66,33 @@ data class BootstrapDto(
 )
 
 @Serializable
-data class KitchenTicketDto(
-    val ticketId: Long, val orderNo: Long, val tableName: String,
-    val createdAt: Long, val waiter: String = "",
-    val items: List<OrderItemDto> = emptyList()
-)
+data class BucketLineDto(val tableName: String, val qty: Long, val note: String = "")
 
 @Serializable
-data class BatchLineDto(val name: String, val qty: Long)
+data class BucketDto(
+    val id: Long, val menuItemId: Long = 0, val name: String, val colour: String = "",
+    val status: String, val cap: Long = 0, val qty: Long,
+    val createdAt: Long = 0, val takenAt: Long = 0,
+    val takenBy: Long = 0, val takenByName: String = "",
+    val lines: List<BucketLineDto> = emptyList()
+)
 
 @Serializable
 data class KitchenDto(
-    val tickets: List<KitchenTicketDto> = emptyList(),
-    val batch: List<BatchLineDto> = emptyList()
+    val buckets: List<BucketDto> = emptyList(),
+    val cap: Long = 15,
+    val serverTime: Long = 0
 )
+
+@Serializable
+data class PickupLineDto(
+    val itemId: Long, val name: String, val qty: Long, val note: String = "",
+    val colour: String = "", val station: String = "kitchen",
+    val tableName: String = "", val sinceMs: Long = 0
+)
+
+@Serializable
+data class PickupDto(val lines: List<PickupLineDto> = emptyList(), val serverTime: Long = 0)
 
 @Serializable
 data class ReportLineDto(val name: String, val qty: Long, val value: Long)
@@ -95,7 +114,10 @@ data class ReportDto(
 )
 
 @Serializable
-data class AdminTableDto(val id: Long, val name: String, val active: Boolean = true, val sort: Int = 0)
+data class AdminTableDto(
+    val id: Long, val name: String, val active: Boolean = true,
+    val sort: Int = 0, val kind: String = "dine"
+)
 
 @Serializable
 data class AuditEventDto(

@@ -48,14 +48,19 @@ CREATE TABLE IF NOT EXISTS menu_items (
   price INTEGER NOT NULL,
   available INTEGER NOT NULL DEFAULT 1,
   active INTEGER NOT NULL DEFAULT 1,
-  sort INTEGER NOT NULL DEFAULT 0
+  sort INTEGER NOT NULL DEFAULT 0,
+  colour TEXT NOT NULL DEFAULT '',
+  station TEXT NOT NULL DEFAULT 'kitchen' CHECK(station IN ('kitchen','counter')),
+  batch_cap INTEGER,     -- this dish's tawa capacity; NULL = global default (meta batch_cap)
+  batch_age_min INTEGER  -- minutes before an open bucket auto-seals; NULL = global default
 );
 
 CREATE TABLE IF NOT EXISTS dining_tables (
   id INTEGER PRIMARY KEY,
   name TEXT NOT NULL UNIQUE,
   active INTEGER NOT NULL DEFAULT 1,
-  sort INTEGER NOT NULL DEFAULT 0
+  sort INTEGER NOT NULL DEFAULT 0,
+  kind TEXT NOT NULL DEFAULT 'dine' CHECK(kind IN ('dine','parcel'))
 );
 
 CREATE TABLE IF NOT EXISTS orders (
@@ -94,11 +99,28 @@ CREATE TABLE IF NOT EXISTS ticket_items (
     CHECK(status IN ('pending','preparing','ready','served','cancelled')),
   status_at INTEGER NOT NULL,
   status_by INTEGER,
-  cancel_reason TEXT
+  cancel_reason TEXT,
+  station TEXT NOT NULL DEFAULT 'kitchen',
+  batch_id INTEGER REFERENCES batches(id)
 );
 CREATE INDEX IF NOT EXISTS ticket_items_by_ticket ON ticket_items(ticket_id);
 CREATE INDEX IF NOT EXISTS tickets_by_order ON tickets(order_id);
 CREATE INDEX IF NOT EXISTS orders_by_bizdate ON orders(biz_date);
+
+-- Colour buckets: kitchen lines accumulate into the open batch for their dish
+-- until it reaches the cap (meta batch_cap, default 15) or a chef takes it.
+-- open   = still filling            full  = sealed, waiting for a chef
+-- taken  = locked to one chef       ready = done, lines flipped to 'ready'
+CREATE TABLE IF NOT EXISTS batches (
+  id INTEGER PRIMARY KEY,
+  menu_item_id INTEGER NOT NULL REFERENCES menu_items(id),
+  status TEXT NOT NULL DEFAULT 'open' CHECK(status IN ('open','full','taken','ready')),
+  created_at INTEGER NOT NULL,
+  taken_by INTEGER REFERENCES staff(id),
+  taken_at INTEGER,
+  ready_at INTEGER
+);
+CREATE INDEX IF NOT EXISTS batches_by_item_status ON batches(menu_item_id, status);
 
 CREATE TABLE IF NOT EXISTS events (
   id INTEGER PRIMARY KEY,
@@ -123,7 +145,39 @@ func openDB(path string) *sql.DB {
 	if _, err := db.Exec(schema); err != nil {
 		log.Fatalf("migrate: %v", err)
 	}
+	// Additive migrations for databases created before the batch model.
+	ensureColumn(db, "menu_items", "colour", `ALTER TABLE menu_items ADD COLUMN colour TEXT NOT NULL DEFAULT ''`)
+	ensureColumn(db, "menu_items", "station", `ALTER TABLE menu_items ADD COLUMN station TEXT NOT NULL DEFAULT 'kitchen'`)
+	ensureColumn(db, "dining_tables", "kind", `ALTER TABLE dining_tables ADD COLUMN kind TEXT NOT NULL DEFAULT 'dine'`)
+	ensureColumn(db, "menu_items", "batch_cap", `ALTER TABLE menu_items ADD COLUMN batch_cap INTEGER`)
+	ensureColumn(db, "menu_items", "batch_age_min", `ALTER TABLE menu_items ADD COLUMN batch_age_min INTEGER`)
+	ensureColumn(db, "ticket_items", "station", `ALTER TABLE ticket_items ADD COLUMN station TEXT NOT NULL DEFAULT 'kitchen'`)
+	ensureColumn(db, "ticket_items", "batch_id", `ALTER TABLE ticket_items ADD COLUMN batch_id INTEGER REFERENCES batches(id)`)
+	// This index must come after the column migrations: on a pre-batch database
+	// ticket_items.batch_id only exists once ensureColumn has added it.
+	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS ticket_items_by_batch ON ticket_items(batch_id)`); err != nil {
+		log.Fatalf("migrate index: %v", err)
+	}
 	return db
+}
+
+func ensureColumn(db *sql.DB, table, column, ddl string) {
+	rows, err := db.Query(`SELECT name FROM pragma_table_info(?)`, table)
+	if err != nil {
+		log.Fatalf("migrate %s: %v", table, err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var name string
+		rows.Scan(&name)
+		if name == column {
+			return
+		}
+	}
+	if _, err := db.Exec(ddl); err != nil {
+		log.Fatalf("migrate %s.%s: %v", table, column, err)
+	}
+	log.Printf("migrated: added %s.%s", table, column)
 }
 
 func nowMs() int64 { return time.Now().UnixMilli() }
@@ -183,46 +237,53 @@ func seedIfEmpty(db *sql.DB) {
 		('Chef', ?, 'chef', ?)`,
 		hashPin(salt, "1111"), now, hashPin(salt, "2222"), now, hashPin(salt, "3333"), now)
 
+	type seedItem struct {
+		name    string
+		price   int // paise
+		colour  string
+		station string
+	}
 	seedMenu := []struct {
 		cat   string
-		items []struct {
-			name  string
-			price int // paise
-		}
+		items []seedItem
 	}{
-		{"Bhaji", []struct {
-			name  string
-			price int
-		}{
-			{"Pav Bhaji", 12000}, {"Cheese Pav Bhaji", 15000},
-			{"Jain Pav Bhaji", 13000}, {"Khada Pav Bhaji", 14000},
+		{"Bhaji", []seedItem{
+			{"Pav Bhaji", 12000, "#FF8A3D", "kitchen"},
+			{"Cheese Pav Bhaji", 15000, "#FFC93D", "kitchen"},
+			{"Jain Pav Bhaji", 13000, "#6FCF6F", "kitchen"},
+			{"Khada Pav Bhaji", 14000, "#C79BFF", "kitchen"},
 		}},
-		{"Extras", []struct {
-			name  string
-			price int
-		}{
-			{"Extra Pav (2 pc)", 2000}, {"Extra Butter", 1500}, {"Chopped Onion", 1000},
+		// Extras never enter the kitchen: the pav/extras counter handles them,
+		// the waiter just carries. Only bhaji cooks in colour buckets.
+		{"Extras", []seedItem{
+			{"Extra Pav (2 pc)", 2000, "#E8483F", "counter"},
+			{"Extra Butter", 1500, "#5BC8DB", "counter"},
+			{"Chopped Onion", 1000, "#6FCF6F", "counter"},
 		}},
-		{"Drinks", []struct {
-			name  string
-			price int
-		}{
-			{"Chaas", 3000}, {"Masala Soda", 4000}, {"Water Bottle", 2000},
+		{"Drinks", []seedItem{
+			{"Chaas", 3000, "#5BC8DB", "counter"},
+			{"Masala Soda", 4000, "#E8483F", "counter"},
+			{"Water Bottle", 2000, "#5BC8DB", "counter"},
 		}},
 	}
 	for ci, c := range seedMenu {
 		res, _ := db.Exec(`INSERT INTO categories(name, sort) VALUES(?,?)`, c.cat, ci)
 		catID, _ := res.LastInsertId()
 		for ii, it := range c.items {
-			db.Exec(`INSERT INTO menu_items(category_id, name, price, sort) VALUES(?,?,?,?)`,
-				catID, it.name, it.price, ii)
+			db.Exec(`INSERT INTO menu_items(category_id, name, price, sort, colour, station) VALUES(?,?,?,?,?,?)`,
+				catID, it.name, it.price, ii, it.colour, it.station)
 		}
 	}
 	for i := 1; i <= 10; i++ {
 		db.Exec(`INSERT INTO dining_tables(name, sort) VALUES(?,?)`, fmt.Sprintf("T%d", i), i)
 	}
+	// Parcel slots: walk-up/takeaway orders the admin (or anyone) punches at
+	// the counter. Same order machinery, separate section on the tables grid.
+	for i := 1; i <= 3; i++ {
+		db.Exec(`INSERT INTO dining_tables(name, sort, kind) VALUES(?,?,'parcel')`, fmt.Sprintf("P%d", i), 100+i)
+	}
 	db.Exec(`INSERT INTO events(at, action, detail) VALUES(?, 'seed', 'first run: default staff, menu and tables created')`, now)
-	log.Println("first run: seeded default staff (PINs 1111/2222/3333 — change them!), sample menu, tables T1–T10")
+	log.Println("first run: seeded default staff (PINs 1111/2222/3333 — change them!), sample menu, tables T1–T10 + parcel P1–P3")
 }
 
 func audit(db *sql.DB, staffID int64, staffName, action, detail string) {

@@ -50,6 +50,10 @@ fun rupees(paise: Long): String =
     if (paise % 100 == 0L) "₹${paise / 100}"
     else "₹${paise / 100}.${(paise % 100).toString().padStart(2, '0')}"
 
+// Money is the owner's business: chef and waiter screens never show prices.
+// Admin sees them everywhere (including the Floor view, which reuses waiter screens).
+fun pricesVisible(): Boolean = com.pavbhaji.pos.Deps.session.staffRole == "admin"
+
 fun items(n: Long): String = if (n == 1L) "1 item" else "$n items"
 
 fun ageMinutes(sinceMs: Long): String {

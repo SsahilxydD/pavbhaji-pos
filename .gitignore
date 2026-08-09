@@ -2,6 +2,8 @@ dist/*
 !dist/*.bat
 server/data/
 server/pbpos-server*
+server/pbpos
 *.log
 .gradle/
 build/
+.kotlin/

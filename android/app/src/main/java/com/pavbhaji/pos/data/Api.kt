@@ -92,6 +92,12 @@ class Api(private val session: Session) {
 
     suspend fun kitchen(): ApiResult<KitchenDto> = call("GET", "/api/kitchen")
 
+    suspend fun pickup(): ApiResult<PickupDto> = call("GET", "/api/pickup")
+
+    // ---- chef actions: colour buckets ----
+    suspend fun takeBatch(id: Long): ApiResult<OkResp> = call("POST", "/api/batches/$id/take")
+    suspend fun readyBatch(id: Long): ApiResult<OkResp> = call("POST", "/api/batches/$id/ready")
+
     // ---- waiter actions ----
     @Serializable
     private data class TicketReq(val clientTicketId: String, val items: List<NewTicketLine>)
@@ -141,8 +147,8 @@ class Api(private val session: Session) {
     @Serializable data class AdminTablesResp(val tables: List<AdminTableDto> = emptyList())
     suspend fun adminTables(): ApiResult<AdminTablesResp> = call("GET", "/api/admin/tables")
 
-    suspend fun tableCreate(name: String): ApiResult<OkResp> =
-        call("POST", "/api/admin/tables", json.encodeToString(mapOf("name" to name)))
+    suspend fun tableCreate(name: String, kind: String = "dine"): ApiResult<OkResp> =
+        call("POST", "/api/admin/tables", json.encodeToString(mapOf("name" to name, "kind" to kind)))
 
     suspend fun tablePatch(id: Long, patch: String): ApiResult<OkResp> =
         call("PATCH", "/api/admin/tables/$id", patch)
@@ -150,9 +156,12 @@ class Api(private val session: Session) {
     suspend fun categoryCreate(name: String): ApiResult<OkResp> =
         call("POST", "/api/admin/categories", json.encodeToString(mapOf("name" to name)))
 
-    suspend fun menuItemCreate(categoryId: Long, name: String, price: Long): ApiResult<OkResp> =
+    suspend fun menuItemCreate(
+        categoryId: Long, name: String, price: Long,
+        colour: String = "", station: String = "kitchen"
+    ): ApiResult<OkResp> =
         call("POST", "/api/admin/menu-items",
-            """{"categoryId":$categoryId,"name":${json.encodeToString(name)},"price":$price}""")
+            """{"categoryId":$categoryId,"name":${json.encodeToString(name)},"price":$price,"colour":"$colour","station":"$station"}""")
 
     suspend fun menuItemPatch(id: Long, patch: String): ApiResult<OkResp> =
         call("PATCH", "/api/admin/menu-items/$id", patch)

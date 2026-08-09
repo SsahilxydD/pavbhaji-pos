@@ -13,10 +13,19 @@ import (
 func main() {
 	var port int
 	var dataDir string
+	var headless bool
 	flag.IntVar(&port, "port", 8177, "port to listen on")
 	flag.StringVar(&dataDir, "data", "", "data directory (default: 'data' next to the exe)")
+	flag.BoolVar(&headless, "headless", false, "run without the desktop window (console / service mode)")
 	flag.Parse()
 
+	dataDir = resolveDataDir(dataDir)
+	run(port, dataDir, headless)
+}
+
+// resolveDataDir returns the effective data directory: the -data override, or a
+// "data" folder next to the executable.
+func resolveDataDir(dataDir string) string {
 	if dataDir == "" {
 		exe, err := os.Executable()
 		if err != nil {
@@ -24,8 +33,14 @@ func main() {
 		}
 		dataDir = filepath.Join(filepath.Dir(exe), "data")
 	}
+	return dataDir
+}
+
+// buildServer opens the database, seeds it, wires every route and starts the
+// background jobs. It returns the ready-to-serve mux for the given port.
+func buildServer(port int, dataDir string) (*Server, *http.ServeMux, error) {
 	if err := os.MkdirAll(dataDir, 0o755); err != nil {
-		log.Fatalf("cannot create data dir %s: %v", dataDir, err)
+		return nil, nil, fmt.Errorf("cannot create data dir %s: %w", dataDir, err)
 	}
 
 	db := openDB(filepath.Join(dataDir, "pbpos.db"))
@@ -38,12 +53,14 @@ func main() {
 		dataDir: dataDir,
 	}
 	s.dayStartHour, _ = strconv.Atoi(getMeta(db, "day_start_hour", "6"))
+	s.serverID = ensureServerID(db)
 
 	mux := http.NewServeMux()
 
 	// Public
 	mux.HandleFunc("GET /", s.handleStatus)
 	mux.HandleFunc("GET /qr.png", s.handleQR)
+	mux.HandleFunc("GET /api/ping", s.handlePing)
 	mux.HandleFunc("POST /api/login", s.handleLogin)
 
 	// Any logged-in role
@@ -54,7 +71,12 @@ func main() {
 	mux.HandleFunc("GET /api/orders/{id}", s.requireRole("*", s.handleOrderDetail))
 	mux.HandleFunc("GET /api/dining-tables/{id}/order", s.requireRole("*", s.handleTableOrder))
 	mux.HandleFunc("GET /api/kitchen", s.requireRole("*", s.handleKitchen))
+	mux.HandleFunc("GET /api/pickup", s.requireRole("*", s.handlePickup))
 	mux.HandleFunc("GET /ws", s.requireRole("*", s.handleWS))
+
+	// Colour buckets: chefs take and finish them
+	mux.HandleFunc("POST /api/batches/{id}/take", s.requireRole("chef admin", s.handleBatchTake))
+	mux.HandleFunc("POST /api/batches/{id}/ready", s.requireRole("chef admin", s.handleBatchReady))
 
 	// Taking orders and serving: waiters and admins
 	mux.HandleFunc("POST /api/dining-tables/{id}/tickets", s.requireRole("waiter admin", s.handleCreateTicket))
@@ -82,6 +104,19 @@ func main() {
 	mux.HandleFunc("GET /api/admin/backup", s.requireRole("admin", s.handleBackup))
 
 	go s.autoBackup()
+	go s.autoSealBatches()
+	go s.discoveryResponder()
+
+	return s, mux, nil
+}
+
+// serveHeadless runs the server in the foreground with a console banner. Used on
+// Linux, and on Windows when -headless is passed.
+func serveHeadless(port int, dataDir string) {
+	_, mux, err := buildServer(port, dataDir)
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	fmt.Println("──────────────────────────────────────────────")
 	fmt.Println("  🍛 PavBhaji POS server")
@@ -89,6 +124,7 @@ func main() {
 	for _, ip := range lanIPs() {
 		fmt.Printf("  phones connect to:  %s:%d\n", ip, port)
 	}
+	fmt.Println("  (phones on this WiFi find the server by themselves)")
 	fmt.Printf("  status page:  http://localhost:%d\n", port)
 	fmt.Println("  keep this window open while the shop is running")
 	fmt.Println("──────────────────────────────────────────────")

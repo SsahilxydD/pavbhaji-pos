@@ -13,15 +13,11 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -79,7 +75,6 @@ fun TableOrderScreen(tableId: Long, tableName: String, onBack: () -> Unit) {
 
     var menu by remember { mutableStateOf<List<CategoryDto>>(emptyList()) }
     var order by remember { mutableStateOf<OrderDetailDto?>(null) }
-    var selCat by remember { mutableStateOf(0) }
     val cart = remember { mutableStateListOf<CartLine>() }
 
     // The idempotency key. Fixed for the lifetime of this cart; a new one is
@@ -256,44 +251,29 @@ fun TableOrderScreen(tableId: Long, tableName: String, onBack: () -> Unit) {
                 }
             }
 
-            // ---- menu picker ----
-            item {
-                SectionTitle("ADD ITEMS")
-                Row(Modifier.horizontalScroll(rememberScrollState())) {
-                    menu.forEachIndexed { i, c ->
-                        FilterChip(
-                            selected = selCat == i,
-                            onClick = { selCat = i },
-                            label = {
-                                Text(c.name, fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
-                                    modifier = Modifier.padding(vertical = 8.dp))
-                            },
-                            colors = FilterChipDefaults.filterChipColors(
-                                selectedContainerColor = MaterialTheme.colorScheme.primary,
-                                selectedLabelColor = Color.White
-                            ),
-                            modifier = Modifier.padding(end = 8.dp)
-                        )
-                    }
+            // ---- menu picker: owner's rule — keep the waiter dead simple,
+            // every dish is one full-width row, tap = +1, no tabs, no grid ----
+            item { SectionTitle("ADD ITEMS") }
+            menu.forEach { c ->
+                if (menu.size > 1) item {
+                    Text(
+                        c.name.uppercase(),
+                        fontSize = 11.sp, fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 10.dp, bottom = 2.dp)
+                    )
                 }
-            }
-            val itemsInCat = menu.getOrNull(selCat)?.items ?: emptyList()
-            itemsInCat.chunked(2).forEach { rowItems ->
-                item {
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        rowItems.forEach { m ->
-                            MenuCard(
-                                name = m.name,
-                                price = m.price,
-                                available = m.available,
-                                colour = dishColour(m.colour, m.id),
-                                counter = m.station == "counter",
-                                inCart = cartQty[m.id] ?: 0,
-                                onClick = { if (m.available) addToCart(m.id, m.name, m.price) },
-                                modifier = Modifier.weight(1f)
-                            )
-                        }
-                        if (rowItems.size == 1) Spacer(Modifier.weight(1f))
+                c.items.forEach { m ->
+                    item {
+                        MenuRow(
+                            name = m.name,
+                            price = m.price,
+                            available = m.available,
+                            colour = dishColour(m.colour, m.id),
+                            counter = m.station == "counter",
+                            inCart = cartQty[m.id] ?: 0,
+                            onClick = { if (m.available) addToCart(m.id, m.name, m.price) }
+                        )
                     }
                 }
             }
@@ -439,15 +419,15 @@ fun TableOrderScreen(tableId: Long, tableName: String, onBack: () -> Unit) {
 }
 
 @Composable
-private fun MenuCard(
+private fun MenuRow(
     name: String, price: Long, available: Boolean,
     colour: Color, counter: Boolean, inCart: Long,
-    onClick: () -> Unit, modifier: Modifier = Modifier
+    onClick: () -> Unit
 ) {
     Surface(
         onClick = onClick,
         enabled = available,
-        shape = RoundedCornerShape(14.dp),
+        shape = RoundedCornerShape(12.dp),
         color = when {
             !available -> MaterialTheme.colorScheme.surfaceVariant
             inCart > 0 -> Color(0xFFFFE4CF)
@@ -455,41 +435,36 @@ private fun MenuCard(
         },
         border = if (inCart > 0) androidx.compose.foundation.BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary) else null,
         shadowElevation = if (available) 1.dp else 0.dp,
-        modifier = modifier.padding(vertical = 4.dp)
+        modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp)
     ) {
-        Box {
-            Column(Modifier.padding(horizontal = 12.dp, vertical = 12.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(
-                        Modifier.size(9.dp)
-                            .background(colour.copy(alpha = if (available) 1f else 0.4f), CircleShape)
-                    )
-                    Text(
-                        name, fontSize = 14.sp, fontWeight = FontWeight.Bold,
-                        color = if (available) MaterialTheme.colorScheme.onSurface
-                        else MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(start = 6.dp)
-                    )
-                }
-                val sub = when {
-                    !available -> "out of stock"
-                    counter -> if (pricesVisible()) "${rupees(price)} · ✋ counter" else "✋ counter"
-                    else -> if (pricesVisible()) rupees(price) else ""
-                }
-                if (sub.isNotEmpty()) Text(
-                    sub,
-                    fontSize = 12.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+        Row(
+            Modifier.padding(horizontal = 14.dp, vertical = 13.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                Modifier.size(10.dp)
+                    .background(colour.copy(alpha = if (available) 1f else 0.4f), CircleShape)
+            )
+            Text(
+                name, fontSize = 15.sp, fontWeight = FontWeight.Bold,
+                color = if (available) MaterialTheme.colorScheme.onSurface
+                else MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(start = 9.dp).weight(1f)
+            )
+            val sub = when {
+                !available -> "out of stock"
+                counter -> if (pricesVisible()) "${rupees(price)} · ✋" else "✋"
+                else -> if (pricesVisible()) rupees(price) else ""
             }
+            if (sub.isNotEmpty()) Text(
+                sub, fontSize = 12.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(end = 8.dp)
+            )
             if (inCart > 0) {
-                Surface(
-                    color = MaterialTheme.colorScheme.primary,
-                    shape = CircleShape,
-                    modifier = Modifier.align(Alignment.TopEnd).padding(6.dp).size(24.dp)
-                ) {
+                Surface(color = MaterialTheme.colorScheme.primary, shape = CircleShape, modifier = Modifier.size(26.dp)) {
                     Box(contentAlignment = Alignment.Center) {
-                        Text("$inCart", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.ExtraBold)
+                        Text("$inCart", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.ExtraBold)
                     }
                 }
             }

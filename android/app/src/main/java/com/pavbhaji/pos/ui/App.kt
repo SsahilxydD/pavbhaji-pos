@@ -13,7 +13,8 @@ import androidx.compose.ui.Modifier
 import com.pavbhaji.pos.Deps
 import com.pavbhaji.pos.ui.admin.AdminHome
 import com.pavbhaji.pos.ui.chef.KitchenScreen
-import com.pavbhaji.pos.ui.waiter.WaiterHome
+import com.pavbhaji.pos.ui.waiter.ManagerHome
+import com.pavbhaji.pos.ui.waiter.ServeScreen
 
 sealed class Stage {
     data object Connect : Stage()
@@ -57,7 +58,8 @@ fun PosApp() {
                 }
                 Column {
                     when (session.staffRole) {
-                        "waiter" -> WaiterHome(onLogout = logout)
+                        "waiter" -> ServeScreen(onLogout = logout)
+                        "manager" -> ManagerHome(onLogout = logout)
                         "chef" -> KitchenScreen(onLogout = logout)
                         "admin" -> AdminHome(onLogout = logout)
                         else -> { session.clearLogin(); stage = Stage.Login }

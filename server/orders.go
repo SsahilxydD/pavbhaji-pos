@@ -545,7 +545,7 @@ func canTransition(role, from, to, station string) bool {
 		if role == "admin" {
 			return from == "pending" || from == "preparing" || from == "ready"
 		}
-		if role == "waiter" {
+		if role == "waiter" || role == "manager" {
 			if from == "ready" {
 				return true
 			}
@@ -594,7 +594,7 @@ func (s *Server) handleItemStatus(w http.ResponseWriter, r *http.Request) {
 }
 
 // POST /api/items/{id}/cancel {reason} — nothing is ever deleted, only cancelled.
-// pending: waiter or admin. Once the kitchen has started (preparing/ready) or it
+// pending: manager or admin. Once the kitchen has started (preparing/ready) or it
 // was already served: admin only.
 func (s *Server) handleItemCancel(w http.ResponseWriter, r *http.Request) {
 	st := staffFrom(r)
@@ -627,7 +627,7 @@ func (s *Server) handleItemCancel(w http.ResponseWriter, r *http.Request) {
 		fail(w, http.StatusConflict, "already cancelled")
 		return
 	}
-	allowed := from == "pending" && (st.Role == "waiter" || st.Role == "admin") ||
+	allowed := from == "pending" && (st.Role == "manager" || st.Role == "admin") ||
 		from != "pending" && st.Role == "admin"
 	if !allowed {
 		fail(w, http.StatusForbidden, "only admin can cancel an item the kitchen already started")

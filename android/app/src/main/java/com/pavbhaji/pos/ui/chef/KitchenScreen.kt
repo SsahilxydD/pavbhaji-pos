@@ -61,6 +61,7 @@ import com.pavbhaji.pos.data.BucketDto
 import com.pavbhaji.pos.data.KitchenDto
 import com.pavbhaji.pos.ui.ConnBanner
 import com.pavbhaji.pos.ui.Kc
+import com.pavbhaji.pos.ui.S
 import com.pavbhaji.pos.ui.dishColour
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -140,16 +141,16 @@ fun KitchenScreen(onLogout: () -> Unit, embedded: Boolean = false, onBack: (() -
             } else {
                 Text("👨‍🍳", fontSize = 20.sp, modifier = Modifier.padding(start = 10.dp, end = 2.dp))
             }
-            Text("Kitchen", color = Kc.ink, fontSize = 18.sp, fontWeight = FontWeight.ExtraBold,
+            Text(S.kitchenTitle, color = Kc.ink, fontSize = 18.sp, fontWeight = FontWeight.ExtraBold,
                 modifier = Modifier.padding(start = 6.dp))
             Text(
-                "${data.buckets.size} buckets · ${Deps.session.staffName}",
+                S.bucketsSub(data.buckets.size, Deps.session.staffName),
                 color = Kc.ink2, fontSize = 12.sp, modifier = Modifier.padding(start = 8.dp).weight(1f)
             )
             Box(Modifier.size(7.dp).background(if (connected) Kc.ready else Kc.late, CircleShape))
             if (onBack == null) {
                 TextButton(onClick = onLogout) {
-                    Text("Logout", color = Kc.ink2, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                    Text(S.logout, color = Kc.ink2, fontWeight = FontWeight.Bold, fontSize = 13.sp)
                 }
             } else {
                 Spacer(Modifier.width(10.dp))
@@ -165,7 +166,7 @@ fun KitchenScreen(onLogout: () -> Unit, embedded: Boolean = false, onBack: (() -
 
         if (data.buckets.isEmpty()) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text("No buckets — nothing to cook 👨‍🍳", color = Kc.ink2, fontSize = 14.sp)
+                Text(S.noBuckets, color = Kc.ink2, fontSize = 14.sp)
             }
         } else {
             LazyColumn(
@@ -280,10 +281,10 @@ private fun BucketCard(
                         maxLines = 1, modifier = Modifier.weight(1f, fill = false)
                     )
                     when {
-                        mine -> StateChip("🔒 YOURS · ${minsSince(b.takenAt)}m", Kc.mineBg, Kc.mineFg)
+                        mine -> StateChip(S.yoursChip(minsSince(b.takenAt)), Kc.mineBg, Kc.mineFg)
                         lockedByOther -> StateChip("🔒 ${b.takenByName}", Kc.lockBg, Kc.lockFg)
-                        b.status == "full" -> StateChip("FULL", Kc.fullBg, Kc.fullFg)
-                        else -> StateChip("FILLING", Color.Transparent, Kc.ink2, dashed = true)
+                        b.status == "full" -> StateChip(S.fullChip, Kc.fullBg, Kc.fullFg)
+                        else -> StateChip(S.fillingChip, Color.Transparent, Kc.ink2, dashed = true)
                     }
                     Spacer(Modifier.weight(1f))
                     Text(
@@ -311,11 +312,11 @@ private fun BucketCard(
                     }
                     if (!expanded) {
                         val hint = when {
-                            lockedByOther -> "locked — pick another colour"
-                            mine -> "tap to open · finish when done"
-                            myBusy -> "after your bucket"
-                            b.status == "full" -> "sealed — take it"
-                            else -> "tap for tables"
+                            lockedByOther -> S.hintLocked
+                            mine -> S.hintMine
+                            myBusy -> S.hintAfterYours
+                            b.status == "full" -> S.hintSealed
+                            else -> S.hintTapTables
                         }
                         Text(hint, color = Kc.ink2, fontSize = 10.5.sp)
                     }
@@ -339,18 +340,18 @@ private fun BucketCard(
                             }
                         }
                         when {
-                            mine -> BigAction("Bucket ready ✓ — all ${b.qty} plates", Kc.ready, Kc.readyFg, onReady)
+                            mine -> BigAction(S.bucketReady(b.qty), Kc.ready, Kc.readyFg, onReady)
                             lockedByOther -> Text(
-                                "🔒 ${b.takenByName} is cooking this — pick another colour",
+                                S.cookingThis(b.takenByName),
                                 color = Kc.lockFg, fontSize = 12.sp,
                                 modifier = Modifier.padding(top = 4.dp)
                             )
                             myBusy -> Text(
-                                "🔒 finish your bucket first — one bucket per chef",
+                                S.oneBucketRule,
                                 color = Kc.lockFg, fontSize = 12.sp,
                                 modifier = Modifier.padding(top = 4.dp)
                             )
-                            else -> BigAction("Take this bucket ▶", Kc.take, Kc.takeFg, onTake)
+                            else -> BigAction(S.takeBucket, Kc.take, Kc.takeFg, onTake)
                         }
                     }
                 }

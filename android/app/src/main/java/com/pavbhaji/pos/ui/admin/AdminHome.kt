@@ -43,10 +43,11 @@ import com.pavbhaji.pos.ui.AppHeader
 import com.pavbhaji.pos.ui.CardLine
 import com.pavbhaji.pos.ui.ConnBanner
 import com.pavbhaji.pos.ui.GoodGreen
+import com.pavbhaji.pos.ui.S
 import com.pavbhaji.pos.ui.HeaderTextAction
 import com.pavbhaji.pos.ui.chef.KitchenScreen
 import com.pavbhaji.pos.ui.rupees
-import com.pavbhaji.pos.ui.waiter.WaiterHome
+import com.pavbhaji.pos.ui.waiter.ManagerHome
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.io.File
@@ -58,7 +59,7 @@ fun AdminHome(onLogout: () -> Unit) {
     var screen by remember { mutableStateOf(AdminScreen.Home) }
     val home = { screen = AdminScreen.Home }
     when (screen) {
-        AdminScreen.Floor -> WaiterHome(onLogout = {}, onBack = home)
+        AdminScreen.Floor -> ManagerHome(onLogout = {}, onBack = home)
         AdminScreen.Kitchen -> KitchenScreen(onLogout = {}, embedded = true, onBack = home)
         AdminScreen.Menu -> MenuAdmin(onBack = home)
         AdminScreen.Staff -> StaffAdmin(onBack = home)
@@ -92,9 +93,9 @@ private fun Dashboard(onLogout: () -> Unit, onOpen: (AdminScreen) -> Unit) {
 
     Column(Modifier.fillMaxSize()) {
         AppHeader(
-            title = "Admin",
+            title = S.adminTitle,
             subtitle = Deps.session.staffName,
-            actions = { HeaderTextAction("Logout", onLogout) }
+            actions = { HeaderTextAction(S.logout, onLogout) }
         )
         ConnBanner(connected)
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(14.dp)) {
@@ -106,14 +107,14 @@ private fun Dashboard(onLogout: () -> Unit, onOpen: (AdminScreen) -> Unit) {
             ) {
                 Column(Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 16.dp)) {
                     Text(
-                        "TODAY", fontSize = 11.sp, fontWeight = FontWeight.ExtraBold,
+                        S.today, fontSize = 11.sp, fontWeight = FontWeight.ExtraBold,
                         letterSpacing = 1.2.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Text(rupees(rep.soldTotal), fontSize = 36.sp, fontWeight = FontWeight.ExtraBold, color = GoodGreen)
                     val sub = buildString {
-                        append("${rep.ordersOpened} orders")
-                        if (rep.ordersOpen > 0) append(" · ${rep.ordersOpen} open")
-                        if (rep.kitchenPending > 0) append(" · ${rep.kitchenPending} cooking")
+                        append(S.nOrders(rep.ordersOpened))
+                        if (rep.ordersOpen > 0) append(" · " + S.nOpen(rep.ordersOpen))
+                        if (rep.kitchenPending > 0) append(" · " + S.nCooking(rep.kitchenPending))
                     }
                     Text(sub, fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
@@ -121,12 +122,12 @@ private fun Dashboard(onLogout: () -> Unit, onOpen: (AdminScreen) -> Unit) {
 
             Spacer(Modifier.height(14.dp))
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                NavRow("Floor") { onOpen(AdminScreen.Floor) }
-                NavRow("Kitchen") { onOpen(AdminScreen.Kitchen) }
-                NavRow("Menu & colours") { onOpen(AdminScreen.Menu) }
-                NavRow("Tables") { onOpen(AdminScreen.Tables) }
-                NavRow("Staff") { onOpen(AdminScreen.Staff) }
-                NavRow("Day report") { onOpen(AdminScreen.Report) }
+                NavRow(S.navFloor) { onOpen(AdminScreen.Floor) }
+                NavRow(S.kitchenTitle) { onOpen(AdminScreen.Kitchen) }
+                NavRow(S.navMenu) { onOpen(AdminScreen.Menu) }
+                NavRow(S.tablesTitle) { onOpen(AdminScreen.Tables) }
+                NavRow(S.navStaff) { onOpen(AdminScreen.Staff) }
+                NavRow(S.navReport) { onOpen(AdminScreen.Report) }
             }
 
             TextButton(
@@ -138,7 +139,7 @@ private fun Dashboard(onLogout: () -> Unit, onOpen: (AdminScreen) -> Unit) {
                                 is ApiResult.Ok -> {
                                     val name = "pbpos-backup-" + System.currentTimeMillis() + ".db"
                                     val where = saveToDownloads(context, name, r.value)
-                                    Toast.makeText(context, "Backup saved: $where", Toast.LENGTH_LONG).show()
+                                    Toast.makeText(context, S.backupSaved(where), Toast.LENGTH_LONG).show()
                                 }
                                 is ApiResult.Err ->
                                     Toast.makeText(context, r.message, Toast.LENGTH_LONG).show()
@@ -150,7 +151,7 @@ private fun Dashboard(onLogout: () -> Unit, onOpen: (AdminScreen) -> Unit) {
                 modifier = Modifier.fillMaxWidth().padding(top = 10.dp)
             ) {
                 Text(
-                    if (busyBackup) "saving backup…" else "save a backup to this phone",
+                    if (busyBackup) S.savingBackup else S.saveBackup,
                     fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }

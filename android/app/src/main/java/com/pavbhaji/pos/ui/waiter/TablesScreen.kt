@@ -46,16 +46,18 @@ import com.pavbhaji.pos.ui.BhajiRed
 import com.pavbhaji.pos.ui.ConnBanner
 import com.pavbhaji.pos.ui.GoodGreen
 import com.pavbhaji.pos.ui.HeaderTextAction
+import com.pavbhaji.pos.ui.S
 import com.pavbhaji.pos.ui.WarnAmber
 import com.pavbhaji.pos.ui.ageMinutes
 import com.pavbhaji.pos.ui.items as itemsLabel
 import com.pavbhaji.pos.ui.rupees
 import kotlinx.coroutines.delay
 
-// Waiter's home: two tabs. Tables = punch orders & collect; Ready = the
-// time-ordered carry queue. Also embedded inside the admin app as "Floor".
+// Manager's home: two tabs. Tables = punch orders & collect; Ready = the
+// table-grouped carry queue. Also embedded inside the admin app as "Floor".
+// (Waiters never see this — their whole app is the flat ServeScreen.)
 @Composable
-fun WaiterHome(onLogout: () -> Unit, onBack: (() -> Unit)? = null) {
+fun ManagerHome(onLogout: () -> Unit, onBack: (() -> Unit)? = null) {
     var selected by remember { mutableStateOf<TableStateDto?>(null) }
     var tab by remember { mutableIntStateOf(0) }
     var readyCount by remember { mutableIntStateOf(0) }
@@ -89,7 +91,7 @@ fun WaiterHome(onLogout: () -> Unit, onBack: (() -> Unit)? = null) {
             NavigationBarItem(
                 selected = tab == 0, onClick = { tab = 0 },
                 icon = { Text("▦", fontSize = 17.sp) },
-                label = { Text("Tables", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
+                label = { Text(S.tablesTitle, fontSize = 11.sp, fontWeight = FontWeight.Bold) },
                 colors = NavigationBarItemDefaults.colors(
                     selectedTextColor = BhajiRed, indicatorColor = Color(0xFFFFE0CC)
                 )
@@ -103,7 +105,7 @@ fun WaiterHome(onLogout: () -> Unit, onBack: (() -> Unit)? = null) {
                         }
                     }) { Text("🛎", fontSize = 17.sp) }
                 },
-                label = { Text("Ready", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
+                label = { Text(S.readyTitle, fontSize = 11.sp, fontWeight = FontWeight.Bold) },
                 colors = NavigationBarItemDefaults.colors(
                     selectedTextColor = BhajiRed, indicatorColor = Color(0xFFFFE0CC)
                 )
@@ -139,10 +141,10 @@ fun TablesScreen(
     val busy = tables.count { it.order != null }
     Column(Modifier.fillMaxSize()) {
         AppHeader(
-            title = "Tables",
-            subtitle = "${Deps.session.staffName} · $busy of ${tables.size} occupied",
+            title = S.tablesTitle,
+            subtitle = S.occupiedSub(Deps.session.staffName, busy, tables.size),
             onBack = onBack,
-            actions = { if (onBack == null) HeaderTextAction("Logout", onLogout) }
+            actions = { if (onBack == null) HeaderTextAction(S.logout, onLogout) }
         )
         ConnBanner(connected)
         if (loadError != null) {
@@ -163,13 +165,13 @@ fun TablesScreen(
             modifier = Modifier.fillMaxSize()
         ) {
             if (parcel.isNotEmpty()) {
-                item(key = "hdrDine", span = { GridItemSpan(maxLineSpan) }) { GridSection("TABLES") }
+                item(key = "hdrDine", span = { GridItemSpan(maxLineSpan) }) { GridSection(S.gridTables) }
             }
             items(dine, key = { it.id }) { t ->
                 TableCard(t, onClick = { onOpenTable(t) })
             }
             if (parcel.isNotEmpty()) {
-                item(key = "hdrParcel", span = { GridItemSpan(maxLineSpan) }) { GridSection("🥡 PARCEL — counter orders") }
+                item(key = "hdrParcel", span = { GridItemSpan(maxLineSpan) }) { GridSection(S.gridParcel) }
                 items(parcel, key = { it.id }) { t ->
                     TableCard(t, onClick = { onOpenTable(t) })
                 }
@@ -239,7 +241,7 @@ private fun TableCard(t: TableStateDto, onClick: () -> Unit) {
             }
             Spacer(Modifier.weight(1f))
             if (o == null) {
-                Text("free", fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(S.freeTable, fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             } else {
                 Text(
                     if (com.pavbhaji.pos.ui.pricesVisible()) "${rupees(o.total)} · ${itemsLabel(o.itemCount)}"
@@ -255,10 +257,10 @@ private fun TableCard(t: TableStateDto, onClick: () -> Unit) {
                         modifier = Modifier.weight(1f, fill = false)
                     )
                     when {
-                        hasReady -> Pill("${o.readyCount} READY — pick up", Color(0xFF1E8F53), Color.White)
-                        cooking -> Pill("in kitchen", Color(0xFFF5E3C2), WarnAmber)
+                        hasReady -> Pill(S.readyPickup(o.readyCount), Color(0xFF1E8F53), Color.White)
+                        cooking -> Pill(S.inKitchen, Color(0xFFF5E3C2), WarnAmber)
                         else -> Pill(
-                            if (com.pavbhaji.pos.ui.pricesVisible()) "COLLECT ${rupees(o.total)}" else "COLLECT",
+                            if (com.pavbhaji.pos.ui.pricesVisible()) S.collectAmt(rupees(o.total)) else S.collect,
                             Color(0xFF2F6FCC), Color.White
                         )
                     }

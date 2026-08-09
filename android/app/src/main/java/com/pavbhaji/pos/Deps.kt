@@ -17,5 +17,6 @@ object Deps {
         session = Session(context.applicationContext)
         api = Api(session)
         live = Live(session, api)
+        com.pavbhaji.pos.ui.L10n.lang = session.lang
     }
 }

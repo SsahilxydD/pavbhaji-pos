@@ -54,12 +54,12 @@ fun rupees(paise: Long): String =
 // Admin sees them everywhere (including the Floor view, which reuses waiter screens).
 fun pricesVisible(): Boolean = com.pavbhaji.pos.Deps.session.staffRole == "admin"
 
-fun items(n: Long): String = if (n == 1L) "1 item" else "$n items"
+fun items(n: Long): String = S.itemsN(n)
 
 fun ageMinutes(sinceMs: Long): String {
     val m = ((System.currentTimeMillis() - sinceMs) / 60000).coerceAtLeast(0)
     return when {
-        m < 1 -> "now"
+        m < 1 -> S.now
         m < 60 -> "${m}m"
         else -> "${m / 60}h${m % 60}m"
     }
@@ -143,7 +143,7 @@ fun ConnBanner(connected: Boolean) {
             contentAlignment = Alignment.Center
         ) {
             Text(
-                "reconnecting to server… check WiFi",
+                S.reconnecting,
                 color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Medium
             )
         }
@@ -162,7 +162,7 @@ fun StatusChip(status: String) {
     }
     Surface(color = bg, shape = RoundedCornerShape(6.dp)) {
         Text(
-            status, color = fg, fontSize = 11.sp, fontWeight = FontWeight.SemiBold,
+            S.statusLabel(status), color = fg, fontSize = 11.sp, fontWeight = FontWeight.SemiBold,
             modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
         )
     }
@@ -239,10 +239,10 @@ fun ReasonDialog(title: String, onConfirm: (String) -> Unit, onDismiss: () -> Un
         title = { Text(title) },
         text = {
             Column {
-                Text("A reason is required — it goes in the audit log.", fontSize = 13.sp)
+                Text(S.reasonRequired, fontSize = 13.sp)
                 OutlinedTextField(
                     value = reason, onValueChange = { reason = it },
-                    label = { Text("Reason") },
+                    label = { Text(S.reason) },
                     modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
                 )
             }
@@ -251,9 +251,9 @@ fun ReasonDialog(title: String, onConfirm: (String) -> Unit, onDismiss: () -> Un
             Button(
                 onClick = { if (reason.trim().length >= 2) onConfirm(reason.trim()) },
                 colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
-            ) { Text("Cancel item") }
+            ) { Text(S.cancelItem) }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Back") } }
+        dismissButton = { TextButton(onClick = onDismiss) { Text(S.back) } }
     )
 }
 
@@ -264,7 +264,7 @@ fun ConfirmDialog(title: String, body: String, confirmLabel: String, onConfirm: 
         title = { Text(title) },
         text = { Text(body, fontSize = 15.sp) },
         confirmButton = { Button(onClick = onConfirm) { Text(confirmLabel) } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Back") } }
+        dismissButton = { TextButton(onClick = onDismiss) { Text(S.back) } }
     )
 }
 

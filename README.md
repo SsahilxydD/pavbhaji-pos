@@ -1,7 +1,7 @@
 # PavBhaji POS
 
 LAN-only restaurant POS for a single shop: dine-in table orders, kitchen display,
-roles (admin / waiter / chef), full audit trail. **Never hosted anywhere** — a
+roles (admin / manager / waiter / chef), full audit trail. **Never hosted anywhere** — a
 Windows laptop on the shop WiFi is the server; Android phones are the clients.
 
 - `server/` — Go. Single static binary, embedded SQLite (pure-Go driver), REST + WebSocket,

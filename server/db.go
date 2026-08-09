@@ -1,6 +1,7 @@
 package main
 
 import (
+	"strings"
 	"crypto/rand"
 	"crypto/sha256"
 	"database/sql"
@@ -22,7 +23,7 @@ CREATE TABLE IF NOT EXISTS staff (
   id INTEGER PRIMARY KEY,
   name TEXT NOT NULL,
   pin_hash TEXT NOT NULL UNIQUE,
-  role TEXT NOT NULL CHECK(role IN ('admin','waiter','chef')),
+  role TEXT NOT NULL CHECK(role IN ('admin','manager','waiter','chef')),
   active INTEGER NOT NULL DEFAULT 1,
   created_at INTEGER NOT NULL
 );
@@ -158,6 +159,34 @@ func openDB(path string) *sql.DB {
 	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS ticket_items_by_batch ON ticket_items(batch_id)`); err != nil {
 		log.Fatalf("migrate index: %v", err)
 	}
+	// staff.role was CHECK-constrained to admin/waiter/chef; SQLite cannot
+	// alter a CHECK, so older databases get one table rebuild to admit 'manager'.
+	var staffDDL string
+	db.QueryRow(`SELECT sql FROM sqlite_master WHERE type='table' AND name='staff'`).Scan(&staffDDL)
+	if !strings.Contains(staffDDL, "manager") {
+		for _, q := range []string{
+			// Other tables hold live rows referencing staff(id); the rebuild is
+			// safe (ids are preserved) but only with enforcement paused.
+			`PRAGMA foreign_keys=OFF`,
+			`CREATE TABLE staff_new (
+			  id INTEGER PRIMARY KEY,
+			  name TEXT NOT NULL,
+			  pin_hash TEXT NOT NULL UNIQUE,
+			  role TEXT NOT NULL CHECK(role IN ('admin','manager','waiter','chef')),
+			  active INTEGER NOT NULL DEFAULT 1,
+			  created_at INTEGER NOT NULL
+			)`,
+			`INSERT INTO staff_new SELECT id, name, pin_hash, role, active, created_at FROM staff`,
+			`DROP TABLE staff`,
+			`ALTER TABLE staff_new RENAME TO staff`,
+			`PRAGMA foreign_keys=ON`,
+		} {
+			if _, err := db.Exec(q); err != nil {
+				log.Fatalf("migrate staff.role: %v", err)
+			}
+		}
+		log.Printf("migrated: staff.role now allows 'manager'")
+	}
 	return db
 }
 
@@ -231,11 +260,16 @@ func seedIfEmpty(db *sql.DB) {
 		return
 	}
 	now := nowMs()
-	db.Exec(`INSERT INTO staff(name, pin_hash, role, created_at) VALUES
+	// A silent failure here means an install nobody can ever log in to — be loud.
+	if _, err := db.Exec(`INSERT INTO staff(name, pin_hash, role, created_at) VALUES
 		('Admin', ?, 'admin', ?),
 		('Waiter 1', ?, 'waiter', ?),
-		('Chef', ?, 'chef', ?)`,
-		hashPin(salt, "1111"), now, hashPin(salt, "2222"), now, hashPin(salt, "3333"), now)
+		('Chef', ?, 'chef', ?),
+		('Manager', ?, 'manager', ?)`,
+		hashPin(salt, "1111"), now, hashPin(salt, "2222"), now, hashPin(salt, "3333"), now,
+		hashPin(salt, "4444"), now); err != nil {
+		log.Fatalf("seed staff: %v", err)
+	}
 
 	type seedItem struct {
 		name    string
@@ -283,7 +317,7 @@ func seedIfEmpty(db *sql.DB) {
 		db.Exec(`INSERT INTO dining_tables(name, sort, kind) VALUES(?,?,'parcel')`, fmt.Sprintf("P%d", i), 100+i)
 	}
 	db.Exec(`INSERT INTO events(at, action, detail) VALUES(?, 'seed', 'first run: default staff, menu and tables created')`, now)
-	log.Println("first run: seeded default staff (PINs 1111/2222/3333 — change them!), sample menu, tables T1–T10 + parcel P1–P3")
+	log.Println("first run: seeded default staff (PINs admin 1111 / waiter 2222 / chef 3333 / manager 4444 — change them!), sample menu, tables T1–T10 + parcel P1–P3")
 }
 
 func audit(db *sql.DB, staffID int64, staffName, action, detail string) {

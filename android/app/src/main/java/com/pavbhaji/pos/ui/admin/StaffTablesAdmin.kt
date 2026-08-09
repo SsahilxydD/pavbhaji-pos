@@ -31,6 +31,7 @@ import com.pavbhaji.pos.Deps
 import com.pavbhaji.pos.data.AdminTableDto
 import com.pavbhaji.pos.data.ApiResult
 import com.pavbhaji.pos.data.StaffDto
+import com.pavbhaji.pos.ui.S
 import kotlinx.coroutines.launch
 
 @Composable
@@ -51,9 +52,9 @@ fun StaffAdmin(onBack: () -> Unit) {
 
     Column(Modifier.fillMaxSize()) {
         com.pavbhaji.pos.ui.AppHeader(
-            title = "Staff & PINs",
+            title = S.staffTitle,
             onBack = onBack,
-            actions = { com.pavbhaji.pos.ui.HeaderTextAction("+ staff") { addOpen = true } }
+            actions = { com.pavbhaji.pos.ui.HeaderTextAction(S.addStaff) { addOpen = true } }
         )
         err?.let { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(horizontal = 14.dp)) }
         LazyColumn(Modifier.fillMaxSize(), contentPadding = androidx.compose.foundation.layout.PaddingValues(12.dp)) {
@@ -66,13 +67,13 @@ fun StaffAdmin(onBack: () -> Unit) {
                         Column(Modifier.weight(1f)) {
                             Text(s.name, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
                             Text(
-                                s.role + if (!s.active) " · deactivated" else "",
+                                S.roleLabel(s.role) + if (!s.active) " · " + S.deactivated else "",
                                 fontSize = 12.sp,
                                 color = if (s.active) MaterialTheme.colorScheme.onSurfaceVariant
                                 else MaterialTheme.colorScheme.error
                             )
                         }
-                        TextButton(onClick = { pinFor = s }) { Text("reset PIN", fontSize = 12.sp) }
+                        TextButton(onClick = { pinFor = s }) { Text(S.resetPin, fontSize = 12.sp) }
                         Switch(
                             checked = s.active,
                             onCheckedChange = { on ->
@@ -98,19 +99,19 @@ fun StaffAdmin(onBack: () -> Unit) {
         var dErr by remember { mutableStateOf<String?>(null) }
         AlertDialog(
             onDismissRequest = { addOpen = false },
-            title = { Text("New staff member") },
+            title = { Text(S.newStaff) },
             text = {
                 Column {
-                    OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Name") })
+                    OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text(S.name) })
                     OutlinedTextField(
                         value = pin, onValueChange = { pin = it.filter { c -> c.isDigit() }.take(4) },
-                        label = { Text("PIN (4 digits)") }, modifier = Modifier.padding(top = 8.dp)
+                        label = { Text(S.pin4) }, modifier = Modifier.padding(top = 8.dp)
                     )
                     Row(Modifier.padding(top = 10.dp)) {
-                        listOf("waiter", "chef", "admin").forEach { r ->
+                        listOf("waiter", "manager", "chef", "admin").forEach { r ->
                             FilterChip(
                                 selected = role == r, onClick = { role = r },
-                                label = { Text(r) }, modifier = Modifier.padding(end = 6.dp)
+                                label = { Text(S.roleLabel(r)) }, modifier = Modifier.padding(end = 6.dp)
                             )
                         }
                     }
@@ -119,16 +120,16 @@ fun StaffAdmin(onBack: () -> Unit) {
             },
             confirmButton = {
                 Button(onClick = {
-                    if (name.trim().isEmpty() || pin.length < 4) { dErr = "name + 4-digit PIN needed"; return@Button }
+                    if (name.trim().isEmpty() || pin.length < 4) { dErr = S.namePinNeeded; return@Button }
                     scope.launch {
                         when (val r = Deps.api.staffCreate(name.trim(), pin, role)) {
                             is ApiResult.Ok -> { addOpen = false; refresh() }
                             is ApiResult.Err -> dErr = r.message
                         }
                     }
-                }) { Text("Add") }
+                }) { Text(S.add) }
             },
-            dismissButton = { TextButton(onClick = { addOpen = false }) { Text("Back") } }
+            dismissButton = { TextButton(onClick = { addOpen = false }) { Text(S.back) } }
         )
     }
     pinFor?.let { s ->
@@ -136,28 +137,28 @@ fun StaffAdmin(onBack: () -> Unit) {
         var dErr by remember { mutableStateOf<String?>(null) }
         AlertDialog(
             onDismissRequest = { pinFor = null },
-            title = { Text("New PIN for ${s.name}") },
+            title = { Text(S.newPinFor(s.name)) },
             text = {
                 Column {
                     OutlinedTextField(
                         value = pin, onValueChange = { pin = it.filter { c -> c.isDigit() }.take(4) },
-                        label = { Text("PIN (4 digits)") }
+                        label = { Text(S.pin4) }
                     )
                     dErr?.let { Text(it, color = MaterialTheme.colorScheme.error, fontSize = 13.sp) }
                 }
             },
             confirmButton = {
                 Button(onClick = {
-                    if (pin.length < 4) { dErr = "at least 4 digits"; return@Button }
+                    if (pin.length < 4) { dErr = S.min4digits; return@Button }
                     scope.launch {
                         when (val r = Deps.api.staffPatch(s.id, """{"pin":"$pin"}""")) {
                             is ApiResult.Ok -> pinFor = null
                             is ApiResult.Err -> dErr = r.message
                         }
                     }
-                }) { Text("Set PIN") }
+                }) { Text(S.setPin) }
             },
-            dismissButton = { TextButton(onClick = { pinFor = null }) { Text("Back") } }
+            dismissButton = { TextButton(onClick = { pinFor = null }) { Text(S.back) } }
         )
     }
 }
@@ -180,9 +181,9 @@ fun TablesAdmin(onBack: () -> Unit) {
 
     Column(Modifier.fillMaxSize()) {
         com.pavbhaji.pos.ui.AppHeader(
-            title = "Tables setup",
+            title = S.tablesSetup,
             onBack = onBack,
-            actions = { com.pavbhaji.pos.ui.HeaderTextAction("+ table") { addOpen = true } }
+            actions = { com.pavbhaji.pos.ui.HeaderTextAction(S.addTable) { addOpen = true } }
         )
         err?.let { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(horizontal = 14.dp)) }
         LazyColumn(Modifier.fillMaxSize(), contentPadding = androidx.compose.foundation.layout.PaddingValues(12.dp)) {
@@ -193,13 +194,13 @@ fun TablesAdmin(onBack: () -> Unit) {
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            if (t.kind == "parcel") "${t.name} · 🥡 parcel" else t.name,
+                            if (t.kind == "parcel") "${t.name} · ${S.parcelTag}" else t.name,
                             fontSize = 15.sp, fontWeight = FontWeight.SemiBold,
                             modifier = Modifier.weight(1f),
                             color = if (t.active) MaterialTheme.colorScheme.onSurface
                             else MaterialTheme.colorScheme.onSurfaceVariant
                         )
-                        TextButton(onClick = { renameFor = t }) { Text("rename", fontSize = 12.sp) }
+                        TextButton(onClick = { renameFor = t }) { Text(S.rename, fontSize = 12.sp) }
                         Switch(
                             checked = t.active,
                             onCheckedChange = { on ->
@@ -224,20 +225,20 @@ fun TablesAdmin(onBack: () -> Unit) {
         var kind by remember { mutableStateOf("dine") }
         AlertDialog(
             onDismissRequest = { addOpen = false },
-            title = { Text("New table") },
+            title = { Text(S.newTable) },
             text = {
                 Column {
-                    OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Name (e.g. T11 or P4)") })
+                    OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text(S.tableNameEg) })
                     // Parcel slots hold walk-up/takeaway orders punched at the
                     // counter — same flow, own section on the tables grid.
                     Row(Modifier.padding(top = 10.dp)) {
                         FilterChip(
                             selected = kind == "dine", onClick = { kind = "dine" },
-                            label = { Text("🍽 dine-in") }, modifier = Modifier.padding(end = 6.dp)
+                            label = { Text(S.dineIn) }, modifier = Modifier.padding(end = 6.dp)
                         )
                         FilterChip(
                             selected = kind == "parcel", onClick = { kind = "parcel" },
-                            label = { Text("🥡 parcel") }
+                            label = { Text(S.parcelTag) }
                         )
                     }
                 }
@@ -247,17 +248,17 @@ fun TablesAdmin(onBack: () -> Unit) {
                     if (name.trim().isNotEmpty()) {
                         scope.launch { Deps.api.tableCreate(name.trim(), kind); addOpen = false; refresh() }
                     }
-                }) { Text("Add") }
+                }) { Text(S.add) }
             },
-            dismissButton = { TextButton(onClick = { addOpen = false }) { Text("Back") } }
+            dismissButton = { TextButton(onClick = { addOpen = false }) { Text(S.back) } }
         )
     }
     renameFor?.let { t ->
         var name by remember { mutableStateOf(t.name) }
         AlertDialog(
             onDismissRequest = { renameFor = null },
-            title = { Text("Rename ${t.name}") },
-            text = { OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Name") }) },
+            title = { Text(S.renameX(t.name)) },
+            text = { OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text(S.name) }) },
             confirmButton = {
                 Button(onClick = {
                     if (name.trim().isNotEmpty()) {
@@ -266,9 +267,9 @@ fun TablesAdmin(onBack: () -> Unit) {
                             renameFor = null; refresh()
                         }
                     }
-                }) { Text("Save") }
+                }) { Text(S.save) }
             },
-            dismissButton = { TextButton(onClick = { renameFor = null }) { Text("Back") } }
+            dismissButton = { TextButton(onClick = { renameFor = null }) { Text(S.back) } }
         )
     }
 }

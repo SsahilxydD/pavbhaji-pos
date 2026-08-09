@@ -78,14 +78,15 @@ func buildServer(port int, dataDir string) (*Server, *http.ServeMux, error) {
 	mux.HandleFunc("POST /api/batches/{id}/take", s.requireRole("chef admin", s.handleBatchTake))
 	mux.HandleFunc("POST /api/batches/{id}/ready", s.requireRole("chef admin", s.handleBatchReady))
 
-	// Taking orders and serving: waiters and admins
-	mux.HandleFunc("POST /api/dining-tables/{id}/tickets", s.requireRole("waiter admin", s.handleCreateTicket))
-	mux.HandleFunc("POST /api/orders/{id}/serve-all", s.requireRole("waiter admin", s.handleServeAll))
-	mux.HandleFunc("POST /api/orders/{id}/close", s.requireRole("waiter admin", s.handleCloseOrder))
+	// Taking orders, closing, cancelling: managers and admins. Waiters only
+	// serve — their whole job is the flat carry list.
+	mux.HandleFunc("POST /api/dining-tables/{id}/tickets", s.requireRole("manager admin", s.handleCreateTicket))
+	mux.HandleFunc("POST /api/orders/{id}/serve-all", s.requireRole("waiter manager admin", s.handleServeAll))
+	mux.HandleFunc("POST /api/orders/{id}/close", s.requireRole("manager admin", s.handleCloseOrder))
 
 	// Item status: role rules are inside the handler (chef cooks, waiter serves)
 	mux.HandleFunc("POST /api/items/{id}/status", s.requireRole("*", s.handleItemStatus))
-	mux.HandleFunc("POST /api/items/{id}/cancel", s.requireRole("waiter admin", s.handleItemCancel))
+	mux.HandleFunc("POST /api/items/{id}/cancel", s.requireRole("manager admin", s.handleItemCancel))
 
 	// Admin only
 	mux.HandleFunc("POST /api/admin/categories", s.requireRole("admin", s.handleCategoryCreate))

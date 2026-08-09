@@ -31,6 +31,7 @@ import com.pavbhaji.pos.data.ApiResult
 import com.pavbhaji.pos.data.AuditEventDto
 import com.pavbhaji.pos.data.ReportDto
 import com.pavbhaji.pos.ui.GoodGreen
+import com.pavbhaji.pos.ui.S
 import com.pavbhaji.pos.ui.SectionTitle
 import com.pavbhaji.pos.ui.StatCard
 import com.pavbhaji.pos.ui.clockTime
@@ -64,9 +65,9 @@ fun ReportScreen(onBack: () -> Unit, onOpenLog: () -> Unit) {
 
     Column(Modifier.fillMaxSize()) {
         com.pavbhaji.pos.ui.AppHeader(
-            title = "Day report",
+            title = S.navReport,
             onBack = onBack,
-            actions = { com.pavbhaji.pos.ui.HeaderTextAction("log", onOpenLog) }
+            actions = { com.pavbhaji.pos.ui.HeaderTextAction(S.logBtn, onOpenLog) }
         )
         Row(
             Modifier.fillMaxWidth().padding(horizontal = 12.dp),
@@ -76,24 +77,24 @@ fun ReportScreen(onBack: () -> Unit, onOpenLog: () -> Unit) {
             TextButton(onClick = { date = shiftDate(rep.date, -1) }) { Text("◀") }
             Text(rep.date, fontSize = 16.sp, fontWeight = FontWeight.Bold)
             TextButton(onClick = { date = shiftDate(rep.date, +1) }) { Text("▶") }
-            TextButton(onClick = { date = null }) { Text("today", fontSize = 12.sp) }
+            TextButton(onClick = { date = null }) { Text(S.todayBtn, fontSize = 12.sp) }
         }
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(12.dp)) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                StatCard("sales (served)", rupees(rep.soldTotal), Modifier.weight(1f), GoodGreen)
-                StatCard("orders", "${rep.ordersOpened}", Modifier.weight(1f))
-                StatCard("cancelled", rupees(rep.cancelledTotal), Modifier.weight(1f), MaterialTheme.colorScheme.error)
+                StatCard(S.salesServed, rupees(rep.soldTotal), Modifier.weight(1f), GoodGreen)
+                StatCard(S.ordersCard, "${rep.ordersOpened}", Modifier.weight(1f))
+                StatCard(S.cancelledCard, rupees(rep.cancelledTotal), Modifier.weight(1f), MaterialTheme.colorScheme.error)
             }
             if (rep.ordersOpen > 0) {
                 Text(
-                    "⚠ ${rep.ordersOpen} order(s) still open for this date",
+                    S.stillOpen(rep.ordersOpen.toLong()),
                     color = MaterialTheme.colorScheme.error, fontSize = 13.sp,
                     modifier = Modifier.padding(top = 8.dp)
                 )
             }
 
-            SectionTitle("SOLD (served items)")
-            if (rep.sold.isEmpty()) Text("nothing yet", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            SectionTitle(S.soldSection)
+            if (rep.sold.isEmpty()) Text(S.nothingYet, fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             rep.sold.forEach {
                 Row(Modifier.fillMaxWidth().padding(vertical = 2.dp)) {
                     Text("${it.qty}× ${it.name}", fontSize = 14.sp, modifier = Modifier.weight(1f))
@@ -101,20 +102,20 @@ fun ReportScreen(onBack: () -> Unit, onOpenLog: () -> Unit) {
                 }
             }
             Row(Modifier.fillMaxWidth().padding(top = 6.dp)) {
-                Text("TOTAL", fontSize = 14.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                Text(S.totalRow, fontSize = 14.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
                 Text(rupees(rep.soldTotal), fontSize = 14.sp, fontWeight = FontWeight.ExtraBold, color = GoodGreen)
             }
 
-            SectionTitle("BY WAITER")
+            SectionTitle(S.byWaiter)
             rep.waiters.forEach {
                 Row(Modifier.fillMaxWidth().padding(vertical = 2.dp)) {
-                    Text("${it.name} (${it.qty} items)", fontSize = 14.sp, modifier = Modifier.weight(1f))
+                    Text("${it.name} (${S.itemsN(it.qty)})", fontSize = 14.sp, modifier = Modifier.weight(1f))
                     Text(rupees(it.value), fontSize = 14.sp)
                 }
             }
 
-            SectionTitle("CANCELLED")
-            if (rep.cancelled.isEmpty()) Text("none 🎉", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            SectionTitle(S.cancelledSection)
+            if (rep.cancelled.isEmpty()) Text(S.noneParty, fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
             rep.cancelled.forEach {
                 Row(Modifier.fillMaxWidth().padding(vertical = 2.dp)) {
                     Text("${it.qty}× ${it.name}", fontSize = 14.sp, modifier = Modifier.weight(1f))
@@ -147,14 +148,14 @@ fun AuditScreen(onBack: () -> Unit) {
     }
 
     Column(Modifier.fillMaxSize()) {
-        com.pavbhaji.pos.ui.AppHeader(title = "Audit log", onBack = onBack)
+        com.pavbhaji.pos.ui.AppHeader(title = S.auditTitle, onBack = onBack)
         LazyColumn(Modifier.fillMaxSize(), contentPadding = androidx.compose.foundation.layout.PaddingValues(12.dp)) {
             events.forEach { e ->
                 item(key = e.id) {
                     Column(Modifier.fillMaxWidth().padding(vertical = 5.dp)) {
                         Row {
                             Text(
-                                "${clockTime(e.at)} · ${e.by.ifEmpty { "system" }}",
+                                "${clockTime(e.at)} · ${e.by.ifEmpty { S.system }}",
                                 fontSize = 12.sp, fontWeight = FontWeight.SemiBold,
                                 color = MaterialTheme.colorScheme.primary, modifier = Modifier.weight(1f)
                             )
@@ -180,7 +181,7 @@ fun AuditScreen(onBack: () -> Unit) {
                             }
                         },
                         modifier = Modifier.fillMaxWidth().padding(vertical = 10.dp)
-                    ) { Text(if (loadingMore) "loading…" else "Load older") }
+                    ) { Text(if (loadingMore) S.loading else S.loadOlder) }
                 }
             }
         }

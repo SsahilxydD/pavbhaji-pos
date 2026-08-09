@@ -59,12 +59,15 @@ app can also download a backup to a phone anytime (Admin → Download backup).
      status page (`http://localhost:8177` in the laptop browser). Typing the address
      still works too, as a last resort.
 5. Log in with your PIN.
+6. **Language**: every phone picks its own — tap **English / हिंदी / ગુજરાતી** at the
+   bottom of the PIN screen. Changes apply instantly, per phone.
 
 ## First login — default PINs (CHANGE THESE!)
 
 | Who | PIN |
 |-----|-----|
 | Admin | `1111` |
+| Manager | `4444` |
 | Waiter 1 | `2222` |
 | Chef | `3333` |
 
@@ -77,14 +80,17 @@ and **Tables** → match your actual table count.
 
 ## Daily use
 
-- **Waiter**: two tabs. **Tables** — tap a table → add items → **Send to kitchen** (more
-  items later = send again; each send is a numbered KOT on the same order). Card colours
-  say what to do next: amber = kitchen has it, **green = plates waiting, blue = collect
-  and close**. Below the dining tables sits a **🥡 PARCEL** section (P1, P2…) — walk-up /
-  takeaway orders anyone (usually the admin) punches at the counter, same flow.
-  **Ready** — plates to carry, **grouped by table**, oldest table on top: each card is
-  one trip, tap **All N ✓** to serve the whole table (or ✓ per line). Drinks and extras
-  appear there instantly (✋ counter — just carry).
+- **Waiter**: one screen, nothing to learn. A single list of every plate to carry
+  **right now**, oldest on top — each row shows the dish and the **table number**,
+  tap **✓** as you drop it. Drinks and extras appear instantly (✋ — just carry).
+  Waiters don't take orders; that's the manager.
+- **Manager**: takes every order. Two tabs. **Tables** — tap a table → add items →
+  **Send to kitchen** (more items later = send again; each send is a numbered KOT on
+  the same order). Card colours say what to do next: amber = kitchen has it, **green =
+  plates waiting, blue = collect and close** (only manager/admin can close a table).
+  Below the dining tables sits a **🥡 PARCEL** section (P1, P2…) — walk-up / takeaway
+  orders punched at the counter, same flow. **Ready** — the same carry queue the
+  waiters see, but **grouped by table** for big carries (tap **All N ✓**).
 - **Chef**: a queue of **colour buckets** (red = spicy, yellow = cheese…). Orders fill a
   bucket up to 15 plates; tap a bucket to see which tables are inside; **Take this bucket**
   locks it to you (another chef must pick the next colour, and you can hold only **one
@@ -99,10 +105,10 @@ and **Tables** → match your actual table count.
   (plates per bucket, blank = 15) and **Seal after** (minutes before a waiting
   bucket seals itself so quiet-hour orders don't wait for a full tawa; blank = 10).
 
-**Who sees money:** only the admin. Chef and waiter screens never show prices —
-waiters punch items and carry plates; the owner handles the bill. Extras and
-drinks are **counter** items: they never appear on the chef's board, they land
-straight on the waiter's Ready line.
+**Who sees money:** only the admin. Chef, waiter and manager screens never show
+prices — the manager punches items, the waiter carries plates, the owner handles
+the bill. Extras and drinks are **counter** items: they never appear on the
+chef's board, they land straight on the waiters' serve list.
 
 **Number accuracy rules baked in:**
 - Order numbers are assigned only by the laptop — no duplicates possible.

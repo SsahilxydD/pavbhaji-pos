@@ -51,6 +51,7 @@ import com.pavbhaji.pos.ui.ConfirmDialog
 import com.pavbhaji.pos.ui.ConnBanner
 import com.pavbhaji.pos.ui.QtyStepper
 import com.pavbhaji.pos.ui.ReasonDialog
+import com.pavbhaji.pos.ui.S
 import com.pavbhaji.pos.ui.SectionTitle
 import com.pavbhaji.pos.ui.StatusChip
 import com.pavbhaji.pos.ui.WarnAmber
@@ -128,7 +129,7 @@ fun TableOrderScreen(tableId: Long, tableName: String, onBack: () -> Unit) {
                     order = r.value
                     cart.clear()
                     clientTicketId = UUID.randomUUID().toString()
-                    toast = "Sent to kitchen ✓"
+                    toast = S.sentToKitchenToast
                 }
                 is ApiResult.Err -> sendError = r.message
             }
@@ -156,9 +157,9 @@ fun TableOrderScreen(tableId: Long, tableName: String, onBack: () -> Unit) {
         AppHeader(
             title = tableName,
             subtitle = when {
-                o == null -> "new order"
-                pricesVisible() -> "order #${o.orderNo} · ${rupees(o.total)} · ${o.openedByName}"
-                else -> "order #${o.orderNo} · ${o.openedByName}"
+                o == null -> S.newOrder
+                pricesVisible() -> "${S.orderNo(o.orderNo)} · ${rupees(o.total)} · ${o.openedByName}"
+                else -> "${S.orderNo(o.orderNo)} · ${o.openedByName}"
             },
             onBack = onBack
         )
@@ -175,7 +176,7 @@ fun TableOrderScreen(tableId: Long, tableName: String, onBack: () -> Unit) {
         LazyColumn(Modifier.weight(1f).padding(horizontal = 12.dp)) {
             // ---- existing tickets ----
             if (o != null) {
-                item { SectionTitle("SENT TO KITCHEN") }
+                item { SectionTitle(S.sentToKitchen) }
                 o.tickets.forEach { tk ->
                     item(key = "tk${tk.id}") {
                         Text(
@@ -208,7 +209,7 @@ fun TableOrderScreen(tableId: Long, tableName: String, onBack: () -> Unit) {
             // ---- cart (new KOT) ----
             if (cart.isNotEmpty()) {
                 item {
-                    SectionTitle("NEW KOT — NOT SENT YET")
+                    SectionTitle(S.newKot)
                     Surface(
                         shape = RoundedCornerShape(14.dp),
                         color = Color(0xFFFFF3E7),
@@ -239,7 +240,7 @@ fun TableOrderScreen(tableId: Long, tableName: String, onBack: () -> Unit) {
                                     TextButton(
                                         onClick = { noteEditIdx = idx },
                                         contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 6.dp)
-                                    ) { Text("note", fontSize = 12.sp) }
+                                    ) { Text(S.noteBtn, fontSize = 12.sp) }
                                     QtyStepper(line.qty) { q ->
                                         if (q <= 0) cart.removeAt(idx)
                                         else cart[idx] = line.copy(qty = q)
@@ -253,7 +254,7 @@ fun TableOrderScreen(tableId: Long, tableName: String, onBack: () -> Unit) {
 
             // ---- menu picker: owner's rule — keep the waiter dead simple,
             // every dish is one full-width row, tap = +1, no tabs, no grid ----
-            item { SectionTitle("ADD ITEMS") }
+            item { SectionTitle(S.addItems) }
             menu.forEach { c ->
                 if (menu.size > 1) item {
                     Text(
@@ -304,9 +305,9 @@ fun TableOrderScreen(tableId: Long, tableName: String, onBack: () -> Unit) {
                         val total = cart.sumOf { it.qty * it.price }
                         Text(
                             when {
-                                sending -> "Sending…"
-                                sendError != null -> "Try again — ${itemsLabel(count)}"
-                                else -> "Send to kitchen 🍳  ${itemsLabel(count)}" +
+                                sending -> S.sending
+                                sendError != null -> S.tryAgain(itemsLabel(count))
+                                else -> S.sendToKitchen(itemsLabel(count)) +
                                     if (pricesVisible()) " · ${rupees(total)}" else ""
                             },
                             fontSize = 16.sp, fontWeight = FontWeight.ExtraBold
@@ -320,7 +321,7 @@ fun TableOrderScreen(tableId: Long, tableName: String, onBack: () -> Unit) {
                             enabled = servable,
                             modifier = Modifier.weight(1f).height(50.dp),
                             shape = RoundedCornerShape(16.dp)
-                        ) { Text("All served ✓", fontSize = 15.sp, fontWeight = FontWeight.Bold) }
+                        ) { Text(S.allServed, fontSize = 15.sp, fontWeight = FontWeight.Bold) }
                         Button(
                             onClick = { confirmClose = true },
                             modifier = Modifier.weight(1f).height(50.dp),
@@ -328,14 +329,14 @@ fun TableOrderScreen(tableId: Long, tableName: String, onBack: () -> Unit) {
                             colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.tertiary)
                         ) {
                             Text(
-                                if (pricesVisible()) "Close · ${rupees(o.total)}" else "Close table",
+                                if (pricesVisible()) S.closeAmt(rupees(o.total)) else S.closeTable,
                                 fontSize = 15.sp, fontWeight = FontWeight.ExtraBold
                             )
                         }
                     }
                 } else {
                     Text(
-                        "Tap items above to start this table's order",
+                        S.tapToStart,
                         fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(vertical = 6.dp)
                     )
@@ -347,7 +348,7 @@ fun TableOrderScreen(tableId: Long, tableName: String, onBack: () -> Unit) {
     // ---- dialogs ----
     cancelTarget?.let { target ->
         ReasonDialog(
-            title = "Cancel ${target.qty}× ${target.name}?",
+            title = S.cancelQ(target.qty, target.name),
             onConfirm = { reason ->
                 cancelTarget = null
                 scope.launch {
@@ -362,10 +363,10 @@ fun TableOrderScreen(tableId: Long, tableName: String, onBack: () -> Unit) {
     }
     if (confirmClose) {
         ConfirmDialog(
-            title = "Close $tableName?",
-            body = (if (pricesVisible()) "Total: ${rupees(order?.total ?: 0)}\n" else "") +
-                "Collect payment before closing.",
-            confirmLabel = "Close table",
+            title = S.closeQ(tableName),
+            body = (if (pricesVisible()) S.totalLine(rupees(order?.total ?: 0)) + "\n" else "") +
+                S.collectFirst,
+            confirmLabel = S.closeTable,
             onConfirm = { confirmClose = false; closeNow() },
             onDismiss = { confirmClose = false }
         )
@@ -373,12 +374,12 @@ fun TableOrderScreen(tableId: Long, tableName: String, onBack: () -> Unit) {
     blockers?.let { b ->
         AlertDialog(
             onDismissRequest = { blockers = null },
-            title = { Text("Can't close yet") },
+            title = { Text(S.cantClose) },
             text = {
                 Column {
                     b.forEach { Text("• $it", fontSize = 14.sp) }
                     Text(
-                        "\nMark everything as served, or cancel items with a reason.",
+                        S.cantCloseHint,
                         fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
@@ -390,20 +391,20 @@ fun TableOrderScreen(tableId: Long, tableName: String, onBack: () -> Unit) {
                         order?.let { Deps.api.serveAll(it.id) }
                         closeNow()
                     }
-                }) { Text("All served + close") }
+                }) { Text(S.allServedClose) }
             },
-            dismissButton = { TextButton(onClick = { blockers = null }) { Text("Back") } }
+            dismissButton = { TextButton(onClick = { blockers = null }) { Text(S.back) } }
         )
     }
     noteEditIdx?.let { idx ->
         var text by remember { mutableStateOf(cart.getOrNull(idx)?.note ?: "") }
         AlertDialog(
             onDismissRequest = { noteEditIdx = null },
-            title = { Text("Note for ${cart.getOrNull(idx)?.name ?: ""}") },
+            title = { Text(S.noteFor(cart.getOrNull(idx)?.name ?: "")) },
             text = {
                 OutlinedTextField(
                     value = text, onValueChange = { text = it },
-                    placeholder = { Text("less spicy, no onion…") },
+                    placeholder = { Text(S.notePlaceholder) },
                     modifier = Modifier.fillMaxWidth()
                 )
             },
@@ -411,9 +412,9 @@ fun TableOrderScreen(tableId: Long, tableName: String, onBack: () -> Unit) {
                 Button(onClick = {
                     cart.getOrNull(idx)?.let { cart[idx] = it.copy(note = text.trim()) }
                     noteEditIdx = null
-                }) { Text("Save") }
+                }) { Text(S.save) }
             },
-            dismissButton = { TextButton(onClick = { noteEditIdx = null }) { Text("Back") } }
+            dismissButton = { TextButton(onClick = { noteEditIdx = null }) { Text(S.back) } }
         )
     }
 }
@@ -452,7 +453,7 @@ private fun MenuRow(
                 modifier = Modifier.padding(start = 9.dp).weight(1f)
             )
             val sub = when {
-                !available -> "out of stock"
+                !available -> S.outOfStock
                 counter -> if (pricesVisible()) "${rupees(price)} · ✋" else "✋"
                 else -> if (pricesVisible()) rupees(price) else ""
             }
@@ -503,7 +504,7 @@ private fun SentItemRow(
             )
             val sub = listOfNotNull(
                 if (pricesVisible()) rupees(it.price * it.qty) else null,
-                if (counter && it.status == "pending") "✋ you serve this" else null,
+                if (counter && it.status == "pending") S.youServeThis else null,
                 it.note.ifEmpty { null },
                 it.cancelReason.ifEmpty { null }
             ).joinToString(" · ")
@@ -517,7 +518,7 @@ private fun SentItemRow(
         if (canServe) {
             TextButton(onClick = onServe) {
                 Text(
-                    if (counter && it.status == "pending") "✋ serve" else "serve ✓",
+                    if (counter && it.status == "pending") S.serveHand else S.serveTick,
                     fontSize = 12.sp, color = Color(0xFF2E7D32)
                 )
             }

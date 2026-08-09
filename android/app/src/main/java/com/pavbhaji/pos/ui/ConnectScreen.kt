@@ -65,7 +65,7 @@ fun ConnectScreen(onConnected: () -> Unit) {
     fun tryAddr(raw: String) {
         val target = normalizeAddr(raw)
         if (target == null) {
-            error = "That doesn't look like an address"
+            error = S.badAddress
             return
         }
         busy = true; error = null
@@ -73,7 +73,7 @@ fun ConnectScreen(onConnected: () -> Unit) {
             val f = Discovery.verify(target)
             busy = false
             if (f != null) accept(f)
-            else error = "No server at $target. Same WiFi? Black window open on the laptop?"
+            else error = S.noServerAt(target)
         }
     }
 
@@ -104,7 +104,7 @@ fun ConnectScreen(onConnected: () -> Unit) {
             searching -> Row(verticalAlignment = Alignment.CenterVertically) {
                 CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
                 Text(
-                    "  Looking for the laptop on this WiFi…",
+                    "  " + S.searchingLaptop,
                     fontSize = 14.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -112,7 +112,7 @@ fun ConnectScreen(onConnected: () -> Unit) {
 
             candidates.size > 1 -> {
                 Text(
-                    "Found ${candidates.size} servers — tap yours:",
+                    S.foundServers(candidates.size),
                     fontSize = 14.sp, fontWeight = FontWeight.SemiBold
                 )
                 candidates.forEach { f ->
@@ -125,7 +125,7 @@ fun ConnectScreen(onConnected: () -> Unit) {
             }
 
             searchedOnce -> Text(
-                "Couldn't find the laptop by itself.\nIs it on, black window open, same WiFi?",
+                S.notFound,
                 fontSize = 13.sp,
                 textAlign = TextAlign.Center,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -145,7 +145,7 @@ fun ConnectScreen(onConnected: () -> Unit) {
                 scanLauncher.launch(
                     ScanOptions()
                         .setDesiredBarcodeFormats(ScanOptions.QR_CODE)
-                        .setPrompt("Point at the QR on the laptop screen")
+                        .setPrompt(S.scanPrompt)
                         .setBeepEnabled(false)
                         .setOrientationLocked(true)
                         .setCaptureActivity(PortraitCaptureActivity::class.java)
@@ -155,22 +155,22 @@ fun ConnectScreen(onConnected: () -> Unit) {
             modifier = Modifier.fillMaxWidth()
         ) {
             if (busy) CircularProgressIndicator(Modifier.padding(4.dp), strokeWidth = 2.dp)
-            else Text("📷  Scan QR on laptop screen", fontSize = 16.sp)
+            else Text(S.scanQr, fontSize = 16.sp)
         }
         TextButton(onClick = { searchKey++ }, enabled = !searching && !busy) {
-            Text("🔄  Search again", fontSize = 13.sp)
+            Text(S.searchAgain, fontSize = 13.sp)
         }
 
         Spacer(Modifier.height(14.dp))
         Text(
-            "or type the address from the laptop",
+            S.orTypeAddr,
             fontSize = 12.sp,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
         OutlinedTextField(
             value = addr,
             onValueChange = { addr = it.trim(); error = null },
-            label = { Text("Server address") },
+            label = { Text(S.serverAddress) },
             placeholder = { Text("192.168.1.50:8177") },
             singleLine = true,
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
@@ -180,7 +180,7 @@ fun ConnectScreen(onConnected: () -> Unit) {
             onClick = { tryAddr(addr) },
             enabled = !busy && addr.length >= 7,
             modifier = Modifier.fillMaxWidth().padding(top = 10.dp)
-        ) { Text("Connect", fontSize = 15.sp) }
+        ) { Text(S.connect, fontSize = 15.sp) }
     }
 }
 

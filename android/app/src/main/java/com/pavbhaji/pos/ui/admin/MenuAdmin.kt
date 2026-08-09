@@ -48,6 +48,7 @@ import com.pavbhaji.pos.ui.AppHeader
 import com.pavbhaji.pos.ui.CardLine
 import com.pavbhaji.pos.ui.DishPaletteHex
 import com.pavbhaji.pos.ui.HeaderTextAction
+import com.pavbhaji.pos.ui.S
 import com.pavbhaji.pos.ui.InkDark
 import com.pavbhaji.pos.ui.WarnAmber
 import com.pavbhaji.pos.ui.dishColour
@@ -95,9 +96,9 @@ fun MenuAdmin(onBack: () -> Unit) {
 
     Column(Modifier.fillMaxSize()) {
         AppHeader(
-            title = "Menu & colours",
+            title = S.navMenu,
             onBack = onBack,
-            actions = { HeaderTextAction("+ category") { addCategory = true } }
+            actions = { HeaderTextAction(S.addCategory) { addCategory = true } }
         )
         err?.let { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(horizontal = 14.dp)) }
 
@@ -118,7 +119,7 @@ fun MenuAdmin(onBack: () -> Unit) {
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.weight(1f)
                         )
-                        TextButton(onClick = { addToCat = cat }) { Text("+ item", fontSize = 13.sp) }
+                        TextButton(onClick = { addToCat = cat }) { Text(S.addItem, fontSize = 13.sp) }
                     }
                 }
                 cat.items.forEach { mi ->
@@ -171,10 +172,10 @@ fun MenuAdmin(onBack: () -> Unit) {
             title = { Text(mi.name) },
             text = {
                 Column {
-                    OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Name") })
+                    OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text(S.name) })
                     OutlinedTextField(
                         value = price, onValueChange = { price = it },
-                        label = { Text("Price (₹)") }, modifier = Modifier.padding(top = 8.dp)
+                        label = { Text(S.priceRs) }, modifier = Modifier.padding(top = 8.dp)
                     )
                     StationPicker(station) { station = it }
                     if (station == "kitchen") {
@@ -185,13 +186,13 @@ fun MenuAdmin(onBack: () -> Unit) {
                             OutlinedTextField(
                                 value = cap,
                                 onValueChange = { cap = it.filter { c -> c.isDigit() }.take(2) },
-                                label = { Text("Tawa cap") }, placeholder = { Text("15") },
+                                label = { Text(S.tawaCap) }, placeholder = { Text("15") },
                                 modifier = Modifier.weight(1f).padding(end = 6.dp)
                             )
                             OutlinedTextField(
                                 value = ageMin,
                                 onValueChange = { ageMin = it.filter { c -> c.isDigit() }.take(3) },
-                                label = { Text("Seal after (min)") }, placeholder = { Text("10") },
+                                label = { Text(S.sealAfter) }, placeholder = { Text("10") },
                                 modifier = Modifier.weight(1f)
                             )
                         }
@@ -201,7 +202,7 @@ fun MenuAdmin(onBack: () -> Unit) {
                             Deps.api.menuItemPatch(mi.id, """{"active":false}""")
                             editItem = null; refresh()
                         }
-                    }) { Text("Archive item (hide everywhere)", color = MaterialTheme.colorScheme.error, fontSize = 13.sp) }
+                    }) { Text(S.archiveItem, color = MaterialTheme.colorScheme.error, fontSize = 13.sp) }
                 }
             },
             confirmButton = {
@@ -219,9 +220,9 @@ fun MenuAdmin(onBack: () -> Unit) {
                             editItem = null; refresh()
                         }
                     }
-                }) { Text("Save") }
+                }) { Text(S.save) }
             },
-            dismissButton = { TextButton(onClick = { editItem = null }) { Text("Back") } }
+            dismissButton = { TextButton(onClick = { editItem = null }) { Text(S.back) } }
         )
     }
 
@@ -234,13 +235,13 @@ fun MenuAdmin(onBack: () -> Unit) {
         var morePicker by remember { mutableStateOf(false) }
         AlertDialog(
             onDismissRequest = { addToCat = null },
-            title = { Text("New item — ${cat.name}") },
+            title = { Text(S.newItemIn(cat.name)) },
             text = {
                 Column {
-                    OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Name") })
+                    OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text(S.name) })
                     OutlinedTextField(
                         value = price, onValueChange = { price = it },
-                        label = { Text("Price (₹)") }, modifier = Modifier.padding(top = 8.dp)
+                        label = { Text(S.priceRs) }, modifier = Modifier.padding(top = 8.dp)
                     )
                     StationPicker(station) { station = it }
                     ColourSwatchRow(colour, onSelect = { colour = it }, onMore = { morePicker = true })
@@ -255,13 +256,13 @@ fun MenuAdmin(onBack: () -> Unit) {
                             addToCat = null; refresh()
                         }
                     }
-                }) { Text("Add") }
+                }) { Text(S.add) }
             },
-            dismissButton = { TextButton(onClick = { addToCat = null }) { Text("Back") } }
+            dismissButton = { TextButton(onClick = { addToCat = null }) { Text(S.back) } }
         )
         if (morePicker) {
             ColourPickerDialog(
-                title = name.trim().ifBlank { "New item" },
+                title = name.trim().ifBlank { S.newItem },
                 initial = colour,
                 onPick = { colour = it; morePicker = false },
                 onDismiss = { morePicker = false }
@@ -274,8 +275,8 @@ fun MenuAdmin(onBack: () -> Unit) {
         var name by remember { mutableStateOf("") }
         AlertDialog(
             onDismissRequest = { addCategory = false },
-            title = { Text("New category") },
-            text = { OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Name") }) },
+            title = { Text(S.newCategory) },
+            text = { OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text(S.name) }) },
             confirmButton = {
                 Button(onClick = {
                     if (name.trim().isNotEmpty()) {
@@ -284,9 +285,9 @@ fun MenuAdmin(onBack: () -> Unit) {
                             addCategory = false; refresh()
                         }
                     }
-                }) { Text("Add") }
+                }) { Text(S.add) }
             },
-            dismissButton = { TextButton(onClick = { addCategory = false }) { Text("Back") } }
+            dismissButton = { TextButton(onClick = { addCategory = false }) { Text(S.back) } }
         )
     }
 }
@@ -323,8 +324,8 @@ private fun MenuItemCard(
                 )
                 val sub = buildString {
                     append(rupees(mi.price))
-                    if (mi.station == "counter") append(" · ✋ counter")
-                    if (!mi.available) append(" · out of stock")
+                    if (mi.station == "counter") append(" · " + S.counterTag)
+                    if (!mi.available) append(" · " + S.outOfStock)
                 }
                 Text(
                     sub, fontSize = 12.sp, maxLines = 1,
@@ -347,11 +348,11 @@ private fun StationPicker(station: String, onSelect: (String) -> Unit) {
     Row(Modifier.padding(top = 10.dp)) {
         FilterChip(
             selected = station == "kitchen", onClick = { onSelect("kitchen") },
-            label = { Text("🍳 kitchen") }, modifier = Modifier.padding(end = 6.dp)
+            label = { Text(S.stationKitchen) }, modifier = Modifier.padding(end = 6.dp)
         )
         FilterChip(
             selected = station == "counter", onClick = { onSelect("counter") },
-            label = { Text("✋ counter") }
+            label = { Text(S.stationCounter) }
         )
     }
 }
@@ -361,7 +362,7 @@ private fun StationPicker(station: String, onSelect: (String) -> Unit) {
 @Composable
 private fun ColourSwatchRow(selected: String, onSelect: (String) -> Unit, onMore: () -> Unit) {
     Column(Modifier.padding(top = 12.dp)) {
-        Text("Bucket colour", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(S.bucketColour, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Row(Modifier.padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             DishPaletteHex.forEach { hex ->
                 val sel = selected.equals(hex, ignoreCase = true)

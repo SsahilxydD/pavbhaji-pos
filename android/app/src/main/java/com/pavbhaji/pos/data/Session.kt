@@ -17,6 +17,11 @@ class Session(context: Context) {
         get() = prefs.getString("serverId", "") ?: ""
         set(v) { prefs.edit().putString("serverId", v).apply() }
 
+    // UI language for this phone: "en" | "hi" | "gu".
+    var lang: String
+        get() = prefs.getString("lang", "en") ?: "en"
+        set(v) { prefs.edit().putString("lang", v).apply() }
+
     var token: String
         get() = prefs.getString("token", "") ?: ""
         set(v) { prefs.edit().putString("token", v).apply() }

@@ -111,7 +111,7 @@ fun ColourPickerDialog(
                     }
                 }
                 Text(
-                    "or mix your own",
+                    com.pavbhaji.pos.ui.S.orMixOwn,
                     fontSize = 12.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(top = 4.dp, bottom = 8.dp)
@@ -138,8 +138,8 @@ fun ColourPickerDialog(
                 }
             }
         },
-        confirmButton = { Button(onClick = { onPick(hex) }) { Text("Save") } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Back") } }
+        confirmButton = { Button(onClick = { onPick(hex) }) { Text(com.pavbhaji.pos.ui.S.save) } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(com.pavbhaji.pos.ui.S.back) } }
     )
 }
 

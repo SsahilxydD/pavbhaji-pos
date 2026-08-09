@@ -45,6 +45,7 @@ import com.pavbhaji.pos.ui.ConnBanner
 import com.pavbhaji.pos.ui.EmptyHint
 import com.pavbhaji.pos.ui.GoodGreen
 import com.pavbhaji.pos.ui.HeaderTextAction
+import com.pavbhaji.pos.ui.S
 import com.pavbhaji.pos.ui.WarnAmber
 import com.pavbhaji.pos.ui.dishColour
 import kotlinx.coroutines.delay
@@ -83,13 +84,13 @@ fun ReadyScreen(onLogout: () -> Unit, showLogout: Boolean) {
 
     Column(Modifier.fillMaxSize()) {
         AppHeader(
-            title = "Ready",
+            title = S.readyTitle,
             subtitle = when {
-                lines.isEmpty() -> "nothing waiting"
-                groups.size == 1 -> "${lines.size} to carry · 1 table"
-                else -> "${lines.size} to carry · ${groups.size} tables · oldest on top"
+                lines.isEmpty() -> S.nothingToCarry
+                groups.size == 1 -> S.toCarryOneTable(lines.size)
+                else -> S.toCarryTables(lines.size, groups.size)
             },
-            actions = { if (showLogout) HeaderTextAction("Logout", onLogout) }
+            actions = { if (showLogout) HeaderTextAction(S.logout, onLogout) }
         )
         ConnBanner(connected)
         toast?.let {
@@ -97,7 +98,7 @@ fun ReadyScreen(onLogout: () -> Unit, showLogout: Boolean) {
                 modifier = Modifier.padding(horizontal = 14.dp, vertical = 3.dp))
         }
         if (lines.isEmpty()) {
-            EmptyHint("All carried out 🎉 New plates appear here the moment a bucket finishes.")
+            EmptyHint(S.allCarried)
         }
         LazyColumn(
             Modifier.fillMaxSize(),
@@ -178,7 +179,7 @@ private fun TableCarryCard(
                             modifier = Modifier.padding(start = 8.dp)
                         ) {
                             Text(
-                                if (busy) "…" else "All ${g.lines.size} ✓",
+                                if (busy) "…" else S.allN(g.lines.size),
                                 fontSize = 12.sp, fontWeight = FontWeight.ExtraBold
                             )
                         }
@@ -195,7 +196,7 @@ private fun TableCarryCard(
                             Text("${l.qty}× ${l.name}", fontSize = 14.sp, fontWeight = FontWeight.Bold, maxLines = 1)
                             val sub = listOfNotNull(
                                 if (l.note.isNotEmpty()) "⚠ ${l.note}" else null,
-                                if (l.station == "counter") "✋ just carry" else null
+                                if (l.station == "counter") S.justCarry else null
                             ).joinToString(" · ")
                             if (sub.isNotEmpty()) Text(
                                 sub, fontSize = 11.sp, maxLines = 1,
@@ -215,12 +216,120 @@ private fun TableCarryCard(
                             )
                         ) {
                             Text(
-                                if (g.lines.size == 1) "Served ✓" else "✓",
+                                if (g.lines.size == 1) S.servedTick else "✓",
                                 fontSize = 12.sp, fontWeight = FontWeight.ExtraBold
                             )
                         }
                     }
                 }
+            }
+        }
+    }
+}
+
+// The waiter's ENTIRE app: one flat vertical list — every plate to carry right
+// now, oldest first. Each row reads like a call-out: "2× Cheese Bhaji → T4 ✓".
+// Waiters never take orders (that's the manager's job); they only serve, so
+// there are no tabs, no tables grid, nothing else to learn.
+@Composable
+fun ServeScreen(onLogout: () -> Unit) {
+    val scope = rememberCoroutineScope()
+    val connected by Deps.live.connected.collectAsState()
+    var lines by remember { mutableStateOf<List<PickupLineDto>>(emptyList()) }
+    var toast by remember { mutableStateOf<String?>(null) }
+
+    suspend fun refresh() {
+        when (val r = Deps.api.pickup()) {
+            is ApiResult.Ok -> lines = r.value.lines
+            is ApiResult.Err -> {}
+        }
+    }
+    LaunchedEffect(Unit) {
+        refresh()
+        Deps.live.topics.collect { if (it == "kitchen" || it == "tables" || it == "menu") refresh() }
+    }
+    LaunchedEffect(Unit) { while (true) { delay(15_000); refresh() } }
+    toast?.let { LaunchedEffect(it) { delay(2500); toast = null } }
+
+    val sorted = lines.sortedWith(compareBy({ it.sinceMs }, { it.itemId }))
+
+    Column(Modifier.fillMaxSize()) {
+        AppHeader(
+            title = S.serveTitle,
+            subtitle = if (lines.isEmpty()) S.nothingToCarry else S.toCarry(lines.size),
+            actions = { HeaderTextAction(S.logout, onLogout) }
+        )
+        ConnBanner(connected)
+        toast?.let {
+            Text(it, color = MaterialTheme.colorScheme.error, fontSize = 13.sp,
+                modifier = Modifier.padding(horizontal = 14.dp, vertical = 3.dp))
+        }
+        if (lines.isEmpty()) {
+            EmptyHint(S.allCarried)
+        }
+        LazyColumn(
+            Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            items(sorted.size, key = { sorted[it].itemId }) { i ->
+                val l = sorted[i]
+                ServeRow(
+                    l,
+                    onServe = {
+                        scope.launch {
+                            when (val r = Deps.api.itemStatus(l.itemId, "served")) {
+                                is ApiResult.Ok -> lines = lines.filter { it.itemId != l.itemId }
+                                is ApiResult.Err -> toast = r.message
+                            }
+                            refresh()
+                        }
+                    }
+                )
+            }
+            items(1) { Spacer(Modifier.height(20.dp)) }
+        }
+    }
+}
+
+@Composable
+private fun ServeRow(l: PickupLineDto, onServe: () -> Unit) {
+    val counter = l.station == "counter"
+    Surface(
+        shape = RoundedCornerShape(12.dp),
+        color = if (counter) Color(0xFFFFFBF2) else Color.White,
+        border = BorderStroke(1.dp, Color(0xFFEADFD2))
+    ) {
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(Modifier.size(11.dp).background(dishColour(l.colour, l.itemId), RoundedCornerShape(4.dp)))
+            Column(Modifier.weight(1f).padding(start = 9.dp)) {
+                Text("${l.qty}× ${l.name}", fontSize = 15.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                val sub = listOfNotNull(
+                    if (l.note.isNotEmpty()) "⚠ ${l.note}" else null,
+                    if (counter) S.justCarry else null
+                ).joinToString(" · ")
+                if (sub.isNotEmpty()) Text(
+                    sub, fontSize = 11.sp, maxLines = 1,
+                    color = if (l.note.isNotEmpty()) MaterialTheme.colorScheme.error
+                    else MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            ReadyAge(l.sinceMs)
+            // The table number is what a waiter scans the list for — loudest thing in the row.
+            Text(
+                l.tableName, fontSize = 20.sp, fontWeight = FontWeight.ExtraBold,
+                modifier = Modifier.padding(horizontal = 10.dp)
+            )
+            Button(
+                onClick = onServe,
+                shape = RoundedCornerShape(10.dp),
+                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = if (counter) WarnAmber else GoodGreen)
+            ) {
+                Text("✓", fontSize = 14.sp, fontWeight = FontWeight.ExtraBold)
             }
         }
     }

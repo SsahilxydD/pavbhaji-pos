@@ -372,8 +372,8 @@ func (s *Server) handleStaffCreate(w http.ResponseWriter, r *http.Request) {
 		fail(w, http.StatusBadRequest, "PIN must be 4 digits")
 		return
 	}
-	if req.Role != "admin" && req.Role != "waiter" && req.Role != "chef" {
-		fail(w, http.StatusBadRequest, "role must be admin, waiter or chef")
+	if req.Role != "admin" && req.Role != "manager" && req.Role != "waiter" && req.Role != "chef" {
+		fail(w, http.StatusBadRequest, "role must be admin, manager, waiter or chef")
 		return
 	}
 	salt := getMeta(s.db, "pin_salt", "")
@@ -435,7 +435,7 @@ func (s *Server) handleStaffPatch(w http.ResponseWriter, r *http.Request) {
 		audit(s.db, me.ID, me.Name, "staff", "reset PIN for "+curName)
 	}
 	if req.Role != nil {
-		if *req.Role != "admin" && *req.Role != "waiter" && *req.Role != "chef" {
+		if *req.Role != "admin" && *req.Role != "manager" && *req.Role != "waiter" && *req.Role != "chef" {
 			fail(w, http.StatusBadRequest, "invalid role")
 			return
 		}

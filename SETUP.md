@@ -109,6 +109,10 @@ and **Tables** → match your actual table count.
   plate to the waiters' Ready line in one tap.
 - **Admin**: one screen — today's sales up top, then Floor / Kitchen / Menu & colours /
   Tables / Staff / Day report (the activity log lives inside the report, top right).
+  Prefer a big screen? Open **`http://localhost:8177/admin`** in the laptop's browser
+  (there's a button for it in the server window) — log in with the admin PIN and manage
+  menu, prices, staff & PINs, tables, reports and backups right on the laptop. Works
+  from any browser on the shop WiFi too.
   In **Menu & colours**, tap a dish's colour dot to repaint it anywhere — pick a ready
   swatch or mix any colour; every phone updates live. The dialog also sets **station**
   (kitchen = cooked in buckets, counter = waiter hands it over), out-of-stock is

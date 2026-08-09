@@ -67,6 +67,7 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 <div class="row">Last backup: <b>%s</b> · pen-drive copy: <b>%s</b></div>
 <div class="row">Server clock: <b>%s</b> — reports and the day boundary trust this; fix it in Windows if it's wrong.</div>
 <div class="row">Backups refresh every 20 min into the <b>data</b> folder — leave a pen drive plugged in for an automatic second copy.</div>
+<div class="row" style="margin-top:8px"><a href="/admin" style="color:#ffb694;font-weight:700">⚙ Open the admin panel</a> — menu, prices, staff &amp; PINs, tables, reports (admin PIN needed).</div>
 </body></html>`, addr, s.hub.Count(), ordersToday, openOrders, lastBackup, usbBackup,
 		time.Now().Format("15:04, Mon 2 Jan"))
 }

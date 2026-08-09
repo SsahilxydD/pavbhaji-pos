@@ -5,7 +5,8 @@ roles (admin / manager / waiter / chef), full audit trail. **Never hosted anywhe
 Windows laptop on the shop WiFi is the server; Android phones are the clients.
 
 - `server/` — Go. Single static binary, embedded SQLite (pure-Go driver), REST + WebSocket,
-  status page with pairing QR on `http://localhost:8177`.
+  status page with pairing QR on `http://localhost:8177`, and an embedded browser
+  admin panel on `/admin` (menu, prices, staff & PINs, tables, reports, backup).
 - `android/` — Kotlin + Jetpack Compose. One APK, screen decided by the PIN's role.
 - `dist/` — build outputs: `PavBhajiPOS-server.exe` (Windows), `PavBhajiPOS.apk`,
   plus Windows helper scripts.

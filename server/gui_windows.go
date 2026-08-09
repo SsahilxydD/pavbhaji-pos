@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"os/exec"
 	"strings"
 
 	"github.com/lxn/walk"
@@ -34,7 +35,9 @@ func runGUI(defaultPort int, dataDir string) {
 		mw       *walk.MainWindow
 		info     *walk.TextEdit
 		startBtn *walk.PushButton
+		adminBtn *walk.PushButton
 		running  bool
+		livePort int
 	)
 
 	d.MainWindow{
@@ -71,9 +74,24 @@ func runGUI(defaultPort int, dataDir string) {
 					go http.Serve(ln, mux)
 
 					running = true
+					livePort = port
 					startBtn.SetText("●   Server Running")
 					startBtn.SetEnabled(false)
+					adminBtn.SetEnabled(true)
 					info.SetText(connectInfo(port))
+				},
+			},
+			d.PushButton{
+				AssignTo: &adminBtn,
+				Text:     "⚙   Open Admin Panel (menu · prices · staff · reports)",
+				Enabled:  false,
+				MinSize:  d.Size{Height: 38},
+				OnClicked: func() {
+					if running {
+						// opens the default browser on the embedded panel
+						exec.Command("rundll32", "url.dll,FileProtocolHandler",
+							fmt.Sprintf("http://localhost:%d/admin", livePort)).Start()
+					}
 				},
 			},
 			d.TextEdit{
@@ -101,6 +119,7 @@ func connectInfo(port int) string {
 		b.WriteString(fmt.Sprintf("    http://%s:%d\r\n", ip, port))
 	}
 	b.WriteString(fmt.Sprintf("\r\nThis PC (status page):  http://localhost:%d\r\n", port))
+	b.WriteString(fmt.Sprintf("Admin panel:            http://localhost:%d/admin\r\n", port))
 	b.WriteString("\r\nKeep this window open while the shop is running.\r\nClose it to stop the server.")
 	return b.String()
 }

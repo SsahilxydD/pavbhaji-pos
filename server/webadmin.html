@@ -1,0 +1,332 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PavBhaji POS — Admin</title>
+<style>
+  :root { --red:#a8271f; --ink:#2b2320; --mut:#8a7f77; --line:#eadfd2; --bg:#faf6f0; --card:#fff; --green:#1e8f53; --amber:#b45f00; }
+  * { box-sizing:border-box; margin:0; }
+  body { font-family:system-ui,sans-serif; background:var(--bg); color:var(--ink); }
+  .wrap { max-width:980px; margin:0 auto; padding:16px; }
+  header { background:var(--red); color:#fff; }
+  header .wrap { display:flex; align-items:center; gap:12px; padding-top:12px; padding-bottom:12px; }
+  header h1 { font-size:18px; flex:1; }
+  header small { opacity:.85 }
+  button { font:inherit; cursor:pointer; border:1px solid var(--line); background:#fff; border-radius:9px; padding:7px 13px; }
+  button.primary { background:var(--red); border-color:var(--red); color:#fff; font-weight:700; }
+  button.ghost { background:transparent; border-color:rgba(255,255,255,.5); color:#fff; }
+  nav { display:flex; gap:6px; flex-wrap:wrap; margin:14px 0; }
+  nav button { border-radius:99px; }
+  nav button.on { background:var(--ink); color:#fff; border-color:var(--ink); font-weight:700; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:14px; margin-bottom:12px; }
+  .row { display:flex; align-items:center; gap:8px; padding:7px 0; border-bottom:1px solid var(--line); flex-wrap:wrap; }
+  .row:last-child { border-bottom:0 }
+  .grow { flex:1; min-width:120px }
+  .mut { color:var(--mut); font-size:12.5px }
+  .stats { display:flex; gap:10px; flex-wrap:wrap; }
+  .stat { flex:1; min-width:130px; background:var(--card); border:1px solid var(--line); border-radius:14px; padding:12px; text-align:center; }
+  .stat b { display:block; font-size:24px; }
+  h2 { font-size:13px; letter-spacing:.08em; color:var(--mut); margin:16px 0 8px; text-transform:uppercase; }
+  input,select { font:inherit; padding:7px 9px; border:1px solid var(--line); border-radius:8px; background:#fff; max-width:100%; }
+  input[type=color] { padding:1px; width:38px; height:34px; }
+  input.num { width:84px } input.tiny { width:64px }
+  .green { color:var(--green) } .redtx { color:var(--red) } .amber { color:var(--amber) }
+  #login { max-width:320px; margin:12vh auto; text-align:center; }
+  #login input { font-size:26px; letter-spacing:.5em; text-align:center; width:100%; margin:14px 0; }
+  .err { color:var(--red); font-size:13px; min-height:18px; margin-bottom:8px }
+  table { width:100%; border-collapse:collapse; } td,th { text-align:left; padding:5px 6px; border-bottom:1px solid var(--line); font-size:14px } th { color:var(--mut); font-size:12px }
+  td.r,th.r { text-align:right }
+  .addbar { display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-top:10px; }
+</style>
+</head>
+<body>
+<header><div class="wrap">
+  <h1>🍛 PavBhaji POS — admin panel</h1>
+  <small id="who"></small>
+  <button class="ghost" id="backupBtn" hidden>⬇ backup</button>
+  <button class="ghost" id="logoutBtn" hidden>logout</button>
+</div></header>
+<div class="wrap">
+
+<div id="login">
+  <h2 style="font-size:16px;text-transform:none;color:var(--ink)">Enter the admin PIN</h2>
+  <input id="pin" type="password" inputmode="numeric" maxlength="8" autofocus>
+  <div class="err" id="loginErr"></div>
+  <button class="primary" onclick="doLogin()" style="width:100%">Log in</button>
+  <p class="mut" style="margin-top:14px">Same PIN as the admin uses in the phone app.</p>
+</div>
+
+<div id="app" hidden>
+  <nav id="tabs"></nav>
+  <div id="view"></div>
+</div>
+
+</div>
+<script>
+'use strict';
+let token = '', me = null, tab = 'dashboard', dashTimer = null;
+
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const rupees = p => p % 100 === 0 ? '₹' + (p/100) : '₹' + (p/100).toFixed(2);
+const toPaise = s => { const v = parseFloat(String(s).replace('₹','').trim()); return isNaN(v) || v < 0 ? null : Math.round(v*100); };
+const clock = ms => new Date(ms).toTimeString().slice(0,5);
+
+async function api(method, path, body) {
+  const r = await fetch(path, {
+    method, headers: { 'Content-Type':'application/json', ...(token ? {'Authorization':'Bearer '+token} : {}) },
+    body: body === undefined ? undefined : JSON.stringify(body)
+  });
+  if (r.status === 401 && token) { logout(); throw new Error('session expired'); }
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(data.error || ('server error ' + r.status));
+  return data;
+}
+
+async function doLogin() {
+  $('loginErr').textContent = '';
+  try {
+    const r = await api('POST', '/api/login', { pin: $('pin').value.trim() });
+    if (r.staff.role !== 'admin') {
+      token = r.token; await api('POST','/api/logout',{}).catch(()=>{}); token = '';
+      $('loginErr').textContent = 'That PIN works, but it is not an admin PIN.';
+      return;
+    }
+    token = r.token; me = r.staff;
+    $('login').hidden = true; $('app').hidden = false;
+    $('backupBtn').hidden = $('logoutBtn').hidden = false;
+    $('who').textContent = me.name;
+    show('dashboard');
+  } catch (e) { $('loginErr').textContent = e.message; $('pin').value = ''; }
+}
+$('pin').addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
+function logout() {
+  if (token) api('POST','/api/logout',{}).catch(()=>{});
+  token = ''; me = null; clearInterval(dashTimer);
+  $('app').hidden = true; $('backupBtn').hidden = $('logoutBtn').hidden = true;
+  $('login').hidden = false; $('pin').value = ''; $('who').textContent = '';
+}
+$('logoutBtn').onclick = logout;
+$('backupBtn').onclick = async () => {
+  const r = await fetch('/api/admin/backup', { headers:{'Authorization':'Bearer '+token} });
+  if (!r.ok) { alert('backup failed'); return; }
+  const blob = await r.blob();
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = (r.headers.get('Content-Disposition')||'').match(/filename="(.+)"/)?.[1] || 'pbpos-backup.db';
+  a.click(); URL.revokeObjectURL(a.href);
+};
+
+const TABS = { dashboard:'Dashboard', menu:'Menu & colours', staff:'Staff & PINs', tables:'Tables', report:'Day report', log:'Audit log' };
+function show(t) {
+  tab = t; clearInterval(dashTimer);
+  $('tabs').innerHTML = Object.entries(TABS).map(([k,v]) =>
+    `<button class="${k===tab?'on':''}" onclick="show('${k}')">${v}</button>`).join('');
+  ({dashboard, menu, staff, tables, report, log})[t]();
+}
+
+// ---- dashboard ----
+async function dashboard() {
+  const paint = async () => {
+    const d = await api('GET','/api/admin/dashboard');
+    if (tab !== 'dashboard') return;
+    $('view').innerHTML = `
+      <div class="stats">
+        <div class="stat"><b class="green">${rupees(d.soldTotal)}</b><span class="mut">sales today</span></div>
+        <div class="stat"><b>${d.ordersOpened}</b><span class="mut">orders</span></div>
+        <div class="stat"><b class="amber">${d.ordersOpen}</b><span class="mut">tables open</span></div>
+        <div class="stat"><b>${d.kitchenPending}</b><span class="mut">plates cooking</span></div>
+        <div class="stat"><b>${d.devicesOnline}</b><span class="mut">phones online</span></div>
+      </div>
+      <p class="mut" style="margin-top:10px">Refreshes automatically. Taking orders and the kitchen queue live in the phone app — this panel is for managing the shop.</p>`;
+  };
+  await paint(); dashTimer = setInterval(paint, 15000);
+}
+
+// ---- menu ----
+async function menu() {
+  const m = await api('GET','/api/menu');
+  $('view').innerHTML = m.menu.map(cat => `
+    <div class="card">
+      <div class="row" style="border-bottom:2px solid var(--line)"><b class="grow">${esc(cat.name)}</b></div>
+      ${cat.items.map(i => `
+      <div class="row" data-id="${i.id}">
+        <input type="color" value="${/^#[0-9a-fA-F]{6}$/.test(i.colour) ? i.colour : '#999999'}" title="bucket colour">
+        <input class="grow name" value="${esc(i.name)}">
+        <input class="num price" value="${(i.price/100)}" title="price ₹">
+        <select class="station" title="kitchen = cooked in buckets, counter = waiter hands over">
+          <option value="kitchen" ${i.station==='kitchen'?'selected':''}>🍳 kitchen</option>
+          <option value="counter" ${i.station==='counter'?'selected':''}>✋ counter</option>
+        </select>
+        <input class="tiny cap" placeholder="cap 15" value="${i.batchCap ?? ''}" title="tawa cap (blank = default 15)">
+        <input class="tiny age" placeholder="seal 10" value="${i.batchAgeMin ?? ''}" title="seal after minutes (blank = default 10)">
+        <label class="mut"><input type="checkbox" class="avail" ${i.available?'checked':''}> in stock</label>
+        <button onclick="saveItem(${i.id}, this)">Save</button>
+        <button title="hide everywhere" onclick="archiveItem(${i.id}, '${esc(i.name)}')">🗑</button>
+      </div>`).join('')}
+      <div class="addbar">
+        <input class="grow" placeholder="new dish name" id="nn${cat.id}">
+        <input class="num" placeholder="₹" id="np${cat.id}">
+        <select id="ns${cat.id}"><option value="kitchen">🍳 kitchen</option><option value="counter">✋ counter</option></select>
+        <button class="primary" onclick="addItem(${cat.id})">+ add to ${esc(cat.name)}</button>
+      </div>
+    </div>`).join('') + `
+    <div class="addbar card"><input class="grow" id="newcat" placeholder="new category name">
+      <button class="primary" onclick="addCat()">+ add category</button></div>`;
+}
+async function saveItem(id, btn) {
+  const row = btn.closest('.row');
+  const price = toPaise(row.querySelector('.price').value);
+  const name = row.querySelector('.name').value.trim();
+  if (!name || price === null) { alert('name and a valid ₹ price are needed'); return; }
+  const body = {
+    name, price,
+    station: row.querySelector('.station').value,
+    colour: row.querySelector('input[type=color]').value,
+    batchCap: parseInt(row.querySelector('.cap').value) || 0,
+    batchAgeMin: parseInt(row.querySelector('.age').value) || 0,
+  };
+  try { await api('PATCH', '/api/admin/menu-items/'+id, body); btn.textContent='Saved ✓'; setTimeout(()=>btn.textContent='Save',1200); }
+  catch (e) { alert(e.message); }
+}
+document.addEventListener('change', async e => {
+  if (e.target.classList?.contains('avail')) {
+    const id = e.target.closest('.row').dataset.id;
+    try { await api('PATCH','/api/admin/menu-items/'+id, { available: e.target.checked }); }
+    catch (err) { alert(err.message); e.target.checked = !e.target.checked; }
+  }
+});
+async function archiveItem(id, name) {
+  if (!confirm('Hide "'+name+'" everywhere? (it stays in old orders and reports)')) return;
+  try { await api('PATCH','/api/admin/menu-items/'+id, { active:false }); menu(); } catch (e) { alert(e.message); }
+}
+async function addItem(catId) {
+  const name = $('nn'+catId).value.trim(), price = toPaise($('np'+catId).value);
+  if (!name || price === null) { alert('name and ₹ price needed'); return; }
+  try {
+    await api('POST','/api/admin/menu-items', { categoryId:catId, name, price, colour:'', station:$('ns'+catId).value });
+    menu();
+  } catch (e) { alert(e.message); }
+}
+async function addCat() {
+  const name = $('newcat').value.trim(); if (!name) return;
+  try { await api('POST','/api/admin/categories', { name }); menu(); } catch (e) { alert(e.message); }
+}
+
+// ---- staff ----
+async function staff() {
+  const s = await api('GET','/api/admin/staff');
+  $('view').innerHTML = `<div class="card">` + s.staff.map(p => `
+    <div class="row">
+      <b class="grow">${esc(p.name)}</b>
+      <span class="mut">${esc(p.role)}</span>
+      <button onclick="resetPin(${p.id}, '${esc(p.name)}')">reset PIN</button>
+      <label class="mut"><input type="checkbox" ${p.active?'checked':''} onchange="staffActive(${p.id}, this)"> active</label>
+    </div>`).join('') + `
+    <div class="addbar">
+      <input id="stn" placeholder="name" class="grow">
+      <input id="stp" placeholder="PIN (4 digits)" maxlength="4" inputmode="numeric" class="num">
+      <select id="str"><option>waiter</option><option>manager</option><option>chef</option><option>admin</option></select>
+      <button class="primary" onclick="addStaff()">+ add staff</button>
+    </div></div>
+    <p class="mut">A PIN is that person's signature — one each, never shared. Deactivating keeps their history.</p>`;
+}
+async function staffActive(id, cb) {
+  try { await api('PATCH','/api/admin/staff/'+id, { active: cb.checked }); }
+  catch (e) { alert(e.message); cb.checked = !cb.checked; }
+}
+async function resetPin(id, name) {
+  const pin = prompt('New 4-digit PIN for '+name+':'); if (pin === null) return;
+  if (!/^\d{4}$/.test(pin.trim())) { alert('4 digits, numbers only'); return; }
+  try { await api('PATCH','/api/admin/staff/'+id, { pin: pin.trim() }); alert('PIN changed for '+name); }
+  catch (e) { alert(e.message); }
+}
+async function addStaff() {
+  const name = $('stn').value.trim(), pin = $('stp').value.trim(), role = $('str').value;
+  if (!name || !/^\d{4}$/.test(pin)) { alert('name + 4-digit PIN needed'); return; }
+  try { await api('POST','/api/admin/staff', { name, pin, role }); staff(); } catch (e) { alert(e.message); }
+}
+
+// ---- tables ----
+async function tables() {
+  const t = await api('GET','/api/admin/tables');
+  $('view').innerHTML = `<div class="card">` + t.tables.map(x => `
+    <div class="row">
+      <b class="grow">${esc(x.name)} ${x.kind==='parcel'?'<span class="mut">🥡 parcel</span>':''}</b>
+      <button onclick="renameTable(${x.id}, '${esc(x.name)}')">rename</button>
+      <label class="mut"><input type="checkbox" ${x.active?'checked':''} onchange="tableActive(${x.id}, this)"> active</label>
+    </div>`).join('') + `
+    <div class="addbar">
+      <input id="tbn" placeholder="name (T11 or P4)" class="grow">
+      <select id="tbk"><option value="dine">🍽 dine-in</option><option value="parcel">🥡 parcel</option></select>
+      <button class="primary" onclick="addTable()">+ add table</button>
+    </div></div>`;
+}
+async function tableActive(id, cb) {
+  try { await api('PATCH','/api/admin/tables/'+id, { active: cb.checked }); }
+  catch (e) { alert(e.message); cb.checked = !cb.checked; }
+}
+async function renameTable(id, old) {
+  const name = prompt('New name for '+old+':', old); if (!name || !name.trim()) return;
+  try { await api('PATCH','/api/admin/tables/'+id, { name: name.trim() }); tables(); } catch (e) { alert(e.message); }
+}
+async function addTable() {
+  const name = $('tbn').value.trim(); if (!name) return;
+  try { await api('POST','/api/admin/tables', { name, kind: $('tbk').value }); tables(); } catch (e) { alert(e.message); }
+}
+
+// ---- report ----
+let repDate = '';
+async function report() {
+  const d = await api('GET','/api/admin/report' + (repDate ? '?date='+repDate : ''));
+  repDate = d.date;
+  const lines = (arr, cls) => arr.length
+    ? arr.map(l => `<tr><td>${l.qty}× ${esc(l.name)}</td><td class="r ${cls||''}">${rupees(l.value)}</td></tr>`).join('')
+    : '<tr><td class="mut">nothing</td><td></td></tr>';
+  $('view').innerHTML = `
+    <div class="row" style="border:0;justify-content:center">
+      <button onclick="shiftRep(-1)">◀</button><b>${d.date}</b><button onclick="shiftRep(1)">▶</button>
+      <button onclick="repDate='';report()">today</button>
+    </div>
+    <div class="stats">
+      <div class="stat"><b class="green">${rupees(d.soldTotal)}</b><span class="mut">sales (served)</span></div>
+      <div class="stat"><b>${d.ordersOpened}</b><span class="mut">orders</span></div>
+      <div class="stat"><b class="redtx">${rupees(d.cancelledTotal)}</b><span class="mut">cancelled</span></div>
+    </div>
+    ${d.ordersOpen>0?`<p class="redtx" style="margin-top:8px">⚠ ${d.ordersOpen} order(s) still open for this date</p>`:''}
+    <h2>Sold (served items)</h2><div class="card"><table>${lines(d.sold)}
+      <tr><th>TOTAL</th><th class="r green">${rupees(d.soldTotal)}</th></tr></table></div>
+    <h2>By waiter</h2><div class="card"><table>${d.waiters.map(w =>
+      `<tr><td>${esc(w.name)} <span class="mut">(${w.qty} items)</span></td><td class="r">${rupees(w.value)}</td></tr>`).join('') || '<tr><td class="mut">nothing</td></tr>'}</table></div>
+    <h2>Cancelled</h2><div class="card"><table>${lines(d.cancelled,'redtx')}</table>
+      ${d.cancelLog.map(c => `<p class="mut">${clock(c.at)} · ${esc(c.by)}: ${esc(c.detail)}</p>`).join('')}</div>`;
+}
+function shiftRep(days) {
+  const t = new Date(repDate + 'T12:00:00');
+  t.setDate(t.getDate() + days);
+  repDate = t.toISOString().slice(0,10);
+  report();
+}
+
+// ---- audit log ----
+let logEvents = [];
+async function log() {
+  const d = await api('GET','/api/admin/audit');
+  logEvents = d.events; paintLog();
+}
+function paintLog() {
+  $('view').innerHTML = `<div class="card">` + logEvents.map(e => `
+    <div class="row"><span class="mut" style="min-width:46px">${clock(e.at)}</span>
+      <b>${esc(e.by || 'system')}</b><span class="mut">${esc(e.action)}</span>
+      <span class="grow">${esc(e.detail)}</span></div>`).join('') +
+    `</div><button onclick="olderLog()" style="width:100%">Load older</button>`;
+}
+async function olderLog() {
+  if (!logEvents.length) return;
+  const d = await api('GET','/api/admin/audit?beforeId=' + logEvents[logEvents.length-1].id);
+  logEvents = logEvents.concat(d.events); paintLog();
+}
+</script>
+</body>
+</html>

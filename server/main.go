@@ -119,6 +119,7 @@ func buildServer(port int, dataDir string) (*Server, *http.ServeMux, error) {
 
 	// Public
 	mux.HandleFunc("GET /", s.handleStatus)
+	mux.HandleFunc("GET /admin", s.handleWebAdmin)
 	mux.HandleFunc("GET /qr.png", s.handleQR)
 	mux.HandleFunc("GET /api/ping", s.handlePing)
 	mux.HandleFunc("POST /api/login", s.handleLogin)
@@ -187,6 +188,7 @@ func serveHeadless(port int, dataDir string) {
 	}
 	fmt.Println("  (phones on this WiFi find the server by themselves)")
 	fmt.Printf("  status page:  http://localhost:%d\n", port)
+	fmt.Printf("  admin panel:  http://localhost:%d/admin\n", port)
 	fmt.Println("  keep this window open while the shop is running")
 	fmt.Println("──────────────────────────────────────────────")
 

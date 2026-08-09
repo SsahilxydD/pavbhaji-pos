@@ -45,6 +45,10 @@ GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w" -o ../dist/Pav
 gradle assembleRelease   # output: app/build/outputs/apk/release/app-release.apk
 ```
 
+Release signing: put an `android/keystore.properties` next to `app/` with
+`storeFile`/`storePassword`/`keyAlias`/`keyPassword` pointing at your own
+keystore. Without it the release APK builds unsigned (fine for trying it out).
+
 Toolchain used originally: Go + JDK 21 + Gradle 8.13 under `~/tools/`, SDK under `~/Android/Sdk`.
 
 ## Defaults

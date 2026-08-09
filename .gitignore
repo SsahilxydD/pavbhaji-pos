@@ -7,3 +7,6 @@ server/pbpos
 .gradle/
 build/
 .kotlin/
+# signing material — never public
+android/keystore/
+android/keystore.properties

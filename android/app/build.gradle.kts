@@ -1,8 +1,20 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
     id("org.jetbrains.kotlin.plugin.serialization")
+}
+
+// Signing credentials live in android/keystore.properties (NOT in git):
+//   storeFile=keystore/pbpos.keystore
+//   storePassword=… / keyAlias=… / keyPassword=…
+// Without that file the release build is simply unsigned — so anyone cloning
+// the public repo can still build; only we can sign shop updates.
+val keystoreProps = Properties().apply {
+    val f = rootProject.file("keystore.properties")
+    if (f.exists()) f.inputStream().use { load(it) }
 }
 
 android {
@@ -18,17 +30,19 @@ android {
     }
 
     signingConfigs {
-        create("release") {
-            storeFile = file("../keystore/pbpos.keystore")
-            storePassword = "pavbhaji-pos-2026"
-            keyAlias = "pbpos"
-            keyPassword = "pavbhaji-pos-2026"
+        if (keystoreProps.isNotEmpty()) {
+            create("release") {
+                storeFile = rootProject.file(keystoreProps.getProperty("storeFile"))
+                storePassword = keystoreProps.getProperty("storePassword")
+                keyAlias = keystoreProps.getProperty("keyAlias")
+                keyPassword = keystoreProps.getProperty("keyPassword")
+            }
         }
     }
     buildTypes {
         release {
             isMinifyEnabled = false
-            signingConfig = signingConfigs.getByName("release")
+            signingConfig = signingConfigs.findByName("release") // null → unsigned build
         }
     }
     compileOptions {

@@ -1,7 +1,7 @@
 # PavBhaji POS
 
 LAN-only restaurant POS for a single shop: dine-in table orders, kitchen display,
-roles (admin / manager / waiter / chef), full audit trail. **Never hosted anywhere** — a
+roles (admin / manager / waiter / chef / cashier / parcel manager), full audit trail. **Never hosted anywhere** — a
 Windows laptop on the shop WiFi is the server; Android phones are the clients.
 
 - `server/` — Go. Single static binary, embedded SQLite (pure-Go driver), REST + WebSocket,
@@ -41,6 +41,8 @@ Windows laptop on the shop WiFi is the server; Android phones are the clients.
 ```bash
 # server (from server/): needs Go
 GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -ldflags="-s -w" -o ../dist/PavBhajiPOS-server.exe .
+# 32-bit variant for older laptops ("This app can't run on your PC" on the 64-bit exe):
+GOOS=windows GOARCH=386 CGO_ENABLED=0 go build -ldflags="-s -w" -o ../dist/PavBhajiPOS-server-32bit.exe .
 
 # android (from android/): needs JDK 17+, Android SDK 35
 gradle assembleRelease   # output: app/build/outputs/apk/release/app-release.apk

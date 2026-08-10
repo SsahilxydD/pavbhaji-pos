@@ -54,7 +54,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.io.File
 
-private enum class AdminScreen { Home, Floor, Kitchen, Menu, Staff, Tables, Report, Audit }
+private enum class AdminScreen { Home, Floor, Kitchen, Menu, Staff, Tables, Bills, Report, Audit }
 
 @Composable
 fun AdminHome(onLogout: () -> Unit) {
@@ -66,6 +66,7 @@ fun AdminHome(onLogout: () -> Unit) {
         AdminScreen.Menu -> MenuAdmin(onBack = home)
         AdminScreen.Staff -> StaffAdmin(onBack = home)
         AdminScreen.Tables -> TablesAdmin(onBack = home)
+        AdminScreen.Bills -> com.pavbhaji.pos.ui.cashier.BillsHistoryScreen(onLogout = null, onBack = home)
         AdminScreen.Report -> ReportScreen(onBack = home, onOpenLog = { screen = AdminScreen.Audit })
         AdminScreen.Audit -> AuditScreen(onBack = { screen = AdminScreen.Report })
         AdminScreen.Home -> Dashboard(onLogout = onLogout, onOpen = { screen = it })
@@ -150,6 +151,7 @@ private fun Dashboard(onLogout: () -> Unit, onOpen: (AdminScreen) -> Unit) {
                 NavRow(S.navMenu) { onOpen(AdminScreen.Menu) }
                 NavRow(S.tablesTitle) { onOpen(AdminScreen.Tables) }
                 NavRow(S.navStaff) { onOpen(AdminScreen.Staff) }
+                NavRow("🧾 " + S.navBills) { onOpen(AdminScreen.Bills) }
                 NavRow(S.navReport) { onOpen(AdminScreen.Report) }
             }
 

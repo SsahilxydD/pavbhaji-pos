@@ -341,6 +341,11 @@ func (s *Server) handleAdminTables(w http.ResponseWriter, r *http.Request) {
 
 var pinRe = regexp.MustCompile(`^[0-9]{4}$`)
 
+var staffRoles = map[string]bool{
+	"admin": true, "manager": true, "waiter": true,
+	"chef": true, "cashier": true, "parcel": true,
+}
+
 func (s *Server) handleStaffList(w http.ResponseWriter, r *http.Request) {
 	out := []Staff{}
 	rows, _ := s.db.Query(`SELECT id, name, role, active FROM staff ORDER BY active DESC, role, name`)
@@ -374,8 +379,8 @@ func (s *Server) handleStaffCreate(w http.ResponseWriter, r *http.Request) {
 		fail(w, http.StatusBadRequest, "PIN must be 4 digits")
 		return
 	}
-	if req.Role != "admin" && req.Role != "manager" && req.Role != "waiter" && req.Role != "chef" {
-		fail(w, http.StatusBadRequest, "role must be admin, manager, waiter or chef")
+	if !staffRoles[req.Role] {
+		fail(w, http.StatusBadRequest, "role must be admin, manager, waiter, chef, cashier or parcel")
 		return
 	}
 	salt := getMeta(s.db, "pin_salt", "")
@@ -437,7 +442,7 @@ func (s *Server) handleStaffPatch(w http.ResponseWriter, r *http.Request) {
 		audit(s.db, me.ID, me.Name, "staff", "reset PIN for "+curName)
 	}
 	if req.Role != nil {
-		if *req.Role != "admin" && *req.Role != "manager" && *req.Role != "waiter" && *req.Role != "chef" {
+		if !staffRoles[*req.Role] {
 			fail(w, http.StatusBadRequest, "invalid role")
 			return
 		}
@@ -555,6 +560,13 @@ func (s *Server) buildReport(date string) map[string]any {
 		crows.Close()
 	}
 
+	// The drawer view: how the day's closed bills were actually settled.
+	var paidCash, paidOnline, discountTotal int64
+	s.db.QueryRow(`
+		SELECT COALESCE(SUM(b.paid_cash),0), COALESCE(SUM(b.paid_online),0), COALESCE(SUM(b.discount),0)
+		FROM bills b JOIN orders o ON o.id=b.order_id
+		WHERE o.biz_date=? AND o.status='closed'`, date).Scan(&paidCash, &paidOnline, &discountTotal)
+
 	return map[string]any{
 		"date":           date,
 		"ordersOpened":   opened,
@@ -564,6 +576,9 @@ func (s *Server) buildReport(date string) map[string]any {
 		"soldTotal":      soldTotal,
 		"cancelledQty":   cancelledQty,
 		"cancelledTotal": cancelledTotal,
+		"paidCash":       paidCash,
+		"paidOnline":     paidOnline,
+		"discountTotal":  discountTotal,
 		"sold":           sold,
 		"cancelled":      cancelled,
 		"waiters":        waiters,
@@ -579,7 +594,19 @@ func dayStartMs(date string, dayStartHour int) int64 {
 	return t.Add(time.Duration(dayStartHour) * time.Hour).UnixMilli()
 }
 
-// GET /api/admin/audit?limit=100&beforeId=0
+// auditGroups: the owner filters the log by what KIND of thing happened, not
+// by exact action strings. One action may sit in two groups (order:closed is
+// both an order event and a billing event).
+var auditGroups = map[string][]string{
+	"orders":  {"ticket", "parcel", "order:closed"},
+	"kitchen": {"batch:taken", "batch:ready", "batch:sealed"},
+	"serving": {"item:served", "serve-all"},
+	"cancel":  {"item:cancelled"},
+	"billing": {"order:closed", "bill:discount", "bill-settings"},
+	"staff":   {"staff", "login", "logout", "login:blocked", "seed"},
+}
+
+// GET /api/admin/audit?limit=100&beforeId=0&type=billing
 func (s *Server) handleAudit(w http.ResponseWriter, r *http.Request) {
 	limit, _ := strconv.Atoi(r.URL.Query().Get("limit"))
 	if limit <= 0 || limit > 500 {
@@ -587,10 +614,22 @@ func (s *Server) handleAudit(w http.ResponseWriter, r *http.Request) {
 	}
 	beforeID, _ := strconv.ParseInt(r.URL.Query().Get("beforeId"), 10, 64)
 	q := `SELECT id, at, staff_name, action, detail FROM events`
+	where := []string{}
 	args := []any{}
 	if beforeID > 0 {
-		q += ` WHERE id < ?`
+		where = append(where, `id < ?`)
 		args = append(args, beforeID)
+	}
+	if actions, ok := auditGroups[r.URL.Query().Get("type")]; ok {
+		ph := make([]string, len(actions))
+		for i, a := range actions {
+			ph[i] = "?"
+			args = append(args, a)
+		}
+		where = append(where, `action IN (`+strings.Join(ph, ",")+`)`)
+	}
+	if len(where) > 0 {
+		q += ` WHERE ` + strings.Join(where, ` AND `)
 	}
 	q += ` ORDER BY id DESC LIMIT ?`
 	args = append(args, limit)

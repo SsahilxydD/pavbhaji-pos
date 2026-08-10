@@ -107,12 +107,16 @@ fun StaffAdmin(onBack: () -> Unit) {
                         value = pin, onValueChange = { pin = it.filter { c -> c.isDigit() }.take(4) },
                         label = { Text(S.pin4) }, modifier = Modifier.padding(top = 8.dp)
                     )
-                    Row(Modifier.padding(top = 10.dp)) {
-                        listOf("waiter", "manager", "chef", "admin").forEach { r ->
-                            FilterChip(
-                                selected = role == r, onClick = { role = r },
-                                label = { Text(S.roleLabel(r)) }, modifier = Modifier.padding(end = 6.dp)
-                            )
+                    Column(Modifier.padding(top = 4.dp)) {
+                        listOf("waiter", "manager", "chef", "cashier", "parcel", "admin").chunked(3).forEach { rowRoles ->
+                            Row(Modifier.padding(top = 6.dp)) {
+                                rowRoles.forEach { r ->
+                                    FilterChip(
+                                        selected = role == r, onClick = { role = r },
+                                        label = { Text(S.roleLabel(r)) }, modifier = Modifier.padding(end = 6.dp)
+                                    )
+                                }
+                            }
                         }
                     }
                     dErr?.let { Text(it, color = MaterialTheme.colorScheme.error, fontSize = 13.sp) }

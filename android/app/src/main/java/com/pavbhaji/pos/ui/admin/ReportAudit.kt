@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
@@ -85,6 +86,12 @@ fun ReportScreen(onBack: () -> Unit, onOpenLog: () -> Unit) {
                 StatCard(S.ordersCard, "${rep.ordersOpened}", Modifier.weight(1f))
                 StatCard(S.cancelledCard, rupees(rep.cancelledTotal), Modifier.weight(1f), MaterialTheme.colorScheme.error)
             }
+            // The drawer view: how the day's closed bills were settled.
+            Row(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                StatCard(S.reportCash, rupees(rep.paidCash), Modifier.weight(1f))
+                StatCard(S.reportOnline, rupees(rep.paidOnline), Modifier.weight(1f))
+                StatCard(S.reportDiscounts, rupees(rep.discountTotal), Modifier.weight(1f), com.pavbhaji.pos.ui.WarnAmber)
+            }
             if (rep.ordersOpen > 0) {
                 Text(
                     S.stillOpen(rep.ordersOpen.toLong()),
@@ -138,10 +145,12 @@ fun ReportScreen(onBack: () -> Unit, onOpenLog: () -> Unit) {
 fun AuditScreen(onBack: () -> Unit) {
     var events by remember { mutableStateOf<List<AuditEventDto>>(emptyList()) }
     var loadingMore by remember { mutableStateOf(false) }
+    var filter by remember { mutableStateOf("") } // "" = all, else an auditGroups key
     val scope = androidx.compose.runtime.rememberCoroutineScope()
 
-    LaunchedEffect(Unit) {
-        when (val r = Deps.api.audit()) {
+    LaunchedEffect(filter) {
+        events = emptyList()
+        when (val r = Deps.api.audit(type = filter)) {
             is ApiResult.Ok -> events = r.value.events
             is ApiResult.Err -> {}
         }
@@ -149,6 +158,23 @@ fun AuditScreen(onBack: () -> Unit) {
 
     Column(Modifier.fillMaxSize()) {
         com.pavbhaji.pos.ui.AppHeader(title = S.auditTitle, onBack = onBack)
+        // Filter by the KIND of event — the "what happened with bills today?"
+        // question shouldn't need scrolling past every KOT.
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState())
+                .padding(horizontal = 12.dp, vertical = 6.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            listOf("", "orders", "kitchen", "serving", "cancel", "billing", "staff").forEach { key ->
+                androidx.compose.material3.FilterChip(
+                    selected = filter == key,
+                    onClick = { filter = key },
+                    label = { Text(S.auditFilter(key), fontSize = 12.sp) }
+                )
+            }
+        }
         LazyColumn(Modifier.fillMaxSize(), contentPadding = androidx.compose.foundation.layout.PaddingValues(12.dp)) {
             events.forEach { e ->
                 item(key = e.id) {
@@ -172,7 +198,7 @@ fun AuditScreen(onBack: () -> Unit) {
                             if (!loadingMore) {
                                 loadingMore = true
                                 scope.launch {
-                                    when (val r = Deps.api.audit(beforeId = events.last().id)) {
+                                    when (val r = Deps.api.audit(beforeId = events.last().id, type = filter)) {
                                         is ApiResult.Ok -> events = events + r.value.events
                                         is ApiResult.Err -> {}
                                     }

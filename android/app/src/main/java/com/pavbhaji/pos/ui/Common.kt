@@ -52,9 +52,12 @@ fun rupees(paise: Long): String =
     if (paise % 100 == 0L) "₹${paise / 100}"
     else "₹${paise / 100}.${(paise % 100).toString().padStart(2, '0')}"
 
-// Money is the owner's business: chef and waiter screens never show prices.
-// Admin sees them everywhere (including the Floor view, which reuses waiter screens).
-fun pricesVisible(): Boolean = com.pavbhaji.pos.Deps.session.staffRole == "admin"
+// Money stays with money-facing roles: chef and waiter screens never show
+// prices. Admin sees them everywhere (including the Floor view, which reuses
+// waiter screens); the cashier's whole job is the bill; the parcel manager
+// collects payment on handover.
+fun pricesVisible(): Boolean =
+    com.pavbhaji.pos.Deps.session.staffRole in setOf("admin", "cashier", "parcel")
 
 fun items(n: Long): String = S.itemsN(n)
 

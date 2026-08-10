@@ -12,7 +12,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import com.pavbhaji.pos.Deps
 import com.pavbhaji.pos.ui.admin.AdminHome
+import com.pavbhaji.pos.ui.cashier.CashierHome
 import com.pavbhaji.pos.ui.chef.KitchenScreen
+import com.pavbhaji.pos.ui.parcel.ParcelHome
 import com.pavbhaji.pos.ui.waiter.ManagerHome
 import com.pavbhaji.pos.ui.waiter.ServeScreen
 
@@ -62,6 +64,8 @@ fun PosApp() {
                         "manager" -> ManagerHome(onLogout = logout)
                         "chef" -> KitchenScreen(onLogout = logout)
                         "admin" -> AdminHome(onLogout = logout)
+                        "cashier" -> CashierHome(onLogout = logout)
+                        "parcel" -> ParcelHome(onLogout = logout)
                         else -> { session.clearLogin(); stage = Stage.Login }
                     }
                 }

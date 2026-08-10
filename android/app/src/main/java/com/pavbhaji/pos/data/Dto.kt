@@ -32,7 +32,8 @@ data class CategoryDto(
 data class TableOrderDto(
     val orderId: Long, val orderNo: Long, val openedAt: Long,
     val openedByName: String = "", val itemCount: Long = 0,
-    val pendingCount: Long = 0, val readyCount: Long = 0, val total: Long = 0
+    val pendingCount: Long = 0, val readyCount: Long = 0, val total: Long = 0,
+    val customerName: String = "", val customerPhone: String = "" // parcel orders only
 )
 
 @Serializable
@@ -60,7 +61,9 @@ data class OrderDetailDto(
     val id: Long, val orderNo: Long, val bizDate: String = "",
     val tableId: Long, val tableName: String = "", val status: String,
     val openedAt: Long = 0, val openedByName: String = "",
-    val total: Long = 0, val tickets: List<TicketDto> = emptyList()
+    val total: Long = 0,
+    val customerName: String = "", val customerPhone: String = "",
+    val tickets: List<TicketDto> = emptyList()
 )
 
 @Serializable
@@ -72,7 +75,10 @@ data class BootstrapDto(
 )
 
 @Serializable
-data class BucketLineDto(val tableName: String, val qty: Long, val note: String = "")
+data class BucketLineDto(
+    val tableName: String, val qty: Long, val note: String = "",
+    val name: String = "" // the variety — one colour bucket can hold several
+)
 
 @Serializable
 data class BucketDto(
@@ -105,6 +111,30 @@ data class PickupDto(
     val serverTime: Long = 0
 )
 
+// The cashier's settlement sheet for one order: snapshot subtotal, discount,
+// final total, and how the money arrived (any cash/online split).
+@Serializable
+data class BillDto(
+    val orderId: Long = 0, val subtotal: Long = 0,
+    val discount: Long = 0, val discountNote: String = "",
+    val total: Long = 0,
+    val paidCash: Long = 0, val paidOnline: Long = 0
+)
+
+// One row of the settled-bill history (closed orders only).
+@Serializable
+data class BillSummaryDto(
+    val orderId: Long, val orderNo: Long,
+    val tableName: String = "", val customerName: String = "",
+    val closedAt: Long = 0, val closedByName: String = "",
+    val subtotal: Long = 0, val discount: Long = 0, val discountNote: String = "",
+    val total: Long = 0, val paidCash: Long = 0, val paidOnline: Long = 0,
+    val itemCount: Long = 0
+)
+
+@Serializable
+data class BillsResp(val date: String = "", val bills: List<BillSummaryDto> = emptyList())
+
 @Serializable
 data class ReportLineDto(val name: String, val qty: Long, val value: Long)
 
@@ -117,6 +147,7 @@ data class ReportDto(
     val ordersOpened: Long = 0, val ordersClosed: Long = 0, val ordersOpen: Long = 0,
     val soldQty: Long = 0, val soldTotal: Long = 0,
     val cancelledQty: Long = 0, val cancelledTotal: Long = 0,
+    val paidCash: Long = 0, val paidOnline: Long = 0, val discountTotal: Long = 0,
     val sold: List<ReportLineDto> = emptyList(),
     val cancelled: List<ReportLineDto> = emptyList(),
     val waiters: List<ReportLineDto> = emptyList(),

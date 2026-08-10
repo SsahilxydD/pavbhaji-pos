@@ -54,18 +54,15 @@ import com.pavbhaji.pos.ui.dishColour
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
-// The waiter's carry queue, grouped BY TABLE: every card is one trip — grab
-// all of a table's plates together, tap once, done. Cards sort by the oldest
-// waiting plate, so the most starved table is always on top. Counter items
-// (drinks, extra pav) ride the same card tinted amber: nothing was cooked,
-// just carry them.
+// The manager's WATCH list, grouped BY TABLE: what's waiting to be carried,
+// most-starved table on top. Purely for coordination — serving itself is the
+// waiters' power alone, one plate at a time from their own list, so this
+// screen has no buttons. Counter items (drinks, extra pav) ride the same
+// card tinted amber: nothing was cooked, a waiter just carries them.
 @Composable
 fun ReadyScreen(onLogout: () -> Unit, showLogout: Boolean) {
-    val scope = rememberCoroutineScope()
     val connected by Deps.live.connected.collectAsState()
     var lines by remember { mutableStateOf<List<PickupLineDto>>(emptyList()) }
-    var toast by remember { mutableStateOf<String?>(null) }
-    var busyTable by remember { mutableStateOf<String?>(null) }
 
     suspend fun refresh() {
         when (val r = Deps.api.pickup()) {
@@ -79,7 +76,6 @@ fun ReadyScreen(onLogout: () -> Unit, showLogout: Boolean) {
         Deps.live.topics.collect { if (it == "kitchen" || it == "tables" || it == "menu") refresh() }
     }
     LaunchedEffect(Unit) { while (true) { delay(15_000); refresh() } }
-    toast?.let { LaunchedEffect(it) { delay(2500); toast = null } }
 
     val groups = lines.groupBy { it.tableName }
         .map { (t, ls) -> ReadyGroup(t, ls.minOf { it.sinceMs }, ls.sortedBy { it.sinceMs }) }
@@ -96,10 +92,6 @@ fun ReadyScreen(onLogout: () -> Unit, showLogout: Boolean) {
             actions = { if (showLogout) HeaderTextAction(S.logout, onLogout) }
         )
         ConnBanner(connected)
-        toast?.let {
-            Text(it, color = MaterialTheme.colorScheme.error, fontSize = 13.sp,
-                modifier = Modifier.padding(horizontal = 14.dp, vertical = 3.dp))
-        }
         if (lines.isEmpty()) {
             EmptyHint(S.allCarried)
         }
@@ -109,33 +101,7 @@ fun ReadyScreen(onLogout: () -> Unit, showLogout: Boolean) {
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             items(groups.size, key = { groups[it].tableName }) { i ->
-                val g = groups[i]
-                TableCarryCard(
-                    g,
-                    busy = busyTable == g.tableName,
-                    onServeLine = { l ->
-                        scope.launch {
-                            when (val r = Deps.api.itemStatus(l.itemId, "served")) {
-                                is ApiResult.Ok -> lines = lines.filter { it.itemId != l.itemId }
-                                is ApiResult.Err -> toast = r.message
-                            }
-                            refresh()
-                        }
-                    },
-                    onServeAll = {
-                        busyTable = g.tableName
-                        scope.launch {
-                            for (l in g.lines) {
-                                when (val r = Deps.api.itemStatus(l.itemId, "served")) {
-                                    is ApiResult.Ok -> lines = lines.filter { it.itemId != l.itemId }
-                                    is ApiResult.Err -> { toast = r.message; break }
-                                }
-                            }
-                            busyTable = null
-                            refresh()
-                        }
-                    }
-                )
+                TableCarryCard(groups[i])
             }
             items(1) { Spacer(Modifier.height(20.dp)) }
         }
@@ -149,12 +115,7 @@ private data class ReadyGroup(
 )
 
 @Composable
-private fun TableCarryCard(
-    g: ReadyGroup,
-    busy: Boolean,
-    onServeLine: (PickupLineDto) -> Unit,
-    onServeAll: () -> Unit
-) {
+private fun TableCarryCard(g: ReadyGroup) {
     // Spine green when the kitchen cooked something here; amber when this
     // trip is only counter hand-overs.
     val allCounter = g.lines.all { it.station == "counter" }
@@ -170,23 +131,6 @@ private fun TableCarryCard(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(g.tableName, fontSize = 18.sp, fontWeight = FontWeight.ExtraBold, modifier = Modifier.weight(1f))
                     ReadyAge(g.since)
-                    if (g.lines.size > 1) {
-                        Button(
-                            onClick = onServeAll,
-                            enabled = !busy,
-                            shape = RoundedCornerShape(10.dp),
-                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = if (allCounter) WarnAmber else GoodGreen
-                            ),
-                            modifier = Modifier.padding(start = 8.dp)
-                        ) {
-                            Text(
-                                if (busy) "…" else S.allN(g.lines.size),
-                                fontSize = 12.sp, fontWeight = FontWeight.ExtraBold
-                            )
-                        }
-                    }
                 }
                 g.lines.forEach { l ->
                     Row(
@@ -205,22 +149,6 @@ private fun TableCarryCard(
                                 sub, fontSize = 11.sp, maxLines = 1,
                                 color = if (l.note.isNotEmpty()) MaterialTheme.colorScheme.error
                                 else MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                        // One line = full "Served ✓"; in a group each line keeps
-                        // a small ✓ so partial carries still work.
-                        Button(
-                            onClick = { onServeLine(l) },
-                            enabled = !busy,
-                            shape = RoundedCornerShape(10.dp),
-                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = if (l.station == "counter") WarnAmber else GoodGreen
-                            )
-                        ) {
-                            Text(
-                                if (g.lines.size == 1) S.servedTick else "✓",
-                                fontSize = 12.sp, fontWeight = FontWeight.ExtraBold
                             )
                         }
                     }

@@ -251,7 +251,9 @@ private fun TableCard(t: TableStateDto, onClick: () -> Unit) {
                 Spacer(Modifier.height(5.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(5.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text(
-                        "${ageMinutes(o.openedAt)} · ${o.openedByName}",
+                        // Parcel slots carry the customer's name — that's what
+                        // you shout across the counter, not who punched it.
+                        "${ageMinutes(o.openedAt)} · ${o.customerName.ifEmpty { o.openedByName }}",
                         fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 1,
                         modifier = Modifier.weight(1f, fill = false)

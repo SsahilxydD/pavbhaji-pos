@@ -45,6 +45,8 @@ object S {
         "manager" -> t("manager", "मैनेजर", "મેનેજર")
         "chef" -> t("chef", "शेफ़", "શેફ")
         "admin" -> t("admin", "एडमिन", "એડમિન")
+        "cashier" -> t("cashier", "कैशियर", "કેશિયર")
+        "parcel" -> t("parcel manager", "पार्सल मैनेजर", "પાર્સલ મેનેજર")
         else -> raw
     }
     val reasonRequired get() = t(
@@ -112,8 +114,6 @@ object S {
         "બધું પહોંચી ગયું 🎉 પ્લેટ તૈયાર થતાં જ અહીં દેખાશે."
     )
     val justCarry get() = t("✋ just carry", "✋ बस ले जाओ", "✋ ખાલી લઈ જાઓ")
-    val servedTick get() = t("Served ✓", "परोसा ✓", "પીરસ્યું ✓")
-    fun allN(n: Int) = t("All $n ✓", "सब $n ✓", "બધા $n ✓")
     val readyTitle get() = t("Ready", "तैयार", "તૈયાર")
     val servedSection get() = t("SERVED — for checking", "परोसा हुआ — देखने के लिए", "પીરસેલું — જોવા માટે")
     val serveNow get() = t("SERVE NOW", "अभी परोसो", "હમણાં પીરસો")
@@ -144,7 +144,6 @@ object S {
     val sending get() = t("Sending…", "भेज रहे हैं…", "મોકલી રહ્યાં છીએ…")
     fun tryAgain(items: String) = t("Try again — $items", "फिर कोशिश करो — $items", "ફરી પ્રયત્ન કરો — $items")
     fun sendToKitchen(items: String) = t("Send to kitchen 🍳  $items", "किचन में भेजो 🍳  $items", "રસોડામાં મોકલો 🍳  $items")
-    val allServed get() = t("All served ✓", "सब परोसा ✓", "બધું પીરસ્યું ✓")
     val closeTable get() = t("Close table", "टेबल बंद करो", "ટેબલ બંધ કરો")
     fun closeAmt(amt: String) = t("Close · $amt", "बंद करो · $amt", "બંધ કરો · $amt")
     val tapToStart get() = t(
@@ -158,17 +157,15 @@ object S {
     val collectFirst get() = t("Collect payment before closing.", "बंद करने से पहले पैसे ले लो।", "બંધ કરતાં પહેલાં પૈસા લઈ લો.")
     val cantClose get() = t("Can't close yet", "अभी बंद नहीं हो सकता", "હજી બંધ ન થાય")
     val cantCloseHint get() = t(
-        "\nMark everything as served, or cancel items with a reason.",
-        "\nसब कुछ परोसा मार्क करो, या कारण देकर आइटम रद्द करो।",
-        "\nબધું પીરસ્યું માર્ક કરો, અથવા કારણ આપી આઈટમ રદ કરો."
+        "\nOnly waiters mark plates served, one by one as they carry them. Wait for that — or cancel items with a reason.",
+        "\nसिर्फ़ वेटर ही प्लेट परोसा मार्क करते हैं, ले जाते हुए एक-एक करके। उसका इंतज़ार करो — या कारण देकर आइटम रद्द करो।",
+        "\nફક્ત વેઈટર જ પ્લેટ પીરસી માર્ક કરે છે, લઈ જતાં એક-એક કરીને. એની રાહ જુઓ — અથવા કારણ આપી આઈટમ રદ કરો."
     )
-    val allServedClose get() = t("All served + close", "सब परोसा + बंद", "બધું પીરસ્યું + બંધ")
     fun noteFor(name: String) = t("Note for $name", "$name के लिए नोट", "$name માટે નોંધ")
     val notePlaceholder get() = t("less spicy, no onion…", "कम तीखा, बिना प्याज़…", "ઓછું તીખું, ડુંગળી વગર…")
+    val bhajiByColour get() = t("🎨 BHAJI — tap a colour", "🎨 भाजी — रंग चुनो", "🎨 ભાજી — રંગ પસંદ કરો")
+    fun varietiesN(n: Int) = t("$n varieties", "$n तरह", "$n જાત")
     val outOfStock get() = t("out of stock", "खत्म", "ખલાસ")
-    val youServeThis get() = t("✋ you serve this", "✋ यह तुम देना", "✋ આ તમે આપો")
-    val serveHand get() = t("✋ serve", "✋ दो", "✋ આપો")
-    val serveTick get() = t("serve ✓", "परोसो ✓", "પીરસો ✓")
 
     // ---- kitchen ----
     val kitchenTitle get() = t("Kitchen", "किचन", "રસોડું")
@@ -250,6 +247,82 @@ object S {
     val tableNameEg get() = t("Name (e.g. T11 or P4)", "नाम (जैसे T11 या P4)", "નામ (જેમ કે T11 કે P4)")
     val dineIn get() = t("🍽 dine-in", "🍽 डाइन-इन", "🍽 ડાઈન-ઈન")
     fun renameX(x: String) = t("Rename $x", "$x का नाम बदलो", "$x નું નામ બદલો")
+
+    // ---- cashier / bill ----
+    val billTitle get() = t("Bill", "बिल", "બિલ")
+    val printBill get() = t("🖨  Print bill", "🖨  बिल छापो", "🖨  બિલ છાપો")
+    val billItem get() = t("Item", "आइटम", "આઈટમ")
+    val billQty get() = t("Qty", "मात्रा", "જથ્થો")
+    val billRate get() = t("Rate", "दाम", "ભાવ")
+    val billAmount get() = t("Amount", "रकम", "રકમ")
+    val billRunning get() = t(
+        "running bill — order is still open, it can grow",
+        "चालू बिल — ऑर्डर अभी खुला है, बढ़ सकता है",
+        "ચાલુ બિલ — ઓર્ડર હજી ખુલ્લો છે, વધી શકે છે"
+    )
+    fun billStatusLine(pending: Long, ready: Long) = t(
+        "$pending cooking · $ready ready to serve",
+        "$pending बन रहे · $ready परोसने को तैयार",
+        "$pending બની રહ્યા · $ready પીરસવા તૈયાર"
+    )
+    val tapOccupied get() = t(
+        "Tap an occupied table to see its bill",
+        "बिल देखने के लिए भरा टेबल दबाओ",
+        "બિલ જોવા માટે ભરેલું ટેબલ દબાવો"
+    )
+    val subtotalRow get() = t("Subtotal", "सबटोटल", "સબટોટલ")
+    val discountRow get() = t("Discount", "छूट", "છૂટ")
+    val addDiscount get() = t("＋ discount", "＋ छूट", "＋ છૂટ")
+    val discountAmt get() = t("Discount (₹)", "छूट (₹)", "છૂટ (₹)")
+    val discountNoteLbl get() = t("Reason (optional)", "कारण (ज़रूरी नहीं)", "કારણ (જરૂરી નથી)")
+    val paymentSection get() = t("PAYMENT", "पेमेंट", "પેમેન્ટ")
+    val cashLbl get() = t("Cash", "कैश", "કેશ")
+    val onlineLbl get() = t("Online / UPI", "ऑनलाइन / UPI", "ઓનલાઈન / UPI")
+    val allCashChip get() = t("💵 all cash", "💵 पूरा कैश", "💵 આખું કેશ")
+    val allOnlineChip get() = t("📲 all online", "📲 पूरा ऑनलाइन", "📲 આખું ઓનલાઈન")
+    val onlineAmtLbl get() = t("Online amount (₹)", "ऑनलाइन रकम (₹)", "ઓનલાઈન રકમ (₹)")
+    val splitApply get() = t("✓ split, rest cash", "✓ बाकी कैश", "✓ બાકી કેશ")
+    val paidTick get() = t("PAID ✓", "पेड ✓", "પેડ ✓")
+    fun payLeft(amt: String) = t("$amt not assigned yet", "$amt अभी बाकी", "$amt હજી બાકી")
+    val cashierCloses get() = t(
+        "The cashier makes the bill and closes this table.",
+        "बिल बनाना और टेबल बंद करना कैशियर का काम है।",
+        "બિલ બનાવવું અને ટેબલ બંધ કરવું કેશિયરનું કામ છે."
+    )
+    val reportCash get() = t("💵 cash", "💵 कैश", "💵 કેશ")
+    val reportOnline get() = t("📲 online", "📲 ऑनलाइन", "📲 ઓનલાઈન")
+    val reportDiscounts get() = t("discounts", "छूट", "છૂટ")
+    val navBills get() = t("Bills", "बिल", "બિલ")
+    fun billsCount(n: Int) = t("$n bills", "$n बिल", "$n બિલ")
+    val noBillsDay get() = t("No bills for this day.", "इस दिन का कोई बिल नहीं।", "આ દિવસનું કોઈ બિલ નથી.")
+    fun closedLine(t2: String, who: String) = t("closed $t2 · $who", "$t2 बंद · $who", "$t2 બંધ · $who")
+
+    // ---- audit filters ----
+    fun auditFilter(key: String) = when (key) {
+        "orders" -> t("orders", "ऑर्डर", "ઓર્ડર")
+        "kitchen" -> t("kitchen", "किचन", "રસોડું")
+        "serving" -> t("serving", "परोसना", "પીરસવું")
+        "cancel" -> t("cancelled", "रद्द", "રદ")
+        "billing" -> t("billing", "बिलिंग", "બિલિંગ")
+        "staff" -> t("staff", "स्टाफ़", "સ્ટાફ")
+        else -> t("all", "सब", "બધા")
+    }
+
+    // ---- parcel manager ----
+    val parcelsTitle get() = t("Parcels", "पार्सल", "પાર્સલ")
+    val newParcel get() = t("＋  New parcel", "＋  नया पार्सल", "＋  નવો પાર્સલ")
+    val customerName get() = t("Customer name", "ग्राहक का नाम", "ગ્રાહકનું નામ")
+    val customerPhone get() = t("Phone (optional)", "फ़ोन (ज़रूरी नहीं)", "ફોન (જરૂરી નથી)")
+    val nameNeeded get() = t("customer name is required", "ग्राहक का नाम ज़रूरी है", "ગ્રાહકનું નામ જરૂરી છે")
+    fun parcelPlaced(n: Long) = t("Parcel order #$n placed ✓", "पार्सल ऑर्डर #$n लग गया ✓", "પાર્સલ ઓર્ડર #$n લાગી ગયો ✓")
+    val noParcels get() = t(
+        "No parcels right now.\nStart one with the button below.",
+        "अभी कोई पार्सल नहीं।\nनीचे के बटन से शुरू करो।",
+        "હમણાં કોઈ પાર્સલ નથી.\nનીચેના બટનથી શરૂ કરો."
+    )
+    fun openParcels(n: Int) = t("$n open", "$n खुले", "$n ખુલ્લા")
+    val allReadyPill get() = t("ALL READY — hand over", "सब तैयार — दे दो", "બધું તૈયાર — આપી દો")
+    val sendParcel get() = t("Send parcel to kitchen 🍳", "पार्सल किचन में भेजो 🍳", "પાર્સલ રસોડામાં મોકલો 🍳")
 
     // ---- report / audit ----
     val logBtn get() = t("log", "लॉग", "લોગ")

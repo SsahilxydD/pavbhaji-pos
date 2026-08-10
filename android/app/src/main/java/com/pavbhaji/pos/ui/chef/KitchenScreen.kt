@@ -334,7 +334,9 @@ private fun BucketCard(
                                 Text(l.tableName, color = Kc.ink, fontSize = 13.sp, fontWeight = FontWeight.ExtraBold,
                                     modifier = Modifier.width(34.dp))
                                 Text("${l.qty}×", color = Kc.ink, fontSize = 13.sp, fontWeight = FontWeight.ExtraBold)
-                                Text(b.name, color = Kc.ink, fontSize = 13.sp, modifier = Modifier.weight(1f, fill = false))
+                                // Per-line variety name: a colour bucket clubs
+                                // every same-colour bhaji, so lines can differ.
+                                Text(l.name.ifEmpty { b.name }, color = Kc.ink, fontSize = 13.sp, modifier = Modifier.weight(1f, fill = false))
                                 if (l.note.isNotEmpty()) {
                                     Text("⚠ ${l.note}", color = Kc.note, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
                                 }

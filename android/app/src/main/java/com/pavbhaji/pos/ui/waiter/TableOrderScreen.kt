@@ -1,6 +1,9 @@
 package com.pavbhaji.pos.ui.waiter
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -47,7 +50,6 @@ import com.pavbhaji.pos.data.NewTicketLine
 import com.pavbhaji.pos.data.OrderDetailDto
 import com.pavbhaji.pos.data.OrderItemDto
 import com.pavbhaji.pos.ui.AppHeader
-import com.pavbhaji.pos.ui.ConfirmDialog
 import com.pavbhaji.pos.ui.ConnBanner
 import com.pavbhaji.pos.ui.QtyStepper
 import com.pavbhaji.pos.ui.ReasonDialog
@@ -85,10 +87,9 @@ fun TableOrderScreen(tableId: Long, tableName: String, onBack: () -> Unit) {
     var sendError by remember { mutableStateOf<String?>(null) }
 
     var cancelTarget by remember { mutableStateOf<OrderItemDto?>(null) }
-    var confirmClose by remember { mutableStateOf(false) }
-    var blockers by remember { mutableStateOf<List<String>?>(null) }
     var noteEditIdx by remember { mutableStateOf<Int?>(null) }
     var toast by remember { mutableStateOf<String?>(null) }
+    var selColourKey by remember { mutableStateOf<String?>(null) }
 
     suspend fun refresh() {
         when (val r = Deps.api.tableOrder(tableId)) {
@@ -137,18 +138,6 @@ fun TableOrderScreen(tableId: Long, tableName: String, onBack: () -> Unit) {
         }
     }
 
-    fun closeNow() {
-        val o = order ?: return
-        scope.launch {
-            when (val r = Deps.api.closeOrder(o.id)) {
-                is ApiResult.Ok -> onBack()
-                is ApiResult.Err ->
-                    if (r.blockers.isNotEmpty()) blockers = r.blockers
-                    else toast = r.message
-            }
-        }
-    }
-
     // How many of each menu item is sitting in the cart (for the badges).
     val cartQty = remember(cart.toList()) { cart.groupBy { it.menuItemId }.mapValues { e -> e.value.sumOf { it.qty } } }
 
@@ -187,16 +176,10 @@ fun TableOrderScreen(tableId: Long, tableName: String, onBack: () -> Unit) {
                     }
                     tk.items.forEach { it ->
                         item(key = "it${it.id}") {
-                            // Waiters serve what's READY (from the kitchen's buckets) and
-                            // hand counter items over directly; admin can force anything.
+                            // No serve buttons here: marking served is the
+                            // waiter's job alone, from their own carry list.
                             SentItemRow(
                                 it,
-                                canServe = it.status == "ready" ||
-                                    (it.status == "pending" && it.station == "counter") ||
-                                    (isAdmin && (it.status == "pending" || it.status == "preparing")),
-                                onServe = {
-                                    scope.launch { Deps.api.itemStatus(it.id, "served"); refresh() }
-                                },
                                 canCancel = it.status != "cancelled" && it.status != "served" &&
                                     (it.status == "pending" || isAdmin),
                                 onCancel = { cancelTarget = it }
@@ -252,11 +235,21 @@ fun TableOrderScreen(tableId: Long, tableName: String, onBack: () -> Unit) {
                 }
             }
 
-            // ---- menu picker: owner's rule — keep the waiter dead simple,
-            // every dish is one full-width row, tap = +1, no tabs, no grid ----
+            // ---- menu picker: colour is the bhaji category (rail on top,
+            // tapped colour's varieties beneath — mirrors the kitchen's
+            // colour buckets); extras/drinks keep their flat category lists ----
             item { SectionTitle(S.addItems) }
+            bhajiColourItems(
+                kitchen = menu.flatMap { c -> c.items.filter { it.station == "kitchen" } },
+                selectedKey = selColourKey,
+                onSelect = { selColourKey = it },
+                cartQty = cartQty,
+                onAdd = { m -> addToCart(m.id, m.name, m.price) }
+            )
             menu.forEach { c ->
-                if (menu.size > 1) item {
+                val counterItems = c.items.filter { it.station == "counter" }
+                if (counterItems.isEmpty()) return@forEach
+                item {
                     Text(
                         c.name.uppercase(),
                         fontSize = 11.sp, fontWeight = FontWeight.SemiBold,
@@ -264,14 +257,14 @@ fun TableOrderScreen(tableId: Long, tableName: String, onBack: () -> Unit) {
                         modifier = Modifier.padding(top = 10.dp, bottom = 2.dp)
                     )
                 }
-                c.items.forEach { m ->
+                counterItems.forEach { m ->
                     item {
                         MenuRow(
                             name = m.name,
                             price = m.price,
                             available = m.available,
                             colour = dishColour(m.colour, m.id),
-                            counter = m.station == "counter",
+                            counter = true,
                             inCart = cartQty[m.id] ?: 0,
                             onClick = { if (m.available) addToCart(m.id, m.name, m.price) }
                         )
@@ -314,26 +307,13 @@ fun TableOrderScreen(tableId: Long, tableName: String, onBack: () -> Unit) {
                         )
                     }
                 } else if (o != null) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        val servable = o.tickets.any { t -> t.items.any { it.status == "pending" || it.status == "ready" } }
-                        OutlinedButton(
-                            onClick = { scope.launch { Deps.api.serveAll(o.id); refresh() } },
-                            enabled = servable,
-                            modifier = Modifier.weight(1f).height(50.dp),
-                            shape = RoundedCornerShape(16.dp)
-                        ) { Text(S.allServed, fontSize = 15.sp, fontWeight = FontWeight.Bold) }
-                        Button(
-                            onClick = { confirmClose = true },
-                            modifier = Modifier.weight(1f).height(50.dp),
-                            shape = RoundedCornerShape(16.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.tertiary)
-                        ) {
-                            Text(
-                                if (pricesVisible()) S.closeAmt(rupees(o.total)) else S.closeTable,
-                                fontSize = 15.sp, fontWeight = FontWeight.ExtraBold
-                            )
-                        }
-                    }
+                    // Closing belongs to the cashier, after they generate the
+                    // bill — this screen only punches and watches.
+                    Text(
+                        S.cashierCloses,
+                        fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(vertical = 6.dp)
+                    )
                 } else {
                     Text(
                         S.tapToStart,
@@ -361,41 +341,6 @@ fun TableOrderScreen(tableId: Long, tableName: String, onBack: () -> Unit) {
             onDismiss = { cancelTarget = null }
         )
     }
-    if (confirmClose) {
-        ConfirmDialog(
-            title = S.closeQ(tableName),
-            body = (if (pricesVisible()) S.totalLine(rupees(order?.total ?: 0)) + "\n" else "") +
-                S.collectFirst,
-            confirmLabel = S.closeTable,
-            onConfirm = { confirmClose = false; closeNow() },
-            onDismiss = { confirmClose = false }
-        )
-    }
-    blockers?.let { b ->
-        AlertDialog(
-            onDismissRequest = { blockers = null },
-            title = { Text(S.cantClose) },
-            text = {
-                Column {
-                    b.forEach { Text("• $it", fontSize = 14.sp) }
-                    Text(
-                        S.cantCloseHint,
-                        fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            },
-            confirmButton = {
-                Button(onClick = {
-                    blockers = null
-                    scope.launch {
-                        order?.let { Deps.api.serveAll(it.id) }
-                        closeNow()
-                    }
-                }) { Text(S.allServedClose) }
-            },
-            dismissButton = { TextButton(onClick = { blockers = null }) { Text(S.back) } }
-        )
-    }
     noteEditIdx?.let { idx ->
         var text by remember { mutableStateOf(cart.getOrNull(idx)?.note ?: "") }
         AlertDialog(
@@ -419,8 +364,93 @@ fun TableOrderScreen(tableId: Long, tableName: String, onBack: () -> Unit) {
     }
 }
 
+// Colour is the bhaji category: a horizontal rail of colour chips, and the
+// varieties of the tapped colour listed beneath. Same-colour bhajis club into
+// the same kitchen bucket, so the picker mirrors the tawa exactly. Counter
+// items (extras/drinks) are not part of this — they keep their category lists.
+fun LazyListScope.bhajiColourItems(
+    kitchen: List<com.pavbhaji.pos.data.MenuItemDto>,
+    selectedKey: String?,
+    onSelect: (String) -> Unit,
+    cartQty: Map<Long, Long>,
+    onAdd: (com.pavbhaji.pos.data.MenuItemDto) -> Unit
+) {
+    if (kitchen.isEmpty()) return
+    val groups = LinkedHashMap<String, MutableList<com.pavbhaji.pos.data.MenuItemDto>>()
+    kitchen.forEach { m ->
+        // '' colour → private key: an uncoloured dish is its own group, exactly
+        // like the server's bucket clubbing.
+        groups.getOrPut(m.colour.ifEmpty { "item:${m.id}" }) { mutableListOf() }.add(m)
+    }
+    val selKey = selectedKey?.takeIf { groups.containsKey(it) } ?: groups.keys.first()
+    item(key = "bhajiRail") {
+        Column {
+            Text(
+                S.bhajiByColour,
+                fontSize = 11.sp, fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 10.dp, bottom = 4.dp)
+            )
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState())
+                    .padding(vertical = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.Bottom
+            ) {
+                groups.forEach { (key, list) ->
+                    ColourChip(
+                        colour = com.pavbhaji.pos.ui.dishColour(list.first().colour, list.first().id),
+                        count = list.size,
+                        selected = key == selKey,
+                        onClick = { onSelect(key) }
+                    )
+                }
+            }
+        }
+    }
+    groups.getValue(selKey).forEach { m ->
+        item(key = "bhaji${m.id}") {
+            MenuRow(
+                name = m.name, price = m.price, available = m.available,
+                colour = com.pavbhaji.pos.ui.dishColour(m.colour, m.id),
+                counter = false,
+                inCart = cartQty[m.id] ?: 0,
+                onClick = { if (m.available) onAdd(m) }
+            )
+        }
+    }
+}
+
+// One swatch on the rail: the colour itself is the label; a small count says
+// how many varieties live inside it.
 @Composable
-private fun MenuRow(
+private fun ColourChip(colour: Color, count: Int, selected: Boolean, onClick: () -> Unit) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Surface(
+            onClick = onClick,
+            shape = CircleShape,
+            color = colour,
+            border = if (selected) androidx.compose.foundation.BorderStroke(3.dp, Color(0xFF3A2A20))
+            else androidx.compose.foundation.BorderStroke(1.dp, Color(0x33000000)),
+            shadowElevation = if (selected) 3.dp else 0.dp,
+            modifier = Modifier.size(if (selected) 46.dp else 38.dp)
+        ) {}
+        if (count > 1) {
+            Text(
+                "$count", fontSize = 10.sp, fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 2.dp)
+            )
+        }
+    }
+}
+
+// Shared with the parcel manager's add-order screen — same one-row-per-dish,
+// tap-equals-plus-one picker everywhere an order is punched.
+@Composable
+fun MenuRow(
     name: String, price: Long, available: Boolean,
     colour: Color, counter: Boolean, inCart: Long,
     onClick: () -> Unit
@@ -476,8 +506,6 @@ private fun MenuRow(
 @Composable
 private fun SentItemRow(
     it: OrderItemDto,
-    canServe: Boolean,
-    onServe: () -> Unit,
     canCancel: Boolean,
     onCancel: () -> Unit
 ) {
@@ -504,7 +532,7 @@ private fun SentItemRow(
             )
             val sub = listOfNotNull(
                 if (pricesVisible()) rupees(it.price * it.qty) else null,
-                if (counter && it.status == "pending") S.youServeThis else null,
+                if (counter && it.status == "pending") S.justCarry else null,
                 it.note.ifEmpty { null },
                 it.cancelReason.ifEmpty { null }
             ).joinToString(" · ")
@@ -515,14 +543,6 @@ private fun SentItemRow(
             )
         }
         StatusChip(it.status)
-        if (canServe) {
-            TextButton(onClick = onServe) {
-                Text(
-                    if (counter && it.status == "pending") S.serveHand else S.serveTick,
-                    fontSize = 12.sp, color = Color(0xFF2E7D32)
-                )
-            }
-        }
         if (canCancel) {
             TextButton(onClick = onCancel) { Text("✕", color = MaterialTheme.colorScheme.error) }
         }

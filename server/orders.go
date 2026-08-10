@@ -36,14 +36,16 @@ type TableState struct {
 }
 
 type TableOrder struct {
-	OrderID      int64  `json:"orderId"`
-	OrderNo      int64  `json:"orderNo"`
-	OpenedAt     int64  `json:"openedAt"`
-	OpenedByName string `json:"openedByName"`
-	ItemCount    int64  `json:"itemCount"`
-	PendingCount int64  `json:"pendingCount"`
-	ReadyCount   int64  `json:"readyCount"`
-	Total        int64  `json:"total"`
+	OrderID       int64  `json:"orderId"`
+	OrderNo       int64  `json:"orderNo"`
+	OpenedAt      int64  `json:"openedAt"`
+	OpenedByName  string `json:"openedByName"`
+	ItemCount     int64  `json:"itemCount"`
+	PendingCount  int64  `json:"pendingCount"`
+	ReadyCount    int64  `json:"readyCount"`
+	Total         int64  `json:"total"`
+	CustomerName  string `json:"customerName"`  // parcel orders only
+	CustomerPhone string `json:"customerPhone"` // parcel orders only
 }
 
 type OrderItem struct {
@@ -68,16 +70,18 @@ type Ticket struct {
 }
 
 type OrderDetail struct {
-	ID           int64    `json:"id"`
-	OrderNo      int64    `json:"orderNo"`
-	BizDate      string   `json:"bizDate"`
-	TableID      int64    `json:"tableId"`
-	TableName    string   `json:"tableName"`
-	Status       string   `json:"status"`
-	OpenedAt     int64    `json:"openedAt"`
-	OpenedByName string   `json:"openedByName"`
-	Total        int64    `json:"total"`
-	Tickets      []Ticket `json:"tickets"`
+	ID            int64    `json:"id"`
+	OrderNo       int64    `json:"orderNo"`
+	BizDate       string   `json:"bizDate"`
+	TableID       int64    `json:"tableId"`
+	TableName     string   `json:"tableName"`
+	Status        string   `json:"status"`
+	OpenedAt      int64    `json:"openedAt"`
+	OpenedByName  string   `json:"openedByName"`
+	Total         int64    `json:"total"`
+	CustomerName  string   `json:"customerName"`
+	CustomerPhone string   `json:"customerPhone"`
+	Tickets       []Ticket `json:"tickets"`
 }
 
 func (s *Server) loadMenu() []Category {
@@ -136,7 +140,7 @@ func (s *Server) loadTables() []TableState {
 	out := []TableState{}
 	rows, err := s.db.Query(`
 		SELECT t.id, t.name, t.kind,
-		       o.id, o.order_no, o.opened_at, st.name,
+		       o.id, o.order_no, o.opened_at, st.name, o.customer_name, o.customer_phone,
 		       (SELECT COALESCE(SUM(qty),0)        FROM ticket_items ti JOIN tickets tk ON tk.id=ti.ticket_id WHERE tk.order_id=o.id AND ti.status!='cancelled'),
 		       (SELECT COALESCE(SUM(qty),0)        FROM ticket_items ti JOIN tickets tk ON tk.id=ti.ticket_id WHERE tk.order_id=o.id AND ti.status IN ('pending','preparing')),
 		       (SELECT COALESCE(SUM(qty),0)        FROM ticket_items ti JOIN tickets tk ON tk.id=ti.ticket_id WHERE tk.order_id=o.id AND ti.status='ready'),
@@ -153,13 +157,14 @@ func (s *Server) loadTables() []TableState {
 	for rows.Next() {
 		var ts TableState
 		var oid, ono, oat, icount, pcount, rcount, total sql.NullInt64
-		var oname sql.NullString
-		rows.Scan(&ts.ID, &ts.Name, &ts.Kind, &oid, &ono, &oat, &oname, &icount, &pcount, &rcount, &total)
+		var oname, cname, cphone sql.NullString
+		rows.Scan(&ts.ID, &ts.Name, &ts.Kind, &oid, &ono, &oat, &oname, &cname, &cphone, &icount, &pcount, &rcount, &total)
 		if oid.Valid {
 			ts.Order = &TableOrder{
 				OrderID: oid.Int64, OrderNo: ono.Int64, OpenedAt: oat.Int64,
 				OpenedByName: oname.String, ItemCount: icount.Int64,
 				PendingCount: pcount.Int64, ReadyCount: rcount.Int64, Total: total.Int64,
+				CustomerName: cname.String, CustomerPhone: cphone.String,
 			}
 		}
 		out = append(out, ts)
@@ -174,10 +179,12 @@ func (s *Server) handleTables(w http.ResponseWriter, r *http.Request) {
 func (s *Server) loadOrderDetail(orderID int64) (*OrderDetail, error) {
 	var d OrderDetail
 	err := s.db.QueryRow(`
-		SELECT o.id, o.order_no, o.biz_date, o.table_id, t.name, o.status, o.opened_at, st.name
+		SELECT o.id, o.order_no, o.biz_date, o.table_id, t.name, o.status, o.opened_at, st.name,
+		       o.customer_name, o.customer_phone
 		FROM orders o JOIN dining_tables t ON t.id=o.table_id JOIN staff st ON st.id=o.opened_by
 		WHERE o.id=?`, orderID).
-		Scan(&d.ID, &d.OrderNo, &d.BizDate, &d.TableID, &d.TableName, &d.Status, &d.OpenedAt, &d.OpenedByName)
+		Scan(&d.ID, &d.OrderNo, &d.BizDate, &d.TableID, &d.TableName, &d.Status, &d.OpenedAt, &d.OpenedByName,
+			&d.CustomerName, &d.CustomerPhone)
 	if err != nil {
 		return nil, err
 	}
@@ -317,15 +324,18 @@ func (s *Server) autoSealBatches() {
 	}
 }
 
-// assignBatch puts one kitchen line into its dish's colour bucket, inside the
-// punch transaction. Rules (locked in the design spec):
-//   - at most one OPEN bucket per dish; lines join it while the total stays ≤ cap
+// assignBatch puts one kitchen line into its COLOUR's bucket, inside the
+// punch transaction. Colour is the club: every bhaji variety sharing a colour
+// cooks together in one bucket (a colourless dish gets a private 'item:<id>'
+// key, so it never clubs). Rules (locked in the design spec):
+//   - at most one OPEN bucket per colour; lines join it while the total stays ≤ cap
 //   - a line never splits: if it doesn't fit, the open bucket seals as 'full'
 //     and the whole line starts the next bucket
-//   - reaching the cap seals the bucket immediately
-func assignBatch(tx *sql.Tx, menuItemID, qty, cap, now int64) (int64, error) {
+//   - reaching the cap seals the bucket immediately (cap = the incoming
+//     line's dish cap — same-colour varieties share a tawa, so keep them equal)
+func assignBatch(tx *sql.Tx, colourKey string, menuItemID, qty, cap, now int64) (int64, error) {
 	newBucket := func() (int64, error) {
-		res, err := tx.Exec(`INSERT INTO batches(menu_item_id, status, created_at) VALUES(?,'open',?)`, menuItemID, now)
+		res, err := tx.Exec(`INSERT INTO batches(menu_item_id, colour, status, created_at) VALUES(?,?,'open',?)`, menuItemID, colourKey, now)
 		if err != nil {
 			return 0, err
 		}
@@ -335,8 +345,8 @@ func assignBatch(tx *sql.Tx, menuItemID, qty, cap, now int64) (int64, error) {
 	err := tx.QueryRow(`
 		SELECT b.id, COALESCE((SELECT SUM(ti.qty) FROM ticket_items ti
 		                       WHERE ti.batch_id=b.id AND ti.status!='cancelled'),0)
-		FROM batches b WHERE b.menu_item_id=? AND b.status='open'
-		ORDER BY b.id LIMIT 1`, menuItemID).Scan(&batchID, &cur)
+		FROM batches b WHERE b.colour=? AND b.status='open'
+		ORDER BY b.id LIMIT 1`, colourKey).Scan(&batchID, &cur)
 	if err == sql.ErrNoRows {
 		if batchID, err = newBucket(); err != nil {
 			return 0, err
@@ -362,6 +372,70 @@ func assignBatch(tx *sql.Tx, menuItemID, qty, cap, now int64) (int64, error) {
 	return batchID, nil
 }
 
+// ticketLine is one requested KOT line, shared by table tickets and parcels.
+type ticketLine struct {
+	MenuItemID int64  `json:"menuItemId"`
+	Qty        int64  `json:"qty"`
+	Note       string `json:"note"`
+}
+
+// validateTicketLines applies the sanity rules every new KOT must pass.
+// Returns "" when the lines are acceptable.
+func validateTicketLines(items []ticketLine) string {
+	if len(items) == 0 || len(items) > 100 {
+		return "a ticket needs between 1 and 100 lines"
+	}
+	for _, it := range items {
+		if it.Qty < 1 || it.Qty > 50 {
+			return "quantity must be between 1 and 50"
+		}
+		if len(it.Note) > 200 {
+			return "note too long"
+		}
+	}
+	return ""
+}
+
+// punchLines writes a ticket's lines inside the caller's transaction: menu
+// name+price are snapshotted so later price edits never rewrite history, and
+// kitchen lines drop into their dish's colour bucket. On failure it returns
+// the HTTP status + message the caller should fail with.
+func punchLines(tx *sql.Tx, ticketID, staffID int64, items []ticketLine, globalCap, now int64) (summary []string, status int, errMsg string) {
+	for _, it := range items {
+		var name, station, colour string
+		var price, itemCap int64
+		var available bool
+		err := tx.QueryRow(`SELECT name, price, available, station, COALESCE(batch_cap, ?), colour
+			FROM menu_items WHERE id=? AND active=1`,
+			globalCap, it.MenuItemID).Scan(&name, &price, &available, &station, &itemCap, &colour)
+		if err != nil {
+			return nil, http.StatusBadRequest, "menu item not found (was it just removed?)"
+		}
+		if !available {
+			return nil, http.StatusConflict, name + " is marked out of stock"
+		}
+		var batchID any // NULL for counter items — they never enter the kitchen
+		if station == "kitchen" {
+			colourKey := colour
+			if colourKey == "" {
+				colourKey = fmt.Sprintf("item:%d", it.MenuItemID)
+			}
+			id, err := assignBatch(tx, colourKey, it.MenuItemID, it.Qty, itemCap, now)
+			if err != nil {
+				return nil, http.StatusInternalServerError, "could not assign colour bucket"
+			}
+			batchID = id
+		}
+		if _, err := tx.Exec(`INSERT INTO ticket_items(ticket_id, menu_item_id, name, price, qty, note, status, status_at, status_by, station, batch_id)
+			VALUES(?,?,?,?,?,?,'pending',?,?,?,?)`,
+			ticketID, it.MenuItemID, name, price, it.Qty, strings.TrimSpace(it.Note), now, staffID, station, batchID); err != nil {
+			return nil, http.StatusInternalServerError, "could not save items"
+		}
+		summary = append(summary, fmt.Sprintf("%d× %s", it.Qty, name))
+	}
+	return summary, 0, ""
+}
+
 // POST /api/dining-tables/{id}/tickets
 // Body: {clientTicketId, items:[{menuItemId, qty, note}]}
 //
@@ -376,12 +450,8 @@ func (s *Server) handleCreateTicket(w http.ResponseWriter, r *http.Request) {
 	st := staffFrom(r)
 	tableID, _ := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	var req struct {
-		ClientTicketID string `json:"clientTicketId"`
-		Items          []struct {
-			MenuItemID int64  `json:"menuItemId"`
-			Qty        int64  `json:"qty"`
-			Note       string `json:"note"`
-		} `json:"items"`
+		ClientTicketID string       `json:"clientTicketId"`
+		Items          []ticketLine `json:"items"`
 	}
 	if !readJSON(w, r, &req) {
 		return
@@ -391,19 +461,9 @@ func (s *Server) handleCreateTicket(w http.ResponseWriter, r *http.Request) {
 		fail(w, http.StatusBadRequest, "clientTicketId required (min 8 chars)")
 		return
 	}
-	if len(req.Items) == 0 || len(req.Items) > 100 {
-		fail(w, http.StatusBadRequest, "a ticket needs between 1 and 100 lines")
+	if msg := validateTicketLines(req.Items); msg != "" {
+		fail(w, http.StatusBadRequest, msg)
 		return
-	}
-	for _, it := range req.Items {
-		if it.Qty < 1 || it.Qty > 50 {
-			fail(w, http.StatusBadRequest, "quantity must be between 1 and 50")
-			return
-		}
-		if len(it.Note) > 200 {
-			fail(w, http.StatusBadRequest, "note too long")
-			return
-		}
 	}
 
 	// Idempotency replay: same clientTicketId → return the existing result, 200.
@@ -431,9 +491,15 @@ func (s *Server) handleCreateTicket(w http.ResponseWriter, r *http.Request) {
 	}
 	defer tx.Rollback()
 
-	var tName string
-	if err := tx.QueryRow(`SELECT name FROM dining_tables WHERE id=? AND active=1`, tableID).Scan(&tName); err != nil {
+	var tName, tKind string
+	if err := tx.QueryRow(`SELECT name, kind FROM dining_tables WHERE id=? AND active=1`, tableID).Scan(&tName, &tKind); err != nil {
 		fail(w, http.StatusNotFound, "table not found")
+		return
+	}
+	// The parcel manager's world is parcels only — dine-in tables are the
+	// manager's job. (Enforced here, not in the UI.)
+	if st.Role == "parcel" && tKind != "parcel" {
+		fail(w, http.StatusForbidden, "the parcel manager can only punch parcel orders")
 		return
 	}
 
@@ -479,42 +545,164 @@ func (s *Server) handleCreateTicket(w http.ResponseWriter, r *http.Request) {
 	}
 	ticketID, _ := res.LastInsertId()
 
-	var summary []string
-	for _, it := range req.Items {
-		var name, station string
-		var price, itemCap int64
-		var available bool
-		err := tx.QueryRow(`SELECT name, price, available, station, COALESCE(batch_cap, ?)
-			FROM menu_items WHERE id=? AND active=1`,
-			globalCap, it.MenuItemID).Scan(&name, &price, &available, &station, &itemCap)
-		if err != nil {
-			fail(w, http.StatusBadRequest, "menu item not found (was it just removed?)")
-			return
-		}
-		if !available {
-			fail(w, http.StatusConflict, name+" is marked out of stock")
-			return
-		}
-		var batchID any // NULL for counter items — they never enter the kitchen
-		if station == "kitchen" {
-			id, err := assignBatch(tx, it.MenuItemID, it.Qty, itemCap, now)
-			if err != nil {
-				fail(w, http.StatusInternalServerError, "could not assign colour bucket")
-				return
-			}
-			batchID = id
-		}
-		if _, err := tx.Exec(`INSERT INTO ticket_items(ticket_id, menu_item_id, name, price, qty, note, status, status_at, status_by, station, batch_id)
-			VALUES(?,?,?,?,?,?,'pending',?,?,?,?)`,
-			ticketID, it.MenuItemID, name, price, it.Qty, strings.TrimSpace(it.Note), now, st.ID, station, batchID); err != nil {
-			fail(w, http.StatusInternalServerError, "could not save items")
-			return
-		}
-		summary = append(summary, fmt.Sprintf("%d× %s", it.Qty, name))
+	summary, errStatus, errMsg := punchLines(tx, ticketID, st.ID, req.Items, globalCap, now)
+	if errMsg != "" {
+		fail(w, errStatus, errMsg)
+		return
 	}
 	if _, err := tx.Exec(`INSERT INTO events(at, staff_id, staff_name, action, detail) VALUES(?,?,?,?,?)`,
 		now, st.ID, st.Name, "ticket",
 		fmt.Sprintf("%s · order #%d · KOT %d: %s", tName, orderNo, ticketNo, strings.Join(summary, ", "))); err != nil {
+		fail(w, http.StatusInternalServerError, "could not write audit event")
+		return
+	}
+	if err := tx.Commit(); err != nil {
+		fail(w, http.StatusInternalServerError, "could not commit")
+		return
+	}
+
+	s.hub.Broadcast("tables", "kitchen")
+	d, err := s.loadOrderDetail(orderID)
+	if err != nil {
+		fail(w, http.StatusInternalServerError, "saved but could not reload order")
+		return
+	}
+	writeJSON(w, http.StatusCreated, d)
+}
+
+// POST /api/parcels {customerName, customerPhone, clientTicketId, items:[…]}
+//
+// The parcel manager's add-order flow. One transaction: pick a free parcel
+// slot (auto-growing the P-pool when the shop is busier than it's ever been),
+// open a fresh order carrying the customer's name/phone, punch the first KOT.
+// Same idempotency contract as table tickets: a retry with the same
+// clientTicketId returns the already-saved order instead of a duplicate.
+func (s *Server) handleParcelCreate(w http.ResponseWriter, r *http.Request) {
+	st := staffFrom(r)
+	var req struct {
+		CustomerName   string       `json:"customerName"`
+		CustomerPhone  string       `json:"customerPhone"`
+		ClientTicketID string       `json:"clientTicketId"`
+		Items          []ticketLine `json:"items"`
+	}
+	if !readJSON(w, r, &req) {
+		return
+	}
+	req.CustomerName = strings.TrimSpace(req.CustomerName)
+	req.CustomerPhone = strings.TrimSpace(req.CustomerPhone)
+	req.ClientTicketID = strings.TrimSpace(req.ClientTicketID)
+	if req.CustomerName == "" {
+		fail(w, http.StatusBadRequest, "customer name required")
+		return
+	}
+	if len(req.CustomerName) > 60 || len(req.CustomerPhone) > 20 {
+		fail(w, http.StatusBadRequest, "customer name or phone too long")
+		return
+	}
+	if len(req.ClientTicketID) < 8 {
+		fail(w, http.StatusBadRequest, "clientTicketId required (min 8 chars)")
+		return
+	}
+	if msg := validateTicketLines(req.Items); msg != "" {
+		fail(w, http.StatusBadRequest, msg)
+		return
+	}
+
+	// Idempotency replay: same clientTicketId → the parcel already exists.
+	var existingOrder int64
+	if s.db.QueryRow(`SELECT order_id FROM tickets WHERE client_ticket_id=?`, req.ClientTicketID).Scan(&existingOrder) == nil {
+		if d, err := s.loadOrderDetail(existingOrder); err == nil {
+			writeJSON(w, http.StatusOK, d)
+			return
+		}
+		fail(w, http.StatusInternalServerError, "could not load order")
+		return
+	}
+
+	globalCap := s.batchCap()
+	tx, err := s.db.Begin()
+	if err != nil {
+		fail(w, http.StatusInternalServerError, "db busy, try again")
+		return
+	}
+	defer tx.Rollback()
+
+	// A free active parcel slot, lowest first so P1 gets reused before P9.
+	var tableID int64
+	var tName string
+	err = tx.QueryRow(`
+		SELECT t.id, t.name FROM dining_tables t
+		WHERE t.kind='parcel' AND t.active=1
+		AND NOT EXISTS (SELECT 1 FROM orders o WHERE o.table_id=t.id AND o.status='open')
+		ORDER BY t.sort, t.id LIMIT 1`).Scan(&tableID, &tName)
+	if err == sql.ErrNoRows {
+		// Pool exhausted: mint the next P<n>. The name is UNIQUE, so walk
+		// forward past any numbers the admin already used.
+		var have int64
+		tx.QueryRow(`SELECT COUNT(*) FROM dining_tables WHERE kind='parcel'`).Scan(&have)
+		created := false
+		for n := have + 1; n <= have+200; n++ {
+			nm := fmt.Sprintf("P%d", n)
+			if res, err := tx.Exec(`INSERT INTO dining_tables(name, sort, kind) VALUES(?,?,'parcel')`, nm, 100+n); err == nil {
+				tableID, _ = res.LastInsertId()
+				tName = nm
+				created = true
+				break
+			}
+		}
+		if !created {
+			fail(w, http.StatusInternalServerError, "could not create a parcel slot")
+			return
+		}
+	} else if err != nil {
+		fail(w, http.StatusInternalServerError, "db error")
+		return
+	}
+
+	now := nowMs()
+	bd := bizDate(time.Now(), s.dayStartHour)
+	var orderNo int64
+	if err := tx.QueryRow(`SELECT COALESCE(MAX(order_no),0)+1 FROM orders WHERE biz_date=?`, bd).Scan(&orderNo); err != nil {
+		fail(w, http.StatusInternalServerError, "could not assign order number")
+		return
+	}
+	res, err := tx.Exec(`INSERT INTO orders(biz_date, order_no, table_id, status, opened_by, opened_at, customer_name, customer_phone)
+		VALUES(?,?,?,'open',?,?,?,?)`, bd, orderNo, tableID, st.ID, now, req.CustomerName, req.CustomerPhone)
+	if err != nil {
+		fail(w, http.StatusInternalServerError, "could not open order")
+		return
+	}
+	orderID, _ := res.LastInsertId()
+
+	res, err = tx.Exec(`INSERT INTO tickets(order_id, ticket_no, client_ticket_id, created_by, created_at)
+		VALUES(?,1,?,?,?)`, orderID, req.ClientTicketID, st.ID, now)
+	if err != nil {
+		// UNIQUE(client_ticket_id) race: another retry landed first — replay it.
+		tx.Rollback()
+		var oid int64
+		if s.db.QueryRow(`SELECT order_id FROM tickets WHERE client_ticket_id=?`, req.ClientTicketID).Scan(&oid) == nil {
+			if d, err := s.loadOrderDetail(oid); err == nil {
+				writeJSON(w, http.StatusOK, d)
+				return
+			}
+		}
+		fail(w, http.StatusInternalServerError, "could not save ticket")
+		return
+	}
+	ticketID, _ := res.LastInsertId()
+
+	summary, errStatus, errMsg := punchLines(tx, ticketID, st.ID, req.Items, globalCap, now)
+	if errMsg != "" {
+		fail(w, errStatus, errMsg)
+		return
+	}
+	who := req.CustomerName
+	if req.CustomerPhone != "" {
+		who += " (" + req.CustomerPhone + ")"
+	}
+	if _, err := tx.Exec(`INSERT INTO events(at, staff_id, staff_name, action, detail) VALUES(?,?,?,?,?)`,
+		now, st.ID, st.Name, "parcel",
+		fmt.Sprintf("🥡 %s · %s · order #%d: %s", who, tName, orderNo, strings.Join(summary, ", "))); err != nil {
 		fail(w, http.StatusInternalServerError, "could not write audit event")
 		return
 	}
@@ -542,10 +730,10 @@ func canTransition(role, from, to, station string) bool {
 	case "ready":
 		return (role == "chef" || role == "admin") && (from == "pending" || from == "preparing")
 	case "served":
-		if role == "admin" {
-			return from == "pending" || from == "preparing" || from == "ready"
-		}
-		if role == "waiter" || role == "manager" {
+		// Serving is the waiter's testimony that a plate physically went out.
+		// Nobody else — not even admin — may write it, and there is no bulk
+		// serve anywhere: one plate carried, one tap.
+		if role == "waiter" {
 			if from == "ready" {
 				return true
 			}
@@ -565,17 +753,21 @@ func (s *Server) handleItemStatus(w http.ResponseWriter, r *http.Request) {
 	if !readJSON(w, r, &req) {
 		return
 	}
-	var from, name, tableName, station string
+	var from, name, tableName, tableKind, station string
 	var qty, orderID int64
 	err := s.db.QueryRow(`
-		SELECT ti.status, ti.name, ti.qty, o.id, t.name, ti.station
+		SELECT ti.status, ti.name, ti.qty, o.id, t.name, t.kind, ti.station
 		FROM ticket_items ti
 		JOIN tickets tk ON tk.id=ti.ticket_id
 		JOIN orders o ON o.id=tk.order_id
 		JOIN dining_tables t ON t.id=o.table_id
-		WHERE ti.id=? AND o.status='open'`, itemID).Scan(&from, &name, &qty, &orderID, &tableName, &station)
+		WHERE ti.id=? AND o.status='open'`, itemID).Scan(&from, &name, &qty, &orderID, &tableName, &tableKind, &station)
 	if err != nil {
 		fail(w, http.StatusNotFound, "item not found on any open order")
+		return
+	}
+	if st.Role == "parcel" && tableKind != "parcel" {
+		fail(w, http.StatusForbidden, "the parcel manager can only touch parcel orders")
 		return
 	}
 	if from == req.To {
@@ -610,15 +802,15 @@ func (s *Server) handleItemCancel(w http.ResponseWriter, r *http.Request) {
 		fail(w, http.StatusBadRequest, "a reason is required to cancel")
 		return
 	}
-	var from, name, tableName string
+	var from, name, tableName, tableKind string
 	var qty int64
 	err := s.db.QueryRow(`
-		SELECT ti.status, ti.name, ti.qty, t.name
+		SELECT ti.status, ti.name, ti.qty, t.name, t.kind
 		FROM ticket_items ti
 		JOIN tickets tk ON tk.id=ti.ticket_id
 		JOIN orders o ON o.id=tk.order_id
 		JOIN dining_tables t ON t.id=o.table_id
-		WHERE ti.id=? AND o.status='open'`, itemID).Scan(&from, &name, &qty, &tableName)
+		WHERE ti.id=? AND o.status='open'`, itemID).Scan(&from, &name, &qty, &tableName, &tableKind)
 	if err != nil {
 		fail(w, http.StatusNotFound, "item not found on any open order")
 		return
@@ -627,7 +819,9 @@ func (s *Server) handleItemCancel(w http.ResponseWriter, r *http.Request) {
 		fail(w, http.StatusConflict, "already cancelled")
 		return
 	}
-	allowed := from == "pending" && (st.Role == "manager" || st.Role == "admin") ||
+	// Parcel manager: manager-like rights on pending lines, parcels only.
+	allowed := from == "pending" && (st.Role == "manager" || st.Role == "admin" ||
+		(st.Role == "parcel" && tableKind == "parcel")) ||
 		from != "pending" && st.Role == "admin"
 	if !allowed {
 		fail(w, http.StatusForbidden, "only admin can cancel an item the kitchen already started")
@@ -639,29 +833,6 @@ func (s *Server) handleItemCancel(w http.ResponseWriter, r *http.Request) {
 		fmt.Sprintf("%s: %d× %s (was %s) — %s", tableName, qty, name, from, req.Reason))
 	s.hub.Broadcast("tables", "kitchen")
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
-}
-
-// POST /api/orders/{id}/serve-all — everything pending/ready becomes served.
-// Items the kitchen is actively cooking (preparing) are NOT touched.
-func (s *Server) handleServeAll(w http.ResponseWriter, r *http.Request) {
-	st := staffFrom(r)
-	orderID, _ := strconv.ParseInt(r.PathValue("id"), 10, 64)
-	var tableName string
-	err := s.db.QueryRow(`SELECT t.name FROM orders o JOIN dining_tables t ON t.id=o.table_id
-		WHERE o.id=? AND o.status='open'`, orderID).Scan(&tableName)
-	if err != nil {
-		fail(w, http.StatusNotFound, "open order not found")
-		return
-	}
-	res, _ := s.db.Exec(`UPDATE ticket_items SET status='served', status_at=?, status_by=?
-		WHERE status IN ('pending','ready')
-		AND ticket_id IN (SELECT id FROM tickets WHERE order_id=?)`, nowMs(), st.ID, orderID)
-	n, _ := res.RowsAffected()
-	if n > 0 {
-		audit(s.db, st.ID, st.Name, "serve-all", fmt.Sprintf("%s: %d line(s) marked served", tableName, n))
-		s.hub.Broadcast("tables", "kitchen")
-	}
-	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "updated": n})
 }
 
 // POST /api/orders/{id}/close — only when every line is served or cancelled.
@@ -715,15 +886,40 @@ func (s *Server) handleCloseOrder(w http.ResponseWriter, r *http.Request) {
 		JOIN tickets tk ON tk.id=ti.ticket_id
 		WHERE tk.order_id=? AND ti.status!='cancelled'`, orderID).Scan(&total)
 
+	// Settlement gate: closing needs a generated bill whose subtotal still
+	// matches the live items, and payments that add up to its total. This is
+	// what makes "close" mean "the money is actually in the drawer/phone".
+	var bSubtotal, bDiscount, bTotal, bCash, bOnline int64
+	err = tx.QueryRow(`SELECT subtotal, discount, total, paid_cash, paid_online FROM bills WHERE order_id=?`, orderID).
+		Scan(&bSubtotal, &bDiscount, &bTotal, &bCash, &bOnline)
+	if err != nil {
+		fail(w, http.StatusConflict, "generate the bill first — closing needs a settled bill")
+		return
+	}
+	if bSubtotal != total {
+		fail(w, http.StatusConflict, "items changed after the bill was made — open the bill again to refresh it")
+		return
+	}
+	if bCash+bOnline != bTotal {
+		fail(w, http.StatusConflict, fmt.Sprintf("payment doesn't add up: %s cash + %s online ≠ bill total %s",
+			billRupees(bCash), billRupees(bOnline), billRupees(bTotal)))
+		return
+	}
+
 	now := nowMs()
 	if _, err := tx.Exec(`UPDATE orders SET status='closed', closed_by=?, closed_at=? WHERE id=?`,
 		st.ID, now, orderID); err != nil {
 		fail(w, http.StatusInternalServerError, "could not close order")
 		return
 	}
+	detail := fmt.Sprintf("%s · order #%d closed · bill %s (cash %s + online %s",
+		tableName, orderNo, billRupees(bTotal), billRupees(bCash), billRupees(bOnline))
+	if bDiscount > 0 {
+		detail += fmt.Sprintf(", discount %s", billRupees(bDiscount))
+	}
+	detail += ")"
 	if _, err := tx.Exec(`INSERT INTO events(at, staff_id, staff_name, action, detail) VALUES(?,?,?,?,?)`,
-		now, st.ID, st.Name, "order:closed",
-		fmt.Sprintf("%s · order #%d closed · total ₹%d.%02d", tableName, orderNo, total/100, total%100)); err != nil {
+		now, st.ID, st.Name, "order:closed", detail); err != nil {
 		fail(w, http.StatusInternalServerError, "could not write audit event")
 		return
 	}
@@ -741,6 +937,7 @@ type BucketLine struct {
 	TableName string `json:"tableName"`
 	Qty       int64  `json:"qty"`
 	Note      string `json:"note"`
+	Name      string `json:"name"` // the variety — one colour bucket can hold several
 }
 
 type Bucket struct {
@@ -765,7 +962,7 @@ func (s *Server) handleKitchen(w http.ResponseWriter, r *http.Request) {
 	globalCap := s.batchCap()
 	buckets := []Bucket{}
 	rows, err := s.db.Query(`
-		SELECT b.id, b.menu_item_id, m.name, m.colour, b.status, COALESCE(m.batch_cap, ?), b.created_at,
+		SELECT b.id, b.menu_item_id, m.name, m.colour, b.colour, b.status, COALESCE(m.batch_cap, ?), b.created_at,
 		       COALESCE(b.taken_at,0), COALESCE(b.taken_by,0), COALESCE(st.name,'')
 		FROM batches b
 		JOIN menu_items m ON m.id=b.menu_item_id
@@ -775,8 +972,14 @@ func (s *Server) handleKitchen(w http.ResponseWriter, r *http.Request) {
 	if err == nil {
 		for rows.Next() {
 			var b Bucket
-			rows.Scan(&b.ID, &b.MenuItemID, &b.Name, &b.Colour, &b.Status, &b.Cap, &b.CreatedAt,
+			var clubColour string
+			rows.Scan(&b.ID, &b.MenuItemID, &b.Name, &b.Colour, &clubColour, &b.Status, &b.Cap, &b.CreatedAt,
 				&b.TakenAt, &b.TakenBy, &b.TakenByName)
+			// The club colour is the bucket's identity; 'item:<id>' sentinels
+			// fall back to the opening dish's own colour.
+			if clubColour != "" && !strings.HasPrefix(clubColour, "item:") {
+				b.Colour = clubColour
+			}
 			b.Lines = []BucketLine{}
 			buckets = append(buckets, b)
 		}
@@ -785,7 +988,7 @@ func (s *Server) handleKitchen(w http.ResponseWriter, r *http.Request) {
 	out := buckets[:0]
 	for i := range buckets {
 		irows, err := s.db.Query(`
-			SELECT dt.name, ti.qty, ti.note
+			SELECT dt.name, ti.qty, ti.note, ti.name
 			FROM ticket_items ti
 			JOIN tickets tk ON tk.id=ti.ticket_id
 			JOIN orders o ON o.id=tk.order_id
@@ -797,11 +1000,24 @@ func (s *Server) handleKitchen(w http.ResponseWriter, r *http.Request) {
 		}
 		for irows.Next() {
 			var l BucketLine
-			irows.Scan(&l.TableName, &l.Qty, &l.Note)
+			irows.Scan(&l.TableName, &l.Qty, &l.Note, &l.Name)
 			buckets[i].Lines = append(buckets[i].Lines, l)
 			buckets[i].Qty += l.Qty
 		}
 		irows.Close()
+		// Title = the varieties actually inside, so a clubbed bucket reads
+		// "Pav Bhaji + Cheese Pav Bhaji", not just whichever dish opened it.
+		seen := map[string]bool{}
+		var names []string
+		for _, l := range buckets[i].Lines {
+			if !seen[l.Name] {
+				seen[l.Name] = true
+				names = append(names, l.Name)
+			}
+		}
+		if len(names) > 0 {
+			buckets[i].Name = strings.Join(names, " + ")
+		}
 		if buckets[i].Qty > 0 {
 			out = append(out, buckets[i])
 		}

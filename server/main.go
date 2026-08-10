@@ -139,15 +139,31 @@ func buildServer(port int, dataDir string) (*Server, *http.ServeMux, error) {
 	mux.HandleFunc("POST /api/batches/{id}/take", s.requireRole("chef admin", s.handleBatchTake))
 	mux.HandleFunc("POST /api/batches/{id}/ready", s.requireRole("chef admin", s.handleBatchReady))
 
-	// Taking orders, closing, cancelling: managers and admins. Waiters only
-	// serve — their whole job is the flat carry list.
-	mux.HandleFunc("POST /api/dining-tables/{id}/tickets", s.requireRole("manager admin", s.handleCreateTicket))
-	mux.HandleFunc("POST /api/orders/{id}/serve-all", s.requireRole("waiter manager admin", s.handleServeAll))
-	mux.HandleFunc("POST /api/orders/{id}/close", s.requireRole("manager admin", s.handleCloseOrder))
+	// Strict division of labour, enforced here and nowhere else:
+	//   - punching: manager/admin (+ parcel manager, scoped to parcel tables)
+	//   - serving: waiters ONLY, one plate per tap (no bulk serve exists)
+	//   - settling & closing: the CASHIER only — close demands a generated
+	//     bill whose payments (cash + online) add up to its total.
+	mux.HandleFunc("POST /api/dining-tables/{id}/tickets", s.requireRole("manager admin parcel", s.handleCreateTicket))
+	mux.HandleFunc("POST /api/orders/{id}/bill", s.requireRole("cashier", s.handleBillGenerate))
+	mux.HandleFunc("PATCH /api/orders/{id}/bill", s.requireRole("cashier", s.handleBillPatch))
+	mux.HandleFunc("POST /api/orders/{id}/close", s.requireRole("cashier", s.handleCloseOrder))
+
+	// Settled-bill history: closed bills never vanish — cashier & owner read
+	// them back (and reprint) any time.
+	mux.HandleFunc("GET /api/bills", s.requireRole("cashier admin", s.handleBillsList))
+	mux.HandleFunc("GET /api/orders/{id}/bill", s.requireRole("cashier admin", s.handleBillGet))
+
+	// Parcels: the parcel manager's add-order flow (customer name + phone
+	// ride on the order; a P-slot is allocated automatically).
+	mux.HandleFunc("POST /api/parcels", s.requireRole("parcel manager admin", s.handleParcelCreate))
+
+	// Printable bill — money-facing roles only (waiters/chefs never see prices).
+	mux.HandleFunc("GET /bill/{id}", s.requireRole("cashier parcel manager admin", s.handleBillHTML))
 
 	// Item status: role rules are inside the handler (chef cooks, waiter serves)
 	mux.HandleFunc("POST /api/items/{id}/status", s.requireRole("*", s.handleItemStatus))
-	mux.HandleFunc("POST /api/items/{id}/cancel", s.requireRole("manager admin", s.handleItemCancel))
+	mux.HandleFunc("POST /api/items/{id}/cancel", s.requireRole("manager admin parcel", s.handleItemCancel))
 
 	// Admin only
 	mux.HandleFunc("POST /api/admin/categories", s.requireRole("admin", s.handleCategoryCreate))
@@ -164,6 +180,8 @@ func buildServer(port int, dataDir string) (*Server, *http.ServeMux, error) {
 	mux.HandleFunc("GET /api/admin/audit", s.requireRole("admin", s.handleAudit))
 	mux.HandleFunc("GET /api/admin/dashboard", s.requireRole("admin", s.handleDashboard))
 	mux.HandleFunc("GET /api/admin/backup", s.requireRole("admin", s.handleBackup))
+	mux.HandleFunc("GET /api/admin/bill-settings", s.requireRole("admin", s.handleBillSettings))
+	mux.HandleFunc("POST /api/admin/bill-settings", s.requireRole("admin", s.handleBillSettings))
 
 	go s.autoBackup()
 	go s.autoSealBatches()

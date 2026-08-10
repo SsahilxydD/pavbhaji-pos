@@ -124,17 +124,65 @@ class Api(private val session: Session) {
         return last
     }
 
+    // ---- parcel manager ----
+    @Serializable
+    private data class ParcelReq(
+        val customerName: String, val customerPhone: String,
+        val clientTicketId: String, val items: List<NewTicketLine>
+    )
+
+    // Same never-double-punch contract as sendTicket: the clientTicketId is
+    // fixed per cart, network errors retry, a replay returns the saved parcel.
+    suspend fun createParcel(
+        customerName: String, customerPhone: String,
+        clientTicketId: String, lines: List<NewTicketLine>
+    ): ApiResult<OrderDetailDto> {
+        val body = json.encodeToString(ParcelReq(customerName, customerPhone, clientTicketId, lines))
+        var last: ApiResult<OrderDetailDto> = ApiResult.Err("not sent", 0)
+        repeat(4) { attempt ->
+            last = call("POST", "/api/parcels", body)
+            when (val l = last) {
+                is ApiResult.Ok -> return l
+                is ApiResult.Err -> if (l.code != 0) return l // server answered: don't retry
+            }
+            delay(1200L * (attempt + 1))
+        }
+        return last
+    }
+
+    // The print-ready bill page; opened by a WebView and handed to the
+    // Android print dialog. Token travels as a query param because the
+    // WebView can't set headers on the initial load.
+    fun billUrl(orderId: Long): String =
+        baseUrl() + "/bill/" + orderId + "?token=" + session.token
+
     suspend fun itemStatus(itemId: Long, to: String): ApiResult<OkResp> =
         call("POST", "/api/items/$itemId/status", """{"to":"$to"}""")
 
     suspend fun itemCancel(itemId: Long, reason: String): ApiResult<OkResp> =
         call("POST", "/api/items/$itemId/cancel", json.encodeToString(mapOf("reason" to reason)))
 
-    suspend fun serveAll(orderId: Long): ApiResult<OkResp> =
-        call("POST", "/api/orders/$orderId/serve-all")
-
     suspend fun closeOrder(orderId: Long): ApiResult<OkResp> =
         call("POST", "/api/orders/$orderId/close")
+
+    // ---- cashier settlement ----
+    // POST generates the bill or refreshes its subtotal against live items
+    // (discount/payments already entered survive); PATCH edits it.
+    suspend fun billGenerate(orderId: Long): ApiResult<BillDto> =
+        call("POST", "/api/orders/$orderId/bill")
+
+    suspend fun billPatch(orderId: Long, patch: String): ApiResult<BillDto> =
+        call("PATCH", "/api/orders/$orderId/bill", patch)
+
+    // Settled-bill history (closed orders of one business day) + read-back.
+    suspend fun bills(date: String?): ApiResult<BillsResp> =
+        call("GET", "/api/bills" + if (date.isNullOrEmpty()) "" else "?date=$date")
+
+    suspend fun billGet(orderId: Long): ApiResult<BillDto> =
+        call("GET", "/api/orders/$orderId/bill")
+
+    suspend fun orderDetail(orderId: Long): ApiResult<OrderDetailDto> =
+        call("GET", "/api/orders/$orderId")
 
     // ---- admin ----
     @Serializable data class StaffResp(val staff: List<StaffDto> = emptyList())
@@ -174,8 +222,12 @@ class Api(private val session: Session) {
     suspend fun dashboard(): ApiResult<ReportDto> = call("GET", "/api/admin/dashboard")
 
     @Serializable data class AuditResp(val events: List<AuditEventDto> = emptyList())
-    suspend fun audit(beforeId: Long = 0): ApiResult<AuditResp> =
-        call("GET", "/api/admin/audit?limit=100" + if (beforeId > 0) "&beforeId=$beforeId" else "")
+    suspend fun audit(beforeId: Long = 0, type: String = ""): ApiResult<AuditResp> =
+        call(
+            "GET", "/api/admin/audit?limit=100" +
+                (if (beforeId > 0) "&beforeId=$beforeId" else "") +
+                (if (type.isNotEmpty()) "&type=$type" else "")
+        )
 
     suspend fun backupBytes(): ApiResult<ByteArray> = withContext(Dispatchers.IO) {
         try {

@@ -118,12 +118,12 @@ $('backupBtn').onclick = async () => {
   a.click(); URL.revokeObjectURL(a.href);
 };
 
-const TABS = { dashboard:'Dashboard', menu:'Menu & colours', staff:'Staff & PINs', tables:'Tables', report:'Day report', log:'Audit log' };
+const TABS = { dashboard:'Dashboard', menu:'Menu & colours', staff:'Staff & PINs', tables:'Tables', billing:'Billing', bills:'Bills', report:'Day report', log:'Audit log' };
 function show(t) {
   tab = t; clearInterval(dashTimer);
   $('tabs').innerHTML = Object.entries(TABS).map(([k,v]) =>
     `<button class="${k===tab?'on':''}" onclick="show('${k}')">${v}</button>`).join('');
-  ({dashboard, menu, staff, tables, report, log})[t]();
+  ({dashboard, menu, staff, tables, billing, bills, report, log})[t]();
 }
 
 // ---- dashboard ----
@@ -227,7 +227,7 @@ async function staff() {
     <div class="addbar">
       <input id="stn" placeholder="name" class="grow">
       <input id="stp" placeholder="PIN (4 digits)" maxlength="4" inputmode="numeric" class="num">
-      <select id="str"><option>waiter</option><option>manager</option><option>chef</option><option>admin</option></select>
+      <select id="str"><option>waiter</option><option>manager</option><option>chef</option><option>cashier</option><option>parcel</option><option>admin</option></select>
       <button class="primary" onclick="addStaff()">+ add staff</button>
     </div></div>
     <p class="mut">A PIN is that person's signature — one each, never shared. Deactivating keeps their history.</p>`;
@@ -276,6 +276,76 @@ async function addTable() {
   try { await api('POST','/api/admin/tables', { name, kind: $('tbk').value }); tables(); } catch (e) { alert(e.message); }
 }
 
+// ---- billing ----
+async function billing() {
+  const d = await api('GET','/api/admin/bill-settings');
+  $('view').innerHTML = `<div class="card">
+    <div class="row"><span style="min-width:110px">Shop name</span><input id="bsn" class="grow" value="${esc(d.shopName)}"></div>
+    <div class="row"><span style="min-width:110px">Phone</span><input id="bsp" class="grow" value="${esc(d.shopPhone)}" placeholder="printed under the shop name"></div>
+    <div class="row"><span style="min-width:110px">Footer line</span><input id="bsf" class="grow" value="${esc(d.billFooter)}"></div>
+    <div class="addbar"><button class="primary" onclick="saveBilling()">Save</button></div>
+  </div>
+  <p class="mut">These three lines print on every bill. The cashier prints bills from their phone
+  (any printer the phone can see, or save-as-PDF to share on WhatsApp); a browser on this laptop
+  can print one too by opening <b>/bill/&lt;order id&gt;</b>.</p>`;
+}
+async function saveBilling() {
+  try {
+    await api('POST','/api/admin/bill-settings', {
+      shopName:$('bsn').value.trim(), shopPhone:$('bsp').value.trim(), billFooter:$('bsf').value.trim()
+    });
+    alert('Saved ✓ — next bill prints with the new header');
+  } catch (e) { alert(e.message); }
+}
+
+// ---- bills (settled-bill history) ----
+let billsDate = '';
+async function bills() {
+  const d = await api('GET','/api/bills' + (billsDate ? '?date='+billsDate : ''));
+  billsDate = d.date;
+  const cashSum = d.bills.reduce((a,b)=>a+b.paidCash,0), onlineSum = d.bills.reduce((a,b)=>a+b.paidOnline,0);
+  $('view').innerHTML = `
+    <div class="row" style="border:0;justify-content:center">
+      <button onclick="shiftBills(-1)">◀</button><b>${d.date}</b><button onclick="shiftBills(1)">▶</button>
+      <button onclick="billsDate='';bills()">today</button>
+      <span class="mut">${d.bills.length} bills · 💵 ${rupees(cashSum)} · 📲 ${rupees(onlineSum)}</span>
+    </div>
+    <div class="card">` + (d.bills.length ? d.bills.map(b => `
+      <div class="row" style="cursor:pointer" onclick="toggleBill(this, ${b.orderId})" title="click for items">
+        <b style="min-width:44px">#${b.orderNo}</b>
+        <span class="grow">${esc(b.customerName || b.tableName)}
+          <span class="mut">· ${clock(b.closedAt)} · ${esc(b.closedByName)}${b.customerName?' · '+esc(b.tableName):''}</span></span>
+        ${b.discount>0?`<span class="amber" title="${esc(b.discountNote)}">−${rupees(b.discount)}</span>`:''}
+        <span class="mut">${b.paidCash>0?'💵 '+rupees(b.paidCash):''} ${b.paidOnline>0?'📲 '+rupees(b.paidOnline):''}</span>
+        <b>${rupees(b.total)}</b>
+        <button onclick="event.stopPropagation();window.open('/bill/${b.orderId}?token='+token)">🖨</button>
+      </div>
+      <div hidden style="padding:4px 8px 10px 52px"></div>`).join('')
+    : '<p class="mut">no bills for this day</p>') + `</div>
+    <p class="mut">Every closed table's bill lives here — items, discount and how it was paid. 🖨 reprints it.</p>`;
+}
+async function toggleBill(rowEl, orderId) {
+  const box = rowEl.nextElementSibling;
+  if (!box.hidden) { box.hidden = true; return; }
+  const o = await api('GET','/api/orders/'+orderId);
+  const items = {};
+  o.tickets.forEach(t => t.items.forEach(i => {
+    if (i.status === 'cancelled') return;
+    const k = i.name + '|' + i.price;
+    items[k] = items[k] || { name:i.name, price:i.price, qty:0 };
+    items[k].qty += i.qty;
+  }));
+  box.innerHTML = '<table>' + Object.values(items).map(i =>
+    `<tr><td>${i.qty}× ${esc(i.name)}</td><td class="r mut">${rupees(i.price)}</td><td class="r">${rupees(i.qty*i.price)}</td></tr>`).join('') + '</table>';
+  box.hidden = false;
+}
+function shiftBills(days) {
+  const t = new Date(billsDate + 'T12:00:00');
+  t.setDate(t.getDate() + days);
+  billsDate = t.toISOString().slice(0,10);
+  bills();
+}
+
 // ---- report ----
 let repDate = '';
 async function report() {
@@ -294,6 +364,11 @@ async function report() {
       <div class="stat"><b>${d.ordersOpened}</b><span class="mut">orders</span></div>
       <div class="stat"><b class="redtx">${rupees(d.cancelledTotal)}</b><span class="mut">cancelled</span></div>
     </div>
+    <div class="stats" style="margin-top:10px">
+      <div class="stat"><b>${rupees(d.paidCash||0)}</b><span class="mut">💵 cash in drawer</span></div>
+      <div class="stat"><b>${rupees(d.paidOnline||0)}</b><span class="mut">📲 online / UPI</span></div>
+      <div class="stat"><b class="amber">${rupees(d.discountTotal||0)}</b><span class="mut">discounts given</span></div>
+    </div>
     ${d.ordersOpen>0?`<p class="redtx" style="margin-top:8px">⚠ ${d.ordersOpen} order(s) still open for this date</p>`:''}
     <h2>Sold (served items)</h2><div class="card"><table>${lines(d.sold)}
       <tr><th>TOTAL</th><th class="r green">${rupees(d.soldTotal)}</th></tr></table></div>
@@ -310,21 +385,24 @@ function shiftRep(days) {
 }
 
 // ---- audit log ----
-let logEvents = [];
+let logEvents = [], logType = '';
+const LOG_TYPES = { '':'All', orders:'Orders', kitchen:'Kitchen', serving:'Serving', cancel:'Cancelled', billing:'Billing', staff:'Staff & logins' };
 async function log() {
-  const d = await api('GET','/api/admin/audit');
+  const d = await api('GET','/api/admin/audit' + (logType ? '?type='+logType : ''));
   logEvents = d.events; paintLog();
 }
 function paintLog() {
-  $('view').innerHTML = `<div class="card">` + logEvents.map(e => `
+  $('view').innerHTML = `<nav>` + Object.entries(LOG_TYPES).map(([k,v]) =>
+    `<button class="${logType===k?'on':''}" onclick="logType='${k}';log()">${v}</button>`).join('') +
+    `</nav><div class="card">` + (logEvents.length ? logEvents.map(e => `
     <div class="row"><span class="mut" style="min-width:46px">${clock(e.at)}</span>
       <b>${esc(e.by || 'system')}</b><span class="mut">${esc(e.action)}</span>
-      <span class="grow">${esc(e.detail)}</span></div>`).join('') +
+      <span class="grow">${esc(e.detail)}</span></div>`).join('') : '<p class="mut">nothing in this filter</p>') +
     `</div><button onclick="olderLog()" style="width:100%">Load older</button>`;
 }
 async function olderLog() {
-  if (!logEvents.length) return;
-  const d = await api('GET','/api/admin/audit?beforeId=' + logEvents[logEvents.length-1].id);
+  if (!logEvents.length) { log(); return; }
+  const d = await api('GET','/api/admin/audit?beforeId=' + logEvents[logEvents.length-1].id + (logType ? '&type='+logType : ''));
   logEvents = logEvents.concat(d.events); paintLog();
 }
 </script>

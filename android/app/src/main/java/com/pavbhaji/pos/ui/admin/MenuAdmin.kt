@@ -100,7 +100,7 @@ fun MenuAdmin(onBack: () -> Unit) {
             onBack = onBack,
             actions = { HeaderTextAction(S.addCategory) { addCategory = true } }
         )
-        err?.let { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(horizontal = 14.dp)) }
+        com.pavbhaji.pos.ui.ErrorBanner(err)
 
         LazyColumn(
             Modifier.fillMaxSize(),
@@ -301,9 +301,10 @@ private fun MenuItemCard(
 ) {
     Surface(
         onClick = onEdit,
-        shape = RoundedCornerShape(12.dp),
+        shape = RoundedCornerShape(14.dp),
         color = Color.White,
-        border = BorderStroke(1.dp, CardLine)
+        border = BorderStroke(1.dp, CardLine),
+        shadowElevation = 1.dp
     ) {
         Row(
             Modifier.fillMaxWidth().padding(start = 4.dp, end = 10.dp, top = 4.dp, bottom = 4.dp),

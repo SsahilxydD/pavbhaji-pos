@@ -1,9 +1,15 @@
 package com.pavbhaji.pos.ui.waiter
 
+import android.view.HapticFeedbackConstants
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.PaddingValues
@@ -13,14 +19,13 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -28,7 +33,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -36,17 +40,25 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.pavbhaji.pos.Deps
 import com.pavbhaji.pos.data.ApiResult
 import com.pavbhaji.pos.data.PickupLineDto
 import com.pavbhaji.pos.ui.AppHeader
+import com.pavbhaji.pos.ui.CardLine
 import com.pavbhaji.pos.ui.ConnBanner
-import com.pavbhaji.pos.ui.EmptyHint
+import com.pavbhaji.pos.ui.EmptyState
+import com.pavbhaji.pos.ui.ErrorBanner
 import com.pavbhaji.pos.ui.GoodGreen
 import com.pavbhaji.pos.ui.HeaderTextAction
+import com.pavbhaji.pos.ui.ListSkeleton
+import com.pavbhaji.pos.ui.Pb
+import com.pavbhaji.pos.ui.PinBelowHistory
 import com.pavbhaji.pos.ui.S
 import com.pavbhaji.pos.ui.WarnAmber
 import com.pavbhaji.pos.ui.ageMinutes
@@ -63,11 +75,13 @@ import kotlinx.coroutines.launch
 fun ReadyScreen(onLogout: () -> Unit, showLogout: Boolean) {
     val connected by Deps.live.connected.collectAsState()
     var lines by remember { mutableStateOf<List<PickupLineDto>>(emptyList()) }
+    var loaded by remember { mutableStateOf(false) }
+    var loadError by remember { mutableStateOf<String?>(null) }
 
     suspend fun refresh() {
         when (val r = Deps.api.pickup()) {
-            is ApiResult.Ok -> lines = r.value.lines
-            is ApiResult.Err -> {}
+            is ApiResult.Ok -> { lines = r.value.lines; loadError = null; loaded = true }
+            is ApiResult.Err -> loadError = r.message
         }
     }
     LaunchedEffect(Unit) {
@@ -92,18 +106,20 @@ fun ReadyScreen(onLogout: () -> Unit, showLogout: Boolean) {
             actions = { if (showLogout) HeaderTextAction(S.logout, onLogout) }
         )
         ConnBanner(connected)
-        if (lines.isEmpty()) {
-            EmptyHint(S.allCarried)
-        }
-        LazyColumn(
-            Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(12.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            items(groups.size, key = { groups[it].tableName }) { i ->
-                TableCarryCard(groups[i])
+        ErrorBanner(loadError)
+        when {
+            !loaded -> ListSkeleton(rows = 4, rowHeight = 86.dp)
+            lines.isEmpty() -> EmptyState("🛎️", S.allCarried)
+            else -> LazyColumn(
+                Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(12.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                items(groups.size, key = { groups[it].tableName }) { i ->
+                    TableCarryCard(groups[i], Modifier.animateItem())
+                }
+                items(1) { Spacer(Modifier.height(24.dp)) }
             }
-            items(1) { Spacer(Modifier.height(20.dp)) }
         }
     }
 }
@@ -115,40 +131,48 @@ private data class ReadyGroup(
 )
 
 @Composable
-private fun TableCarryCard(g: ReadyGroup) {
+private fun TableCarryCard(g: ReadyGroup, modifier: Modifier = Modifier) {
     // Spine green when the kitchen cooked something here; amber when this
     // trip is only counter hand-overs.
     val allCounter = g.lines.all { it.station == "counter" }
-    val spine = if (allCounter) Color(0xFFF2A33C) else Color(0xFF1E8F53)
+    val spine = if (allCounter) Pb.counterSpine else Pb.successLine
     Surface(
-        shape = RoundedCornerShape(12.dp),
-        color = if (allCounter) Color(0xFFFFFBF2) else Color.White,
-        border = BorderStroke(1.dp, Color(0xFFEADFD2))
+        shape = RoundedCornerShape(16.dp),
+        color = if (allCounter) Pb.counterBg else Color.White,
+        border = BorderStroke(1.dp, CardLine),
+        shadowElevation = 1.dp,
+        modifier = modifier
     ) {
         Row(Modifier.height(IntrinsicSize.Min).fillMaxWidth()) {
             Box(Modifier.width(5.dp).fillMaxHeight().background(spine))
-            Column(Modifier.weight(1f).padding(horizontal = 10.dp, vertical = 8.dp)) {
+            Column(Modifier.weight(1f).padding(horizontal = 12.dp, vertical = 10.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(g.tableName, fontSize = 18.sp, fontWeight = FontWeight.ExtraBold, modifier = Modifier.weight(1f))
+                    Text(
+                        g.tableName, fontSize = 18.sp, fontWeight = FontWeight.ExtraBold,
+                        letterSpacing = (-0.3).sp, modifier = Modifier.weight(1f)
+                    )
                     ReadyAge(g.since)
                 }
                 g.lines.forEach { l ->
                     Row(
-                        Modifier.fillMaxWidth().padding(top = 6.dp),
+                        Modifier.fillMaxWidth().padding(top = 7.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         Box(Modifier.size(11.dp).background(dishColour(l.colour, l.itemId), RoundedCornerShape(4.dp)))
                         Column(Modifier.weight(1f)) {
-                            Text("${l.qty}× ${l.name}", fontSize = 14.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                            Text(
+                                "${l.qty}× ${l.name}", fontSize = 14.sp, fontWeight = FontWeight.Bold,
+                                maxLines = 1, overflow = TextOverflow.Ellipsis
+                            )
                             val sub = listOfNotNull(
                                 if (l.note.isNotEmpty()) "⚠ ${l.note}" else null,
                                 if (l.station == "counter") S.justCarry else null
                             ).joinToString(" · ")
                             if (sub.isNotEmpty()) Text(
-                                sub, fontSize = 11.sp, maxLines = 1,
+                                sub, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
                                 color = if (l.note.isNotEmpty()) MaterialTheme.colorScheme.error
-                                else MaterialTheme.colorScheme.onSurfaceVariant
+                                else Pb.ink2
                             )
                         }
                     }
@@ -168,12 +192,14 @@ fun ServeScreen(onLogout: () -> Unit) {
     val connected by Deps.live.connected.collectAsState()
     var lines by remember { mutableStateOf<List<PickupLineDto>>(emptyList()) }
     var served by remember { mutableStateOf<List<PickupLineDto>>(emptyList()) }
+    var loaded by remember { mutableStateOf(false) }
+    var loadError by remember { mutableStateOf<String?>(null) }
     var toast by remember { mutableStateOf<String?>(null) }
 
     suspend fun refresh() {
         when (val r = Deps.api.pickup()) {
-            is ApiResult.Ok -> { lines = r.value.lines; served = r.value.served }
-            is ApiResult.Err -> {}
+            is ApiResult.Ok -> { lines = r.value.lines; served = r.value.served; loadError = null; loaded = true }
+            is ApiResult.Err -> loadError = r.message
         }
     }
     LaunchedEffect(Unit) {
@@ -188,19 +214,12 @@ fun ServeScreen(onLogout: () -> Unit) {
     // above the live list — one small scroll up answers "what did I just take?".
     val history = served.reversed()
 
-    // Keep the live list anchored at the top of the screen even though history
-    // sits above it; re-anchor on changes only when the waiter isn't up reading.
+    // Served rows pile up ABOVE the live list and drift out of the top of the
+    // screen; the SERVE NOW label stays pinned, so the buttons never move
+    // under a thumb. Scrolling up re-reads what already went out.
     val listState = rememberLazyListState()
-    var lastBoundary by remember { mutableIntStateOf(-1) }
-    val boundary = if (history.isEmpty()) 0 else history.size + 2 // two labels bracket history
-    LaunchedEffect(boundary) {
-        if (boundary != lastBoundary) {
-            if (lastBoundary == -1 || listState.firstVisibleItemIndex >= lastBoundary) {
-                listState.scrollToItem(boundary)
-            }
-            lastBoundary = boundary
-        }
-    }
+    val boundary = if (history.isEmpty()) 0 else history.size + 1
+    PinBelowHistory(listState, boundary)
 
     Column(Modifier.fillMaxSize()) {
         AppHeader(
@@ -209,42 +228,73 @@ fun ServeScreen(onLogout: () -> Unit) {
             actions = { HeaderTextAction(S.logout, onLogout) }
         )
         ConnBanner(connected)
-        toast?.let {
-            Text(it, color = MaterialTheme.colorScheme.error, fontSize = 13.sp,
-                modifier = Modifier.padding(horizontal = 14.dp, vertical = 3.dp))
-        }
-        if (lines.isEmpty()) {
-            EmptyHint(S.allCarried)
-        }
-        LazyColumn(
-            Modifier.fillMaxSize(),
-            state = listState,
-            contentPadding = PaddingValues(12.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            if (history.isNotEmpty()) {
-                item(key = "hdrServed") { SectionLabel(S.servedSection) }
-                items(history.size, key = { "h${history[it].itemId}" }) { i ->
-                    HistoryRow(history[i])
-                }
-                item(key = "hdrNow") { SectionLabel(S.serveNow) }
-            }
-            items(sorted.size, key = { "a${sorted[it].itemId}" }) { i ->
-                val l = sorted[i]
-                ServeRow(
-                    l,
-                    onServe = {
-                        scope.launch {
-                            when (val r = Deps.api.itemStatus(l.itemId, "served")) {
-                                is ApiResult.Ok -> lines = lines.filter { it.itemId != l.itemId }
-                                is ApiResult.Err -> toast = r.message
-                            }
-                            refresh()
+        ErrorBanner(loadError)
+        when {
+            !loaded -> ListSkeleton(rows = 5, rowHeight = 72.dp)
+            lines.isEmpty() && history.isEmpty() -> EmptyState("🛎️", S.allCarried)
+            else -> BoxWithConstraints(Modifier.fillMaxSize()) {
+                // The pin only holds if a viewport of content exists below the
+                // boundary; pad the tail so short lists anchor too (64dp is a
+                // low estimate of a row, erring towards a longer tail).
+                val filler =
+                    if (history.isEmpty()) 24.dp
+                    else maxOf(24.dp, maxHeight - (if (lines.isEmpty()) 128.dp else 64.dp * sorted.size))
+                LazyColumn(
+                    Modifier.fillMaxSize(),
+                    state = listState,
+                    contentPadding = PaddingValues(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    if (history.isNotEmpty()) {
+                        item(key = "hdrServed") { SectionLabel(S.servedSection) }
+                        items(history.size, key = { "h${history[it].itemId}" }) { i ->
+                            HistoryRow(history[i], Modifier.animateItem())
                         }
+                        item(key = "hdrNow") { SectionLabel(S.serveNow) }
                     }
-                )
+                    if (lines.isEmpty()) {
+                        item(key = "allDone") { EmptyState("🛎️", S.allCarried) }
+                    }
+                    items(sorted.size, key = { "a${sorted[it].itemId}" }) { i ->
+                        val l = sorted[i]
+                        ServeRow(
+                            l,
+                            modifier = Modifier.animateItem(),
+                            onServe = {
+                                scope.launch {
+                                    when (val r = Deps.api.itemStatus(l.itemId, "served")) {
+                                        is ApiResult.Ok -> {
+                                            // Move the row across the boundary in one
+                                            // step — never a beat where it's nowhere.
+                                            lines = lines.filter { it.itemId != l.itemId }
+                                            served = listOf(l.copy(servedBy = Deps.session.staffName)) + served
+                                        }
+                                        is ApiResult.Err -> toast = r.message
+                                    }
+                                    refresh()
+                                }
+                            }
+                        )
+                    }
+                    item(key = "tail") { Spacer(Modifier.height(filler)) }
+                }
+                // Errors float over the list instead of shoving it down.
+                toast?.let {
+                    Surface(
+                        color = Color.White,
+                        shape = RoundedCornerShape(12.dp),
+                        border = BorderStroke(1.dp, CardLine),
+                        shadowElevation = 6.dp,
+                        modifier = Modifier.align(Alignment.TopCenter).padding(top = 10.dp)
+                    ) {
+                        Text(
+                            it, color = MaterialTheme.colorScheme.error,
+                            fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
+                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)
+                        )
+                    }
+                }
             }
-            items(1) { Spacer(Modifier.height(20.dp)) }
         }
     }
 }
@@ -253,7 +303,7 @@ fun ServeScreen(onLogout: () -> Unit) {
 private fun SectionLabel(text: String) {
     Text(
         text, fontSize = 11.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 1.sp,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        color = Pb.ink3,
         modifier = Modifier.padding(top = 2.dp)
     )
 }
@@ -261,11 +311,12 @@ private fun SectionLabel(text: String) {
 // A plate that already went out: greyed, no button — pure memory. The table
 // number stays loud because "where did that plate go?" is the question here.
 @Composable
-private fun HistoryRow(l: PickupLineDto) {
+private fun HistoryRow(l: PickupLineDto, modifier: Modifier = Modifier) {
     Surface(
-        shape = RoundedCornerShape(12.dp),
+        shape = RoundedCornerShape(14.dp),
         color = Color(0xFFF5F1EA),
-        border = BorderStroke(1.dp, Color(0xFFE9E2D6))
+        border = BorderStroke(1.dp, Color(0xFFE9E2D6)),
+        modifier = modifier
     ) {
         Row(
             Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
@@ -275,16 +326,16 @@ private fun HistoryRow(l: PickupLineDto) {
             Column(Modifier.weight(1f).padding(start = 9.dp)) {
                 Text(
                     "${l.qty}× ${l.name}", fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
-                    maxLines = 1, color = MaterialTheme.colorScheme.onSurfaceVariant
+                    maxLines = 1, overflow = TextOverflow.Ellipsis, color = Pb.ink2
                 )
                 Text(
                     listOfNotNull(ageMinutes(l.sinceMs), l.servedBy.ifEmpty { null }).joinToString(" · "),
-                    fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
+                    fontSize = 11.sp, color = Pb.ink3
                 )
             }
             Text(
                 l.tableName, fontSize = 17.sp, fontWeight = FontWeight.ExtraBold,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = Pb.ink2,
                 modifier = Modifier.padding(start = 8.dp)
             )
         }
@@ -292,12 +343,14 @@ private fun HistoryRow(l: PickupLineDto) {
 }
 
 @Composable
-private fun ServeRow(l: PickupLineDto, onServe: () -> Unit) {
+private fun ServeRow(l: PickupLineDto, onServe: () -> Unit, modifier: Modifier = Modifier) {
     val counter = l.station == "counter"
     Surface(
-        shape = RoundedCornerShape(12.dp),
-        color = if (counter) Color(0xFFFFFBF2) else Color.White,
-        border = BorderStroke(1.dp, Color(0xFFEADFD2))
+        shape = RoundedCornerShape(14.dp),
+        color = if (counter) Pb.counterBg else Color.White,
+        border = BorderStroke(1.dp, CardLine),
+        shadowElevation = 1.dp,
+        modifier = modifier
     ) {
         Row(
             Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
@@ -305,31 +358,55 @@ private fun ServeRow(l: PickupLineDto, onServe: () -> Unit) {
         ) {
             Box(Modifier.size(11.dp).background(dishColour(l.colour, l.itemId), RoundedCornerShape(4.dp)))
             Column(Modifier.weight(1f).padding(start = 9.dp)) {
-                Text("${l.qty}× ${l.name}", fontSize = 15.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                Text(
+                    "${l.qty}× ${l.name}", fontSize = 15.sp, fontWeight = FontWeight.Bold,
+                    maxLines = 1, overflow = TextOverflow.Ellipsis
+                )
                 val sub = listOfNotNull(
                     if (l.note.isNotEmpty()) "⚠ ${l.note}" else null,
                     if (counter) S.justCarry else null
                 ).joinToString(" · ")
                 if (sub.isNotEmpty()) Text(
-                    sub, fontSize = 11.sp, maxLines = 1,
+                    sub, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
                     color = if (l.note.isNotEmpty()) MaterialTheme.colorScheme.error
-                    else MaterialTheme.colorScheme.onSurfaceVariant
+                    else Pb.ink2
                 )
             }
             ReadyAge(l.sinceMs)
             // The table number is what a waiter scans the list for — loudest thing in the row.
             Text(
                 l.tableName, fontSize = 20.sp, fontWeight = FontWeight.ExtraBold,
+                letterSpacing = (-0.5).sp,
                 modifier = Modifier.padding(horizontal = 10.dp)
             )
-            Button(
-                onClick = onServe,
-                shape = RoundedCornerShape(10.dp),
-                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = if (counter) WarnAmber else GoodGreen)
-            ) {
-                Text("✓", fontSize = 14.sp, fontWeight = FontWeight.ExtraBold)
-            }
+            ServeButton(counter = counter, onClick = onServe)
+        }
+    }
+}
+
+// The one button a waiter presses all day: green (amber for counter items),
+// springs under the thumb, clicks like a key.
+@Composable
+private fun ServeButton(counter: Boolean, onClick: () -> Unit) {
+    val view = LocalView.current
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    val scale by animateFloatAsState(
+        if (pressed) 0.92f else 1f,
+        spring(dampingRatio = 0.6f, stiffness = 1200f), label = "serve"
+    )
+    Surface(
+        onClick = {
+            view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+            onClick()
+        },
+        interactionSource = interaction,
+        color = if (counter) WarnAmber else Pb.successDeep,
+        shape = RoundedCornerShape(12.dp),
+        modifier = Modifier.graphicsLayer { scaleX = scale; scaleY = scale }
+    ) {
+        Box(Modifier.heightIn(min = 40.dp).padding(horizontal = 13.dp), contentAlignment = Alignment.Center) {
+            Text(S.servedBtn, color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.ExtraBold, maxLines = 1)
         }
     }
 }
@@ -342,7 +419,7 @@ private fun ReadyAge(sinceMs: Long) {
         m >= 8 -> Color(0x33F5A623) to Color(0xFF8A5A00)
         else -> Color.Transparent to GoodGreen
     }
-    Surface(color = bg, shape = RoundedCornerShape(7.dp)) {
+    Surface(color = bg, shape = RoundedCornerShape(8.dp)) {
         Text(
             "${m}m", color = fg, fontSize = 11.sp, fontWeight = FontWeight.ExtraBold,
             modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)

@@ -115,6 +115,7 @@ object S {
     )
     val justCarry get() = t("✋ just carry", "✋ बस ले जाओ", "✋ ખાલી લઈ જાઓ")
     val readyTitle get() = t("Ready", "तैयार", "તૈયાર")
+    val servedBtn get() = t("Served ✓", "परोसा ✓", "પીરસ્યું ✓")
     val servedSection get() = t("SERVED — for checking", "परोसा हुआ — देखने के लिए", "પીરસેલું — જોવા માટે")
     val serveNow get() = t("SERVE NOW", "अभी परोसो", "હમણાં પીરસો")
 

@@ -1,11 +1,18 @@
 package com.pavbhaji.pos.ui.waiter
 
+import android.view.HapticFeedbackConstants
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -16,6 +23,7 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
@@ -39,6 +47,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
@@ -50,7 +60,12 @@ import com.pavbhaji.pos.data.NewTicketLine
 import com.pavbhaji.pos.data.OrderDetailDto
 import com.pavbhaji.pos.data.OrderItemDto
 import com.pavbhaji.pos.ui.AppHeader
+import com.pavbhaji.pos.ui.BigButton
+import com.pavbhaji.pos.ui.CardLine
 import com.pavbhaji.pos.ui.ConnBanner
+import com.pavbhaji.pos.ui.ErrorBanner
+import com.pavbhaji.pos.ui.Pb
+import com.pavbhaji.pos.ui.PinBelowHistory
 import com.pavbhaji.pos.ui.QtyStepper
 import com.pavbhaji.pos.ui.ReasonDialog
 import com.pavbhaji.pos.ui.S
@@ -91,10 +106,11 @@ fun TableOrderScreen(tableId: Long, tableName: String, onBack: () -> Unit) {
     var toast by remember { mutableStateOf<String?>(null) }
     var selColourKey by remember { mutableStateOf<String?>(null) }
 
+    var loadError by remember { mutableStateOf<String?>(null) }
     suspend fun refresh() {
         when (val r = Deps.api.tableOrder(tableId)) {
-            is ApiResult.Ok -> order = r.value.order
-            is ApiResult.Err -> {}
+            is ApiResult.Ok -> { order = r.value.order; loadError = null }
+            is ApiResult.Err -> loadError = r.message
         }
     }
     LaunchedEffect(Unit) {
@@ -153,125 +169,158 @@ fun TableOrderScreen(tableId: Long, tableName: String, onBack: () -> Unit) {
             onBack = onBack
         )
         ConnBanner(connected)
-        toast?.let {
-            Text(
-                it, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
-                color = MaterialTheme.colorScheme.tertiary,
-                modifier = Modifier.padding(horizontal = 14.dp, vertical = 3.dp)
-            )
-            LaunchedEffect(it) { kotlinx.coroutines.delay(2500); toast = null }
-        }
+        ErrorBanner(loadError)
+        toast?.let { LaunchedEffect(it) { kotlinx.coroutines.delay(2500); toast = null } }
 
-        LazyColumn(Modifier.weight(1f).padding(horizontal = 12.dp)) {
-            // ---- existing tickets ----
-            if (o != null) {
-                item { SectionTitle(S.sentToKitchen) }
-                o.tickets.forEach { tk ->
-                    item(key = "tk${tk.id}") {
-                        Text(
-                            "KOT ${tk.ticketNo} · ${clockTime(tk.createdAt)} · ${tk.createdByName}",
-                            fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(top = 6.dp, bottom = 2.dp)
-                        )
-                    }
-                    tk.items.forEach { it ->
-                        item(key = "it${it.id}") {
-                            // No serve buttons here: marking served is the
-                            // waiter's job alone, from their own carry list.
-                            SentItemRow(
-                                it,
-                                canCancel = it.status != "cancelled" && it.status != "served" &&
-                                    (it.status == "pending" || isAdmin),
-                                onCancel = { cancelTarget = it }
+        // Sent KOTs pile up ABOVE the working area and slide off the top of
+        // the screen, so the cart and menu stay where the thumb knows them;
+        // scroll up to re-read what the kitchen already has.
+        val listState = rememberLazyListState()
+        val boundary = o?.let { 1 + it.tickets.sumOf { t -> 1 + t.items.size } } ?: 0
+        PinBelowHistory(listState, boundary)
+
+        BoxWithConstraints(Modifier.weight(1f)) {
+            // The pin only holds if a viewport of content sits below the sent
+            // pile; when the menu alone is shorter, the tail spacer makes up
+            // the difference. The row estimate must stay BELOW any real row
+            // height: a too-long tail is harmless blank space, a too-short one
+            // clamps the pin a few px shy and the pile pushes the menu again.
+            val counterRows = menu.sumOf { c -> c.items.count { it.station == "counter" } }
+            val filler =
+                if (o == null) 16.dp
+                else maxOf(16.dp, maxHeight - 160.dp - 40.dp * (counterRows + 1))
+            LazyColumn(
+                Modifier.fillMaxSize().padding(horizontal = 12.dp),
+                state = listState
+            ) {
+                // ---- existing tickets ----
+                if (o != null) {
+                    item(key = "hdrSent") { SectionTitle(S.sentToKitchen) }
+                    o.tickets.forEach { tk ->
+                        item(key = "tk${tk.id}") {
+                            Text(
+                                "KOT ${tk.ticketNo} · ${clockTime(tk.createdAt)} · ${tk.createdByName}",
+                                fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(top = 6.dp, bottom = 2.dp)
                             )
+                        }
+                        tk.items.forEach { it ->
+                            item(key = "it${it.id}") {
+                                // No serve buttons here: marking served is the
+                                // waiter's job alone, from their own carry list.
+                                SentItemRow(
+                                    it,
+                                    canCancel = it.status != "cancelled" && it.status != "served" &&
+                                        (it.status == "pending" || isAdmin),
+                                    onCancel = { cancelTarget = it }
+                                )
+                            }
                         }
                     }
                 }
-            }
 
-            // ---- cart (new KOT) ----
-            if (cart.isNotEmpty()) {
-                item {
-                    SectionTitle(S.newKot)
-                    Surface(
-                        shape = RoundedCornerShape(14.dp),
-                        color = Color(0xFFFFF3E7),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Column(Modifier.padding(horizontal = 12.dp, vertical = 6.dp)) {
-                            cart.forEachIndexed { idx, line ->
-                                Row(
-                                    Modifier.fillMaxWidth().padding(vertical = 5.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Column(
-                                        Modifier.weight(1f)
-                                            .padding(end = 4.dp)
+                // ---- cart (new KOT) ----
+                if (cart.isNotEmpty()) {
+                    item(key = "cart") {
+                        SectionTitle(S.newKot)
+                        Surface(
+                            shape = RoundedCornerShape(16.dp),
+                            color = Color(0xFFFFF3E7),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, Pb.warnLine),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(Modifier.padding(horizontal = 12.dp, vertical = 6.dp)) {
+                                cart.forEachIndexed { idx, line ->
+                                    Row(
+                                        Modifier.fillMaxWidth().padding(vertical = 5.dp),
+                                        verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        Text(line.name, fontSize = 15.sp, fontWeight = FontWeight.Bold)
-                                        val sub = listOfNotNull(
-                                            if (pricesVisible()) rupees(line.price) else null,
-                                            if (line.note.isNotEmpty()) "✎ ${line.note}" else null
-                                        ).joinToString(" · ")
-                                        if (sub.isNotEmpty()) Text(
-                                            sub,
-                                            fontSize = 12.sp,
-                                            color = if (line.note.isEmpty()) MaterialTheme.colorScheme.onSurfaceVariant
-                                            else MaterialTheme.colorScheme.error
-                                        )
-                                    }
-                                    TextButton(
-                                        onClick = { noteEditIdx = idx },
-                                        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 6.dp)
-                                    ) { Text(S.noteBtn, fontSize = 12.sp) }
-                                    QtyStepper(line.qty) { q ->
-                                        if (q <= 0) cart.removeAt(idx)
-                                        else cart[idx] = line.copy(qty = q)
+                                        Column(
+                                            Modifier.weight(1f)
+                                                .padding(end = 4.dp)
+                                        ) {
+                                            Text(line.name, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                                            val sub = listOfNotNull(
+                                                if (pricesVisible()) rupees(line.price) else null,
+                                                if (line.note.isNotEmpty()) "✎ ${line.note}" else null
+                                            ).joinToString(" · ")
+                                            if (sub.isNotEmpty()) Text(
+                                                sub,
+                                                fontSize = 12.sp,
+                                                color = if (line.note.isEmpty()) MaterialTheme.colorScheme.onSurfaceVariant
+                                                else MaterialTheme.colorScheme.error
+                                            )
+                                        }
+                                        TextButton(
+                                            onClick = { noteEditIdx = idx },
+                                            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 6.dp)
+                                        ) { Text(S.noteBtn, fontSize = 12.sp) }
+                                        QtyStepper(line.qty) { q ->
+                                            if (q <= 0) cart.removeAt(idx)
+                                            else cart[idx] = line.copy(qty = q)
+                                        }
                                     }
                                 }
                             }
                         }
                     }
                 }
-            }
 
-            // ---- menu picker: colour is the bhaji category (rail on top,
-            // tapped colour's varieties beneath — mirrors the kitchen's
-            // colour buckets); extras/drinks keep their flat category lists ----
-            item { SectionTitle(S.addItems) }
-            bhajiColourItems(
-                kitchen = menu.flatMap { c -> c.items.filter { it.station == "kitchen" } },
-                selectedKey = selColourKey,
-                onSelect = { selColourKey = it },
-                cartQty = cartQty,
-                onAdd = { m -> addToCart(m.id, m.name, m.price) }
-            )
-            menu.forEach { c ->
-                val counterItems = c.items.filter { it.station == "counter" }
-                if (counterItems.isEmpty()) return@forEach
-                item {
-                    Text(
-                        c.name.uppercase(),
-                        fontSize = 11.sp, fontWeight = FontWeight.SemiBold,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(top = 10.dp, bottom = 2.dp)
-                    )
-                }
-                counterItems.forEach { m ->
-                    item {
-                        MenuRow(
-                            name = m.name,
-                            price = m.price,
-                            available = m.available,
-                            colour = dishColour(m.colour, m.id),
-                            counter = true,
-                            inCart = cartQty[m.id] ?: 0,
-                            onClick = { if (m.available) addToCart(m.id, m.name, m.price) }
+                // ---- menu picker: colour is the bhaji category (rail on top,
+                // tapped colour's varieties beneath — mirrors the kitchen's
+                // colour buckets); extras/drinks keep their flat category lists ----
+                item(key = "hdrAdd") { SectionTitle(S.addItems) }
+                bhajiColourItems(
+                    kitchen = menu.flatMap { c -> c.items.filter { it.station == "kitchen" } },
+                    selectedKey = selColourKey,
+                    onSelect = { selColourKey = it },
+                    cartQty = cartQty,
+                    onAdd = { m -> addToCart(m.id, m.name, m.price) }
+                )
+                menu.forEach { c ->
+                    val counterItems = c.items.filter { it.station == "counter" }
+                    if (counterItems.isEmpty()) return@forEach
+                    item(key = "cat${c.id}") {
+                        Text(
+                            c.name.uppercase(),
+                            fontSize = 11.sp, fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(top = 10.dp, bottom = 2.dp)
                         )
                     }
+                    counterItems.forEach { m ->
+                        item(key = "menu${m.id}") {
+                            MenuRow(
+                                name = m.name,
+                                price = m.price,
+                                available = m.available,
+                                colour = dishColour(m.colour, m.id),
+                                counter = true,
+                                inCart = cartQty[m.id] ?: 0,
+                                onClick = { if (m.available) addToCart(m.id, m.name, m.price) }
+                            )
+                        }
+                    }
+                }
+                item(key = "tail") { Spacer(Modifier.height(filler)) }
+            }
+
+            // A "sent ✓" note floats over the list instead of shoving it down.
+            toast?.let {
+                Surface(
+                    color = Color.White,
+                    shape = RoundedCornerShape(12.dp),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, CardLine),
+                    shadowElevation = 6.dp,
+                    modifier = Modifier.align(Alignment.TopCenter).padding(top = 10.dp)
+                ) {
+                    Text(
+                        it, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.tertiary,
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)
+                    )
                 }
             }
-            item { Spacer(Modifier.height(16.dp)) }
         }
 
         // ---- bottom action bar ----
@@ -288,24 +337,16 @@ fun TableOrderScreen(tableId: Long, tableName: String, onBack: () -> Unit) {
                     )
                 }
                 if (cart.isNotEmpty()) {
-                    Button(
+                    val count = cart.sumOf { it.qty }
+                    val total = cart.sumOf { it.qty * it.price }
+                    BigButton(
+                        label = if (sendError != null) S.tryAgain(itemsLabel(count))
+                        else S.sendToKitchen(itemsLabel(count)) +
+                            if (pricesVisible()) " · ${rupees(total)}" else "",
                         onClick = { send() },
-                        enabled = !sending,
-                        modifier = Modifier.fillMaxWidth().height(54.dp),
-                        shape = RoundedCornerShape(16.dp)
-                    ) {
-                        val count = cart.sumOf { it.qty }
-                        val total = cart.sumOf { it.qty * it.price }
-                        Text(
-                            when {
-                                sending -> S.sending
-                                sendError != null -> S.tryAgain(itemsLabel(count))
-                                else -> S.sendToKitchen(itemsLabel(count)) +
-                                    if (pricesVisible()) " · ${rupees(total)}" else ""
-                            },
-                            fontSize = 16.sp, fontWeight = FontWeight.ExtraBold
-                        )
-                    }
+                        loading = sending,
+                        fontSize = 16
+                    )
                 } else if (o != null) {
                     // Closing belongs to the cashier, after they generate the
                     // bill — this screen only punches and watches.
@@ -427,6 +468,11 @@ fun LazyListScope.bhajiColourItems(
 // how many varieties live inside it.
 @Composable
 private fun ColourChip(colour: Color, count: Int, selected: Boolean, onClick: () -> Unit) {
+    // The tapped swatch springs bigger instead of snapping — the rail feels alive.
+    val size by animateDpAsState(
+        if (selected) 46.dp else 38.dp,
+        spring(dampingRatio = 0.55f, stiffness = 700f), label = "chip"
+    )
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Surface(
             onClick = onClick,
@@ -435,7 +481,7 @@ private fun ColourChip(colour: Color, count: Int, selected: Boolean, onClick: ()
             border = if (selected) androidx.compose.foundation.BorderStroke(3.dp, Color(0xFF3A2A20))
             else androidx.compose.foundation.BorderStroke(1.dp, Color(0x33000000)),
             shadowElevation = if (selected) 3.dp else 0.dp,
-            modifier = Modifier.size(if (selected) 46.dp else 38.dp)
+            modifier = Modifier.size(size)
         ) {}
         if (count > 1) {
             Text(
@@ -455,18 +501,31 @@ fun MenuRow(
     colour: Color, counter: Boolean, inCart: Long,
     onClick: () -> Unit
 ) {
+    val view = LocalView.current
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    val scale by animateFloatAsState(
+        if (pressed && available) 0.975f else 1f,
+        spring(dampingRatio = 0.7f, stiffness = 1100f), label = "menuRow"
+    )
     Surface(
-        onClick = onClick,
+        onClick = {
+            if (available) view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+            onClick()
+        },
         enabled = available,
-        shape = RoundedCornerShape(12.dp),
+        interactionSource = interaction,
+        shape = RoundedCornerShape(14.dp),
         color = when {
             !available -> MaterialTheme.colorScheme.surfaceVariant
             inCart > 0 -> Color(0xFFFFE4CF)
             else -> MaterialTheme.colorScheme.surface
         },
-        border = if (inCart > 0) androidx.compose.foundation.BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary) else null,
+        border = if (inCart > 0) androidx.compose.foundation.BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary)
+        else androidx.compose.foundation.BorderStroke(1.dp, CardLine),
         shadowElevation = if (available) 1.dp else 0.dp,
         modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp)
+            .graphicsLayer { scaleX = scale; scaleY = scale }
     ) {
         Row(
             Modifier.padding(horizontal = 14.dp, vertical = 13.dp),

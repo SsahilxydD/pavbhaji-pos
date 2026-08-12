@@ -85,10 +85,11 @@ private fun Dashboard(onLogout: () -> Unit, onOpen: (AdminScreen) -> Unit) {
     // phones usually do — so the admin phone is the drift detector.
     var clockSkewMs by remember { mutableStateOf(0L) }
 
+    var loadError by remember { mutableStateOf<String?>(null) }
     suspend fun refresh() {
         when (val r = Deps.api.dashboard()) {
-            is ApiResult.Ok -> rep = r.value
-            is ApiResult.Err -> {}
+            is ApiResult.Ok -> { rep = r.value; loadError = null }
+            is ApiResult.Err -> loadError = r.message
         }
         when (val p = Deps.api.ping()) {
             is ApiResult.Ok -> if (p.value.time > 0) clockSkewMs = p.value.time - System.currentTimeMillis()
@@ -108,6 +109,7 @@ private fun Dashboard(onLogout: () -> Unit, onOpen: (AdminScreen) -> Unit) {
             actions = { HeaderTextAction(S.logout, onLogout) }
         )
         ConnBanner(connected)
+        com.pavbhaji.pos.ui.ErrorBanner(loadError)
         if (kotlin.math.abs(clockSkewMs) > 3 * 60_000) {
             Text(
                 S.clockSkew(
@@ -123,36 +125,41 @@ private fun Dashboard(onLogout: () -> Unit, onOpen: (AdminScreen) -> Unit) {
             )
         }
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(14.dp)) {
-            Surface(
+            // Hero: today's sales, the one number the owner checks all day.
+            com.pavbhaji.pos.ui.PbCard(
                 onClick = { onOpen(AdminScreen.Report) },
-                shape = RoundedCornerShape(16.dp),
-                color = MaterialTheme.colorScheme.surface,
-                border = BorderStroke(1.dp, CardLine)
+                corner = 20.dp,
+                elevation = 2.dp
             ) {
                 Column(Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 16.dp)) {
                     Text(
                         S.today, fontSize = 11.sp, fontWeight = FontWeight.ExtraBold,
                         letterSpacing = 1.2.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
-                    Text(rupees(rep.soldTotal), fontSize = 36.sp, fontWeight = FontWeight.ExtraBold, color = GoodGreen)
-                    val sub = buildString {
-                        append(S.nOrders(rep.ordersOpened))
-                        if (rep.ordersOpen > 0) append(" · " + S.nOpen(rep.ordersOpen))
-                        if (rep.kitchenPending > 0) append(" · " + S.nCooking(rep.kitchenPending))
+                    Text(
+                        rupees(rep.soldTotal), fontSize = 38.sp, fontWeight = FontWeight.ExtraBold,
+                        letterSpacing = (-1).sp, color = GoodGreen
+                    )
+                    Row(
+                        Modifier.fillMaxWidth().padding(top = 10.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        MiniStat(S.nOrders(rep.ordersOpened), Modifier.weight(1f))
+                        MiniStat(S.nOpen(rep.ordersOpen), Modifier.weight(1f))
+                        MiniStat(S.nCooking(rep.kitchenPending), Modifier.weight(1f))
                     }
-                    Text(sub, fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
 
             Spacer(Modifier.height(14.dp))
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                NavRow(S.navFloor) { onOpen(AdminScreen.Floor) }
-                NavRow(S.kitchenTitle) { onOpen(AdminScreen.Kitchen) }
-                NavRow(S.navMenu) { onOpen(AdminScreen.Menu) }
-                NavRow(S.tablesTitle) { onOpen(AdminScreen.Tables) }
-                NavRow(S.navStaff) { onOpen(AdminScreen.Staff) }
-                NavRow("🧾 " + S.navBills) { onOpen(AdminScreen.Bills) }
-                NavRow(S.navReport) { onOpen(AdminScreen.Report) }
+                NavRow("🍽", S.navFloor) { onOpen(AdminScreen.Floor) }
+                NavRow("👨‍🍳", S.kitchenTitle) { onOpen(AdminScreen.Kitchen) }
+                NavRow("🎨", S.navMenu) { onOpen(AdminScreen.Menu) }
+                NavRow("🪑", S.tablesTitle) { onOpen(AdminScreen.Tables) }
+                NavRow("👥", S.navStaff) { onOpen(AdminScreen.Staff) }
+                NavRow("🧾", S.navBills) { onOpen(AdminScreen.Bills) }
+                NavRow("📊", S.navReport) { onOpen(AdminScreen.Report) }
             }
 
             TextButton(
@@ -185,20 +192,45 @@ private fun Dashboard(onLogout: () -> Unit, onOpen: (AdminScreen) -> Unit) {
     }
 }
 
+// One small fact inside the hero card ("14 orders"), quietly boxed.
 @Composable
-private fun NavRow(label: String, onClick: () -> Unit) {
+private fun MiniStat(text: String, modifier: Modifier = Modifier) {
     Surface(
+        color = Color(0xFFFAF4EC),
+        shape = RoundedCornerShape(10.dp),
+        modifier = modifier
+    ) {
+        Text(
+            text, fontSize = 12.sp, fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+            maxLines = 1,
+            modifier = Modifier.padding(horizontal = 6.dp, vertical = 7.dp)
+        )
+    }
+}
+
+@Composable
+private fun NavRow(emoji: String, label: String, onClick: () -> Unit) {
+    com.pavbhaji.pos.ui.PbCard(
         onClick = onClick,
-        shape = RoundedCornerShape(12.dp),
-        color = MaterialTheme.colorScheme.surface,
-        border = BorderStroke(1.dp, CardLine),
+        corner = 14.dp,
         modifier = Modifier.fillMaxWidth()
     ) {
         Row(
-            Modifier.padding(horizontal = 16.dp, vertical = 15.dp),
+            Modifier.padding(horizontal = 14.dp, vertical = 13.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(label, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+            Surface(
+                color = Color(0xFFFCF1E5),
+                shape = RoundedCornerShape(10.dp)
+            ) {
+                Text(emoji, fontSize = 17.sp, modifier = Modifier.padding(7.dp))
+            }
+            Text(
+                label, fontSize = 15.sp, fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.weight(1f).padding(start = 12.dp)
+            )
             Text("›", fontSize = 20.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }

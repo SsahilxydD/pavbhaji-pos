@@ -58,9 +58,13 @@ import com.pavbhaji.pos.data.OrderDetailDto
 import com.pavbhaji.pos.data.TableStateDto
 import com.pavbhaji.pos.ui.AppHeader
 import com.pavbhaji.pos.ui.BhajiRed
+import com.pavbhaji.pos.ui.BigButton
+import com.pavbhaji.pos.ui.CardLine
 import com.pavbhaji.pos.ui.ConfirmDialog
 import com.pavbhaji.pos.ui.ConnBanner
+import com.pavbhaji.pos.ui.ErrorBanner
 import com.pavbhaji.pos.ui.GoodGreen
+import com.pavbhaji.pos.ui.Pb
 import com.pavbhaji.pos.ui.S
 import com.pavbhaji.pos.ui.WarnAmber
 import com.pavbhaji.pos.ui.clockTime
@@ -96,7 +100,7 @@ fun CashierHome(onLogout: () -> Unit) {
                 BillsHistoryScreen(onLogout = onLogout, onBack = null)
             }
         }
-        NavigationBar(containerColor = Color(0xFFFFFDFB)) {
+        NavigationBar(containerColor = Color.White, tonalElevation = 0.dp) {
             NavigationBarItem(
                 selected = tab == 0, onClick = { tab = 0 },
                 icon = { Text("▦", fontSize = 17.sp) },
@@ -159,18 +163,20 @@ fun BillScreen(tableId: Long, tableName: String, onBack: () -> Unit) {
 
     // Every refresh re-generates the bill server-side, so its subtotal always
     // tracks the live items (a KOT punched mid-billing can't sneak past).
+    var loadError by remember { mutableStateOf<String?>(null) }
     suspend fun refresh() {
         when (val r = Deps.api.tableOrder(tableId)) {
             is ApiResult.Ok -> {
                 if (r.value.order == null && order != null) { onBack(); return }
                 order = r.value.order
+                loadError = null
             }
-            is ApiResult.Err -> {}
+            is ApiResult.Err -> loadError = r.message
         }
         if (order != null) {
             when (val b = Deps.api.billGenerate(order!!.id)) {
-                is ApiResult.Ok -> bill = b.value
-                is ApiResult.Err -> {}
+                is ApiResult.Ok -> { bill = b.value; loadError = null }
+                is ApiResult.Err -> loadError = b.message
             }
         }
     }
@@ -229,6 +235,7 @@ fun BillScreen(tableId: Long, tableName: String, onBack: () -> Unit) {
             onBack = onBack
         )
         ConnBanner(connected)
+        ErrorBanner(loadError)
         toast?.let {
             Text(
                 it, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
@@ -251,8 +258,9 @@ fun BillScreen(tableId: Long, tableName: String, onBack: () -> Unit) {
             LazyColumn(Modifier.weight(1f).padding(horizontal = 12.dp)) {
                 item {
                     Surface(
-                        shape = RoundedCornerShape(16.dp),
+                        shape = RoundedCornerShape(18.dp),
                         color = MaterialTheme.colorScheme.surface,
+                        border = androidx.compose.foundation.BorderStroke(1.dp, CardLine),
                         shadowElevation = 1.dp,
                         modifier = Modifier.fillMaxWidth().padding(top = 12.dp)
                     ) {
@@ -418,18 +426,18 @@ fun BillScreen(tableId: Long, tableName: String, onBack: () -> Unit) {
                         .padding(horizontal = 12.dp, vertical = 10.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Button(
+                    BigButton(
+                        label = S.printBill,
                         onClick = { print(o) },
-                        modifier = Modifier.fillMaxWidth().height(54.dp),
-                        shape = RoundedCornerShape(16.dp)
-                    ) { Text(S.printBill, fontSize = 16.sp, fontWeight = FontWeight.ExtraBold) }
-                    Button(
+                        fontSize = 16
+                    )
+                    BigButton(
+                        label = S.closeAmt(rupees(total)),
                         onClick = { confirmClose = true },
                         enabled = settled,
-                        modifier = Modifier.fillMaxWidth().height(48.dp),
-                        shape = RoundedCornerShape(16.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.tertiary)
-                    ) { Text(S.closeAmt(rupees(total)), fontSize = 14.sp, fontWeight = FontWeight.ExtraBold) }
+                        bg = Pb.successDeep,
+                        fontSize = 14
+                    )
                 }
             }
         }
@@ -520,10 +528,11 @@ fun BillsHistoryScreen(onLogout: (() -> Unit)?, onBack: (() -> Unit)?) {
     var resp by remember { mutableStateOf(com.pavbhaji.pos.data.BillsResp()) }
     var openBill by remember { mutableStateOf<BillSummaryDto?>(null) }
 
+    var loadError by remember { mutableStateOf<String?>(null) }
     suspend fun refresh() {
         when (val r = Deps.api.bills(date)) {
-            is ApiResult.Ok -> resp = r.value
-            is ApiResult.Err -> {}
+            is ApiResult.Ok -> { resp = r.value; loadError = null }
+            is ApiResult.Err -> loadError = r.message
         }
     }
     LaunchedEffect(date) { refresh() }
@@ -546,6 +555,7 @@ fun BillsHistoryScreen(onLogout: (() -> Unit)?, onBack: (() -> Unit)?) {
             actions = { if (onBack == null && onLogout != null) com.pavbhaji.pos.ui.HeaderTextAction(S.logout, onLogout) }
         )
         ConnBanner(connected)
+        ErrorBanner(loadError)
         Row(
             Modifier.fillMaxWidth().padding(horizontal = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -576,8 +586,9 @@ fun BillsHistoryScreen(onLogout: (() -> Unit)?, onBack: (() -> Unit)?) {
 private fun BillHistRow(b: BillSummaryDto, onClick: () -> Unit) {
     Surface(
         onClick = onClick,
-        shape = RoundedCornerShape(14.dp),
+        shape = RoundedCornerShape(16.dp),
         color = MaterialTheme.colorScheme.surface,
+        border = androidx.compose.foundation.BorderStroke(1.dp, CardLine),
         shadowElevation = 1.dp
     ) {
         Row(
@@ -665,8 +676,9 @@ fun BillHistoryDetail(summary: BillSummaryDto, onBack: () -> Unit) {
         LazyColumn(Modifier.weight(1f).padding(horizontal = 12.dp)) {
             item {
                 Surface(
-                    shape = RoundedCornerShape(16.dp),
+                    shape = RoundedCornerShape(18.dp),
                     color = MaterialTheme.colorScheme.surface,
+                    border = androidx.compose.foundation.BorderStroke(1.dp, CardLine),
                     shadowElevation = 1.dp,
                     modifier = Modifier.fillMaxWidth().padding(top = 12.dp)
                 ) {
@@ -738,11 +750,11 @@ fun BillHistoryDetail(summary: BillSummaryDto, onBack: () -> Unit) {
                 Modifier.fillMaxWidth().navigationBarsPadding()
                     .padding(horizontal = 12.dp, vertical = 10.dp)
             ) {
-                Button(
+                BigButton(
+                    label = S.printBill,
                     onClick = { print() },
-                    modifier = Modifier.fillMaxWidth().height(54.dp),
-                    shape = RoundedCornerShape(16.dp)
-                ) { Text(S.printBill, fontSize = 16.sp, fontWeight = FontWeight.ExtraBold) }
+                    fontSize = 16
+                )
             }
         }
     }

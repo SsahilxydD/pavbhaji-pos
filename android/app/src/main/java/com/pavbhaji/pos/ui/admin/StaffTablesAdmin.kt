@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -56,36 +57,60 @@ fun StaffAdmin(onBack: () -> Unit) {
             onBack = onBack,
             actions = { com.pavbhaji.pos.ui.HeaderTextAction(S.addStaff) { addOpen = true } }
         )
-        err?.let { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(horizontal = 14.dp)) }
-        LazyColumn(Modifier.fillMaxSize(), contentPadding = androidx.compose.foundation.layout.PaddingValues(12.dp)) {
+        com.pavbhaji.pos.ui.ErrorBanner(err)
+        LazyColumn(
+            Modifier.fillMaxSize(),
+            contentPadding = androidx.compose.foundation.layout.PaddingValues(12.dp),
+            verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp)
+        ) {
             staff.forEach { s ->
                 item(key = s.id) {
-                    Row(
-                        Modifier.fillMaxWidth().padding(vertical = 6.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column(Modifier.weight(1f)) {
-                            Text(s.name, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
-                            Text(
-                                S.roleLabel(s.role) + if (!s.active) " · " + S.deactivated else "",
-                                fontSize = 12.sp,
-                                color = if (s.active) MaterialTheme.colorScheme.onSurfaceVariant
-                                else MaterialTheme.colorScheme.error
-                            )
-                        }
-                        TextButton(onClick = { pinFor = s }) { Text(S.resetPin, fontSize = 12.sp) }
-                        Switch(
-                            checked = s.active,
-                            onCheckedChange = { on ->
-                                scope.launch {
-                                    when (val r = Deps.api.staffPatch(s.id, """{"active":$on}""")) {
-                                        is ApiResult.Ok -> {}
-                                        is ApiResult.Err -> err = r.message
-                                    }
-                                    refresh()
+                    com.pavbhaji.pos.ui.PbCard(modifier = Modifier.fillMaxWidth()) {
+                        Row(
+                            Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            // Initial-letter avatar — instant person recognition in the list.
+                            androidx.compose.material3.Surface(
+                                color = if (s.active) androidx.compose.ui.graphics.Color(0xFFFFE0CC)
+                                else androidx.compose.ui.graphics.Color(0xFFEFE9E2),
+                                shape = androidx.compose.foundation.shape.CircleShape
+                            ) {
+                                androidx.compose.foundation.layout.Box(
+                                    Modifier.size(38.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        s.name.trim().take(1).uppercase(),
+                                        fontSize = 16.sp, fontWeight = FontWeight.ExtraBold,
+                                        color = if (s.active) com.pavbhaji.pos.ui.BhajiRedDark
+                                        else MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
                                 }
                             }
-                        )
+                            Column(Modifier.weight(1f).padding(start = 11.dp)) {
+                                Text(s.name, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                                Text(
+                                    S.roleLabel(s.role) + if (!s.active) " · " + S.deactivated else "",
+                                    fontSize = 12.sp,
+                                    color = if (s.active) MaterialTheme.colorScheme.onSurfaceVariant
+                                    else MaterialTheme.colorScheme.error
+                                )
+                            }
+                            TextButton(onClick = { pinFor = s }) { Text(S.resetPin, fontSize = 12.sp) }
+                            Switch(
+                                checked = s.active,
+                                onCheckedChange = { on ->
+                                    scope.launch {
+                                        when (val r = Deps.api.staffPatch(s.id, """{"active":$on}""")) {
+                                            is ApiResult.Ok -> {}
+                                            is ApiResult.Err -> err = r.message
+                                        }
+                                        refresh()
+                                    }
+                                }
+                            )
+                        }
                     }
                 }
             }
@@ -189,34 +214,41 @@ fun TablesAdmin(onBack: () -> Unit) {
             onBack = onBack,
             actions = { com.pavbhaji.pos.ui.HeaderTextAction(S.addTable) { addOpen = true } }
         )
-        err?.let { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(horizontal = 14.dp)) }
-        LazyColumn(Modifier.fillMaxSize(), contentPadding = androidx.compose.foundation.layout.PaddingValues(12.dp)) {
+        com.pavbhaji.pos.ui.ErrorBanner(err)
+        LazyColumn(
+            Modifier.fillMaxSize(),
+            contentPadding = androidx.compose.foundation.layout.PaddingValues(12.dp),
+            verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp)
+        ) {
             tables.forEach { t ->
                 item(key = t.id) {
-                    Row(
-                        Modifier.fillMaxWidth().padding(vertical = 6.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            if (t.kind == "parcel") "${t.name} · ${S.parcelTag}" else t.name,
-                            fontSize = 15.sp, fontWeight = FontWeight.SemiBold,
-                            modifier = Modifier.weight(1f),
-                            color = if (t.active) MaterialTheme.colorScheme.onSurface
-                            else MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        TextButton(onClick = { renameFor = t }) { Text(S.rename, fontSize = 12.sp) }
-                        Switch(
-                            checked = t.active,
-                            onCheckedChange = { on ->
-                                scope.launch {
-                                    when (val r = Deps.api.tablePatch(t.id, """{"active":$on}""")) {
-                                        is ApiResult.Ok -> {}
-                                        is ApiResult.Err -> err = r.message
+                    com.pavbhaji.pos.ui.PbCard(modifier = Modifier.fillMaxWidth()) {
+                        Row(
+                            Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(if (t.kind == "parcel") "🥡" else "🍽", fontSize = 17.sp)
+                            Text(
+                                if (t.kind == "parcel") "${t.name} · ${S.parcelTag}" else t.name,
+                                fontSize = 15.sp, fontWeight = FontWeight.Bold,
+                                modifier = Modifier.weight(1f).padding(start = 11.dp),
+                                color = if (t.active) MaterialTheme.colorScheme.onSurface
+                                else MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            TextButton(onClick = { renameFor = t }) { Text(S.rename, fontSize = 12.sp) }
+                            Switch(
+                                checked = t.active,
+                                onCheckedChange = { on ->
+                                    scope.launch {
+                                        when (val r = Deps.api.tablePatch(t.id, """{"active":$on}""")) {
+                                            is ApiResult.Ok -> {}
+                                            is ApiResult.Err -> err = r.message
+                                        }
+                                        refresh()
                                     }
-                                    refresh()
                                 }
-                            }
-                        )
+                            )
+                        }
                     }
                 }
             }

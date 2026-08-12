@@ -2,21 +2,82 @@ package com.pavbhaji.pos.ui
 
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Typography
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.Font
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.sp
+import com.pavbhaji.pos.R
 
 // One warm, high-contrast light theme for everyone — restaurants are bright
 // places and cheap phones have washed-out screens, so we skip dark mode.
 val Saffron = Color(0xFFF57F17)
 val BhajiRed = Color(0xFFC63C0A)
 val BhajiRedDark = Color(0xFF7A2E0E)
-val Cream = Color(0xFFFFF8F2)
+val Cream = Color(0xFFFAF6F0)
 val CardCream = Color(0xFFFFFFFF)
-val CardLine = Color(0xFFEADFD2)
-val GoodGreen = Color(0xFF2E7D32)
+val CardLine = Color(0xFFEFE6DA)
+val GoodGreen = Color(0xFF1E8F53)
 val WarnAmber = Color(0xFFB26A00)
-val InkDark = Color(0xFF2B2018)
+val InkDark = Color(0xFF221A12)
+
+// Extra semantic tones shared by the light screens, so nobody hand-mixes hex.
+object Pb {
+    val headerTop = Color(0xFFD4450F)      // AppHeader gradient, top-left
+    val headerBottom = Color(0xFFA93307)   // AppHeader gradient, bottom-right
+    val headerSub = Color(0xFFFFD9C4)
+    val ink2 = Color(0xFF6E6055)           // secondary text on cream
+    val ink3 = Color(0xFF9C8D80)           // tertiary / hints
+    val successBg = Color(0xFFE4F6EA)
+    val successLine = Color(0xFF59B87E)
+    val successDeep = Color(0xFF1E8F53)
+    val warnBg = Color(0xFFFFF3E2)
+    val warnLine = Color(0xFFF2C88F)
+    val infoBg = Color(0xFFE9F0FB)
+    val infoLine = Color(0xFF8FB2E4)
+    val infoDeep = Color(0xFF2F6FCC)
+    val danger = Color(0xFFD23B2E)
+    val dangerBg = Color(0xFFFDECEA)
+    val counterBg = Color(0xFFFFFBF2)      // "just carry" counter tint
+    val counterSpine = Color(0xFFF2A33C)
+    val quietCard = Color(0xFFFBF7F1)      // free-table card
+    val skeleton = Color(0xFFF0E8DE)       // shimmer base on cream
+}
+
+// Inter for Latin text and numerals (the modern-app feel); Hindi / Gujarati
+// glyphs automatically fall back to the system Noto fonts, which pair fine.
+val InterFamily = FontFamily(
+    Font(R.font.inter_regular, FontWeight.Normal),
+    Font(R.font.inter_medium, FontWeight.Medium),
+    Font(R.font.inter_semibold, FontWeight.SemiBold),
+    Font(R.font.inter_bold, FontWeight.Bold),
+    Font(R.font.inter_extrabold, FontWeight.ExtraBold),
+)
+
+private fun TextStyle.inter() = copy(fontFamily = InterFamily)
+
+private val baseType = Typography()
+private val PbTypography = Typography(
+    displayLarge = baseType.displayLarge.inter(),
+    displayMedium = baseType.displayMedium.inter(),
+    displaySmall = baseType.displaySmall.inter(),
+    headlineLarge = baseType.headlineLarge.inter(),
+    headlineMedium = baseType.headlineMedium.inter(),
+    headlineSmall = baseType.headlineSmall.inter(),
+    titleLarge = baseType.titleLarge.inter().copy(fontWeight = FontWeight.Bold, letterSpacing = (-0.2).sp),
+    titleMedium = baseType.titleMedium.inter().copy(fontWeight = FontWeight.SemiBold),
+    titleSmall = baseType.titleSmall.inter(),
+    bodyLarge = baseType.bodyLarge.inter(),
+    bodyMedium = baseType.bodyMedium.inter(),
+    bodySmall = baseType.bodySmall.inter(),
+    labelLarge = baseType.labelLarge.inter().copy(fontWeight = FontWeight.SemiBold),
+    labelMedium = baseType.labelMedium.inter(),
+    labelSmall = baseType.labelSmall.inter(),
+)
 
 private val scheme = lightColorScheme(
     primary = BhajiRed,
@@ -32,15 +93,17 @@ private val scheme = lightColorScheme(
     onBackground = InkDark,
     surface = CardCream,
     onSurface = InkDark,
-    surfaceVariant = Color(0xFFF4E7DC),
-    onSurfaceVariant = Color(0xFF6B5D51),
-    error = Color(0xFFB3261E),
+    surfaceVariant = Color(0xFFF4E9DE),
+    onSurfaceVariant = Pb.ink2,
+    outline = CardLine,
+    outlineVariant = CardLine,
+    error = Pb.danger,
 )
 
 @Composable
 fun PBTheme(content: @Composable () -> Unit) {
     isSystemInDarkTheme() // intentionally ignored
-    MaterialTheme(colorScheme = scheme, content = content)
+    MaterialTheme(colorScheme = scheme, typography = PbTypography, content = content)
 }
 
 // ---- Dish identity colours (the "cook by colour" system) ----

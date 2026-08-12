@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
@@ -46,8 +47,14 @@ import com.pavbhaji.pos.data.CategoryDto
 import com.pavbhaji.pos.data.NewTicketLine
 import com.pavbhaji.pos.data.TableStateDto
 import com.pavbhaji.pos.ui.AppHeader
+import com.pavbhaji.pos.ui.BigButton
+import com.pavbhaji.pos.ui.CardLine
 import com.pavbhaji.pos.ui.ConnBanner
+import com.pavbhaji.pos.ui.EmptyState
+import com.pavbhaji.pos.ui.ErrorBanner
 import com.pavbhaji.pos.ui.HeaderTextAction
+import com.pavbhaji.pos.ui.Pb
+import com.pavbhaji.pos.ui.Pill
 import com.pavbhaji.pos.ui.QtyStepper
 import com.pavbhaji.pos.ui.S
 import com.pavbhaji.pos.ui.SectionTitle
@@ -121,12 +128,7 @@ fun ParcelHome(onLogout: () -> Unit) {
             actions = { HeaderTextAction(S.logout, onLogout) }
         )
         ConnBanner(connected)
-        loadError?.let {
-            Text(
-                it, color = MaterialTheme.colorScheme.error, fontSize = 13.sp,
-                modifier = Modifier.padding(horizontal = 14.dp, vertical = 4.dp)
-            )
-        }
+        ErrorBanner(loadError)
         toast?.let {
             Text(
                 it, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
@@ -138,11 +140,7 @@ fun ParcelHome(onLogout: () -> Unit) {
 
         if (parcels.isEmpty()) {
             Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
-                Text(
-                    S.noParcels, fontSize = 15.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
-                )
+                EmptyState("🥡", S.noParcels)
             }
         } else {
             LazyVerticalGrid(
@@ -153,93 +151,89 @@ fun ParcelHome(onLogout: () -> Unit) {
                 modifier = Modifier.weight(1f)
             ) {
                 items(parcels, key = { it.id }) { t ->
-                    ParcelCard(t, onClick = { selected = t })
+                    ParcelCard(t, onClick = { selected = t }, modifier = Modifier.animateItem())
                 }
             }
         }
 
         Surface(shadowElevation = 10.dp) {
             Column(Modifier.fillMaxWidth().navigationBarsPadding().padding(12.dp)) {
-                Button(
+                BigButton(
+                    label = S.newParcel,
                     onClick = { adding = true },
-                    modifier = Modifier.fillMaxWidth().height(54.dp),
-                    shape = RoundedCornerShape(16.dp)
-                ) { Text(S.newParcel, fontSize = 16.sp, fontWeight = FontWeight.ExtraBold) }
+                    fontSize = 16
+                )
             }
         }
-    }
-}
-
-@Composable
-private fun StatusPill(text: String, bg: Color, fg: Color) {
-    Surface(color = bg, shape = RoundedCornerShape(8.dp)) {
-        Text(
-            text, color = fg, fontSize = 10.sp, fontWeight = FontWeight.ExtraBold,
-            maxLines = 1,
-            modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp)
-        )
     }
 }
 
 // The customer's tab. Yellow while anything is still pending in the kitchen,
 // green the moment every plate is ready, blue once it's all handed over.
 @Composable
-private fun ParcelCard(t: TableStateDto, onClick: () -> Unit) {
+private fun ParcelCard(t: TableStateDto, onClick: () -> Unit, modifier: Modifier = Modifier) {
     val o = t.order ?: return
     val cooking = o.pendingCount > 0
     val allReady = !cooking && o.readyCount > 0
 
-    Surface(
+    com.pavbhaji.pos.ui.PbCard(
         onClick = onClick,
-        shape = RoundedCornerShape(18.dp),
+        corner = 18.dp,
         color = when {
             cooking -> Color(0xFFFFF6C4)  // pending = yellow
-            allReady -> Color(0xFFE4F6EA) // everything ready = green
-            else -> Color(0xFFE9F0FB)     // handed over — collect & close
+            allReady -> Pb.successBg      // everything ready = green
+            else -> Pb.infoBg             // handed over — collect & close
         },
         border = when {
             cooking -> BorderStroke(1.5.dp, Color(0xFFE0B400))
-            allReady -> BorderStroke(2.dp, Color(0xFF59B87E))
-            else -> BorderStroke(1.dp, Color(0xFF8FB2E4))
+            allReady -> BorderStroke(2.dp, Pb.successLine)
+            else -> BorderStroke(1.dp, Pb.infoLine)
         },
-        shadowElevation = 2.dp,
-        modifier = Modifier.height(124.dp)
+        elevation = 2.dp,
+        modifier = modifier.heightIn(min = 124.dp)
     ) {
-        Column(Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
+        Column(
+            Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.SpaceBetween
+        ) {
+            Column {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        o.customerName.ifEmpty { t.name },
+                        fontSize = 18.sp, fontWeight = FontWeight.ExtraBold,
+                        maxLines = 1, overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f)
+                    )
+                    Text(
+                        "#${o.orderNo}", fontSize = 13.sp, fontWeight = FontWeight.Bold,
+                        color = Pb.ink2
+                    )
+                }
+                val sub = listOf(t.name) + (if (o.customerPhone.isNotEmpty()) listOf(o.customerPhone) else emptyList())
                 Text(
-                    o.customerName.ifEmpty { t.name },
-                    fontSize = 18.sp, fontWeight = FontWeight.ExtraBold,
-                    maxLines = 1, overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f)
-                )
-                Text(
-                    "#${o.orderNo}", fontSize = 13.sp, fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    sub.joinToString(" · "),
+                    fontSize = 11.sp, color = Pb.ink2,
+                    maxLines = 1, overflow = TextOverflow.Ellipsis
                 )
             }
-            val sub = listOf(t.name) + (if (o.customerPhone.isNotEmpty()) listOf(o.customerPhone) else emptyList())
-            Text(
-                sub.joinToString(" · "),
-                fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1, overflow = TextOverflow.Ellipsis
-            )
-            Spacer(Modifier.weight(1f))
-            Text(
-                "${rupees(o.total)} · ${itemsLabel(o.itemCount)}",
-                fontSize = 14.sp, fontWeight = FontWeight.Bold
-            )
-            Spacer(Modifier.height(5.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(5.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.padding(top = 8.dp)) {
                 Text(
-                    ageMinutes(o.openedAt),
-                    fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.weight(1f, fill = false)
+                    "${rupees(o.total)} · ${itemsLabel(o.itemCount)}",
+                    fontSize = 14.sp, fontWeight = FontWeight.Bold,
+                    maxLines = 1, overflow = TextOverflow.Ellipsis
                 )
-                when {
-                    cooking -> StatusPill(S.inKitchen, Color(0xFFF0D060), Color(0xFF5D4000))
-                    allReady -> StatusPill(S.allReadyPill, Color(0xFF1E8F53), Color.White)
-                    else -> StatusPill(S.collectAmt(rupees(o.total)), Color(0xFF2F6FCC), Color.White)
+                Spacer(Modifier.height(5.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(5.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        ageMinutes(o.openedAt),
+                        fontSize = 11.sp, color = Pb.ink2,
+                        modifier = Modifier.weight(1f, fill = false)
+                    )
+                    when {
+                        cooking -> Pill(S.inKitchen, Color(0xFFF0D060), Color(0xFF5D4000))
+                        allReady -> Pill(S.allReadyPill, Pb.successDeep, Color.White)
+                        else -> Pill(S.collectAmt(rupees(o.total)), Pb.infoDeep, Color.White)
+                    }
                 }
             }
         }
@@ -310,8 +304,9 @@ fun AddParcelScreen(onDone: (Long) -> Unit, onBack: () -> Unit) {
             // ---- customer details ----
             item {
                 Surface(
-                    shape = RoundedCornerShape(14.dp),
+                    shape = RoundedCornerShape(16.dp),
                     color = MaterialTheme.colorScheme.surface,
+                    border = BorderStroke(1.dp, CardLine),
                     shadowElevation = 1.dp,
                     modifier = Modifier.fillMaxWidth().padding(top = 12.dp)
                 ) {
@@ -320,6 +315,7 @@ fun AddParcelScreen(onDone: (Long) -> Unit, onBack: () -> Unit) {
                             value = custName, onValueChange = { custName = it.take(60) },
                             label = { Text(S.customerName) },
                             singleLine = true,
+                            shape = RoundedCornerShape(12.dp),
                             modifier = Modifier.fillMaxWidth()
                         )
                         OutlinedTextField(
@@ -327,6 +323,7 @@ fun AddParcelScreen(onDone: (Long) -> Unit, onBack: () -> Unit) {
                             onValueChange = { v -> custPhone = v.filter { it.isDigit() || it == '+' || it == ' ' }.take(20) },
                             label = { Text(S.customerPhone) },
                             singleLine = true,
+                            shape = RoundedCornerShape(12.dp),
                             modifier = Modifier.fillMaxWidth()
                         )
                     }
@@ -425,24 +422,19 @@ fun AddParcelScreen(onDone: (Long) -> Unit, onBack: () -> Unit) {
                         modifier = Modifier.padding(bottom = 6.dp)
                     )
                 }
-                Button(
+                val count = cart.sumOf { it.qty }
+                val total = cart.sumOf { it.qty * it.price }
+                BigButton(
+                    label = when {
+                        sendError != null && cart.isNotEmpty() -> S.tryAgain(itemsLabel(count))
+                        cart.isEmpty() -> S.sendParcel
+                        else -> "${S.sendParcel}  ${itemsLabel(count)} · ${rupees(total)}"
+                    },
                     onClick = { send() },
-                    enabled = !sending && cart.isNotEmpty(),
-                    modifier = Modifier.fillMaxWidth().height(54.dp),
-                    shape = RoundedCornerShape(16.dp)
-                ) {
-                    val count = cart.sumOf { it.qty }
-                    val total = cart.sumOf { it.qty * it.price }
-                    Text(
-                        when {
-                            sending -> S.sending
-                            sendError != null && cart.isNotEmpty() -> S.tryAgain(itemsLabel(count))
-                            cart.isEmpty() -> S.sendParcel
-                            else -> "${S.sendParcel}  ${itemsLabel(count)} · ${rupees(total)}"
-                        },
-                        fontSize = 16.sp, fontWeight = FontWeight.ExtraBold
-                    )
-                }
+                    enabled = cart.isNotEmpty(),
+                    loading = sending,
+                    fontSize = 16
+                )
             }
         }
     }

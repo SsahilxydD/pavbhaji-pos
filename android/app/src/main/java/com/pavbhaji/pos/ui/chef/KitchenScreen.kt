@@ -3,11 +3,16 @@ package com.pavbhaji.pos.ui.chef
 import android.app.Activity
 import android.media.AudioManager
 import android.media.ToneGenerator
+import android.view.HapticFeedbackConstants
 import android.view.WindowManager
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -21,6 +26,7 @@ import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
@@ -51,7 +57,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -74,11 +82,14 @@ fun KitchenScreen(onLogout: () -> Unit, embedded: Boolean = false, onBack: (() -
     val scope = rememberCoroutineScope()
     val connected by Deps.live.connected.collectAsState()
     var data by remember { mutableStateOf(KitchenDto()) }
+    var loaded by remember { mutableStateOf(false) }
+    var loadError by remember { mutableStateOf<String?>(null) }
     var expandedId by remember { mutableStateOf<Long?>(null) }
     var busy by remember { mutableStateOf(false) }
     var toast by remember { mutableStateOf<String?>(null) }
     val context = LocalContext.current
     val myId = Deps.session.staffId
+    com.pavbhaji.pos.ui.StatusBarIcons(darkIcons = false)
 
     // Kitchen phone should never dim mid-rush.
     DisposableEffect(Unit) {
@@ -104,12 +115,14 @@ fun KitchenScreen(onLogout: () -> Unit, embedded: Boolean = false, onBack: (() -
                 seenBuckets.addAll(fresh)
                 firstLoad = false
                 data = r.value
+                loaded = true
+                loadError = null
                 // My cooking bucket stays open in front of me.
                 if (expandedId == null) {
                     expandedId = r.value.buckets.firstOrNull { it.status == "taken" && it.takenBy == myId }?.id
                 }
             }
-            is ApiResult.Err -> {}
+            is ApiResult.Err -> loadError = r.message
         }
     }
     LaunchedEffect(Unit) {
@@ -130,8 +143,8 @@ fun KitchenScreen(onLogout: () -> Unit, embedded: Boolean = false, onBack: (() -
             Modifier
                 .fillMaxWidth()
                 .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal))
-                .height(56.dp)
-                .padding(horizontal = 6.dp),
+                .heightIn(min = 56.dp)
+                .padding(horizontal = 6.dp, vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             if (onBack != null) {
@@ -158,6 +171,7 @@ fun KitchenScreen(onLogout: () -> Unit, embedded: Boolean = false, onBack: (() -
             }
         }
         ConnBanner(connected)
+        com.pavbhaji.pos.ui.ErrorBanner(loadError, dark = true)
         toast?.let {
             Text(
                 it, color = Kc.late, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
@@ -165,7 +179,9 @@ fun KitchenScreen(onLogout: () -> Unit, embedded: Boolean = false, onBack: (() -
             )
         }
 
-        if (data.buckets.isEmpty()) {
+        if (!loaded) {
+            com.pavbhaji.pos.ui.ListSkeleton(rows = 4, rowHeight = 84.dp, base = Kc.card)
+        } else if (data.buckets.isEmpty()) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Text(S.noBuckets, color = Kc.ink2, fontSize = 14.sp)
             }
@@ -179,6 +195,7 @@ fun KitchenScreen(onLogout: () -> Unit, embedded: Boolean = false, onBack: (() -
                 items(data.buckets.size, key = { data.buckets[it].id }) { i ->
                     val b = data.buckets[i]
                     BucketCard(
+                        modifier = Modifier.animateItem(),
                         b = b, cap = if (b.cap > 0) b.cap else data.cap, myId = myId, myBusy = myBusy,
                         expanded = expandedId == b.id,
                         onTap = { expandedId = if (expandedId == b.id) null else b.id },
@@ -251,7 +268,8 @@ private fun StateChip(text: String, bg: Color, fg: Color, dashed: Boolean = fals
 private fun BucketCard(
     b: BucketDto, cap: Long, myId: Long, myBusy: Boolean,
     expanded: Boolean,
-    onTap: () -> Unit, onTake: () -> Unit, onReady: () -> Unit
+    onTap: () -> Unit, onTake: () -> Unit, onReady: () -> Unit,
+    modifier: Modifier = Modifier
 ) {
     val colour = dishColour(b.colour, b.menuItemId)
     val mine = b.status == "taken" && b.takenBy == myId
@@ -259,12 +277,14 @@ private fun BucketCard(
 
     Surface(
         color = Kc.card,
-        shape = RoundedCornerShape(15.dp),
-        border = androidx.compose.foundation.BorderStroke(1.dp, Kc.border),
-        modifier = Modifier
+        shape = RoundedCornerShape(16.dp),
+        border = androidx.compose.foundation.BorderStroke(
+            1.dp, if (mine) colour.copy(alpha = 0.55f) else Kc.border
+        ),
+        modifier = modifier
             .fillMaxWidth()
             .alpha(if (lockedByOther) 0.62f else 1f)
-            .clip(RoundedCornerShape(15.dp))
+            .clip(RoundedCornerShape(16.dp))
             .clickable(onClick = onTap)
     ) {
         Row(Modifier.height(IntrinsicSize.Min)) {
@@ -300,13 +320,19 @@ private fun BucketCard(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
+                    // Plates landing in the bucket pull the bar smoothly, not in jumps.
+                    val fill by animateFloatAsState(
+                        (b.qty.toFloat() / cap).coerceIn(0f, 1f),
+                        spring(dampingRatio = 0.9f, stiffness = 220f),
+                        label = "fill"
+                    )
                     Box(
                         Modifier.weight(1f).height(5.dp)
                             .background(Kc.border, RoundedCornerShape(99.dp))
                     ) {
                         Box(
                             Modifier
-                                .fillMaxWidth((b.qty.toFloat() / cap).coerceIn(0f, 1f))
+                                .fillMaxWidth(fill)
                                 .height(5.dp)
                                 .background(colour, RoundedCornerShape(99.dp))
                         )
@@ -323,7 +349,11 @@ private fun BucketCard(
                     }
                 }
 
-                if (expanded) {
+                androidx.compose.animation.AnimatedVisibility(
+                    visible = expanded,
+                    enter = androidx.compose.animation.expandVertically() + androidx.compose.animation.fadeIn(),
+                    exit = androidx.compose.animation.shrinkVertically() + androidx.compose.animation.fadeOut()
+                ) {
                     Column(
                         Modifier.fillMaxWidth().background(Kc.inside)
                             .padding(start = 10.dp, end = 12.dp, top = 9.dp, bottom = 11.dp),
@@ -363,17 +393,32 @@ private fun BucketCard(
     }
 }
 
+// Take / Ready: the two buttons a chef hits with wet hands all day — big,
+// springy, and clicky so a press is unmistakable even mid-rush.
 @Composable
 private fun BigAction(label: String, bg: Color, fg: Color, onClick: () -> Unit) {
+    val view = LocalView.current
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    val scale by animateFloatAsState(
+        if (pressed) 0.965f else 1f,
+        spring(dampingRatio = 0.65f, stiffness = 1100f),
+        label = "bigAction"
+    )
     Surface(
-        onClick = onClick,
-        color = bg, shape = RoundedCornerShape(10.dp),
+        onClick = {
+            view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+            onClick()
+        },
+        interactionSource = interaction,
+        color = bg, shape = RoundedCornerShape(12.dp),
         modifier = Modifier.fillMaxWidth().padding(top = 4.dp)
+            .graphicsLayer { scaleX = scale; scaleY = scale }
     ) {
         Text(
-            label, color = fg, fontSize = 13.sp, fontWeight = FontWeight.ExtraBold,
+            label, color = fg, fontSize = 13.5.sp, fontWeight = FontWeight.ExtraBold,
             textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-            modifier = Modifier.padding(vertical = 10.dp)
+            modifier = Modifier.padding(vertical = 12.dp)
         )
     }
 }

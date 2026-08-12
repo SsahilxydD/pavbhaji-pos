@@ -5,64 +5,210 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>PavBhaji POS — Admin</title>
 <style>
-  :root { --red:#a8271f; --ink:#2b2320; --mut:#8a7f77; --line:#eadfd2; --bg:#faf6f0; --card:#fff; --green:#1e8f53; --amber:#b45f00; }
+  /* Self-contained on purpose: the shop laptop is often offline, so no
+     web fonts, no CDNs — the look comes from spacing, colour and motion. */
+  :root {
+    --red:#c63c0a; --red-deep:#a93307; --red-dark:#7a2e0e;
+    --ink:#221a12; --ink2:#6e6055; --ink3:#9c8d80;
+    --line:#efe6da; --bg:#faf6f0; --card:#ffffff;
+    --green:#1e8f53; --green-bg:#e4f6ea; --amber:#b26a00; --amber-bg:#fff3e2;
+    --danger:#d23b2e; --danger-bg:#fdecea;
+    --shadow:0 1px 2px rgba(60,35,20,.06), 0 4px 16px rgba(60,35,20,.05);
+    --shadow-lift:0 2px 4px rgba(60,35,20,.08), 0 10px 28px rgba(60,35,20,.09);
+    --r:16px;
+  }
   * { box-sizing:border-box; margin:0; }
-  body { font-family:system-ui,sans-serif; background:var(--bg); color:var(--ink); }
-  .wrap { max-width:980px; margin:0 auto; padding:16px; }
-  header { background:var(--red); color:#fff; }
-  header .wrap { display:flex; align-items:center; gap:12px; padding-top:12px; padding-bottom:12px; }
-  header h1 { font-size:18px; flex:1; }
-  header small { opacity:.85 }
-  button { font:inherit; cursor:pointer; border:1px solid var(--line); background:#fff; border-radius:9px; padding:7px 13px; }
+  html { -webkit-text-size-adjust:100%; }
+  body {
+    font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    background:var(--bg); color:var(--ink);
+    font-size:14.5px; line-height:1.45;
+  }
+  ::selection { background:#ffd9c4; }
+
+  /* ---------- shell: sidebar + content ---------- */
+  .shell { display:flex; min-height:100vh; }
+  aside {
+    width:236px; flex:0 0 236px; padding:18px 14px;
+    background:linear-gradient(160deg,#d4450f,#a93307);
+    color:#fff; display:flex; flex-direction:column; gap:4px;
+    position:sticky; top:0; height:100vh;
+  }
+  .brand { display:flex; align-items:center; gap:10px; padding:6px 8px 18px; }
+  .brand .tile {
+    width:40px; height:40px; border-radius:13px; background:rgba(255,255,255,.16);
+    display:grid; place-items:center; font-size:22px;
+  }
+  .brand b { font-size:16px; letter-spacing:-.2px; display:block; }
+  .brand small { opacity:.75; font-size:11.5px; }
+  aside nav { display:flex; flex-direction:column; gap:3px; flex:1; }
+  aside nav button {
+    display:flex; align-items:center; gap:10px; width:100%;
+    background:transparent; border:0; color:rgba(255,255,255,.85);
+    font:inherit; font-weight:600; font-size:13.5px;
+    padding:9px 11px; border-radius:11px; cursor:pointer; text-align:left;
+    transition:background .15s, color .15s, transform .06s;
+  }
+  aside nav button:hover { background:rgba(255,255,255,.10); color:#fff; }
+  aside nav button:active { transform:scale(.985); }
+  aside nav button.on { background:rgba(255,255,255,.92); color:var(--red-dark); box-shadow:var(--shadow); }
+  aside nav button .ic { font-size:16px; width:22px; text-align:center; }
+  .side-foot { display:flex; flex-direction:column; gap:6px; padding-top:10px; }
+  .side-foot .who { font-size:12px; opacity:.8; padding:0 8px; }
+  .side-foot button {
+    font:inherit; font-weight:600; font-size:13px; cursor:pointer;
+    background:rgba(255,255,255,.12); color:#fff;
+    border:1px solid rgba(255,255,255,.25); border-radius:10px; padding:8px 11px;
+    transition:background .15s;
+  }
+  .side-foot button:hover { background:rgba(255,255,255,.2); }
+
+  main { flex:1; min-width:0; padding:26px 30px 60px; }
+  .content { max-width:880px; margin:0 auto; }
+  #view { animation:fadein .18s ease; }
+  @keyframes fadein { from { opacity:0; transform:translateY(4px);} to { opacity:1; transform:none;} }
+
+  h2 {
+    font-size:12px; letter-spacing:.09em; color:var(--ink3);
+    margin:22px 0 8px; text-transform:uppercase; font-weight:800;
+  }
+  .mut { color:var(--ink2); font-size:12.5px; }
+  .hint { color:var(--ink3); font-size:12.5px; margin-top:10px; }
+
+  /* ---------- cards, stats ---------- */
+  .card {
+    background:var(--card); border:1px solid var(--line); border-radius:var(--r);
+    padding:16px; margin-bottom:12px; box-shadow:var(--shadow);
+  }
+  .stats { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:10px; }
+  .stat {
+    background:var(--card); border:1px solid var(--line); border-radius:var(--r);
+    padding:13px 15px; box-shadow:var(--shadow);
+  }
+  .stat .lbl { display:flex; align-items:center; gap:7px; font-size:11px; font-weight:700; color:var(--ink2); }
+  .stat .lbl::before { content:""; width:7px; height:7px; border-radius:99px; background:var(--dot,#c63c0a); }
+  .stat b { display:block; font-size:24px; letter-spacing:-.5px; margin-top:3px; }
+  .stat.green { --dot:var(--green); } .stat.green b { color:var(--green); }
+  .stat.amber { --dot:var(--amber); } .stat.amber b { color:var(--amber); }
+  .stat.red { --dot:var(--danger); } .stat.red b { color:var(--danger); }
+  .hero {
+    background:var(--card); border:1px solid var(--line); border-radius:20px;
+    padding:20px 22px; margin-bottom:12px; box-shadow:var(--shadow);
+  }
+  .hero .lbl { font-size:11px; font-weight:800; letter-spacing:.1em; color:var(--ink3); }
+  .hero b.big { font-size:40px; letter-spacing:-1.2px; color:var(--green); display:block; }
+
+  /* ---------- rows, tables ---------- */
+  .row { display:flex; align-items:center; gap:9px; padding:9px 0; border-bottom:1px solid var(--line); flex-wrap:wrap; }
+  .row:last-child { border-bottom:0; }
+  .grow { flex:1; min-width:120px; }
+  table { width:100%; border-collapse:collapse; }
+  td,th { text-align:left; padding:7px 8px; border-bottom:1px solid var(--line); font-size:14px; }
+  tr:last-child td { border-bottom:0; }
+  th { color:var(--ink3); font-size:11px; letter-spacing:.06em; text-transform:uppercase; }
+  td.r,th.r { text-align:right; }
+  .green { color:var(--green); } .redtx { color:var(--danger); } .amber { color:var(--amber); }
+
+  /* ---------- controls ---------- */
+  button {
+    font:inherit; font-weight:600; font-size:13px; cursor:pointer;
+    border:1px solid var(--line); background:#fff; color:var(--ink);
+    border-radius:11px; padding:8px 14px;
+    transition:box-shadow .15s, transform .06s, background .15s, border-color .15s;
+  }
+  button:hover { box-shadow:var(--shadow); border-color:#e2d5c4; }
+  button:active { transform:scale(.97); }
   button.primary { background:var(--red); border-color:var(--red); color:#fff; font-weight:700; }
-  button.ghost { background:transparent; border-color:rgba(255,255,255,.5); color:#fff; }
-  nav { display:flex; gap:6px; flex-wrap:wrap; margin:14px 0; }
-  nav button { border-radius:99px; }
-  nav button.on { background:var(--ink); color:#fff; border-color:var(--ink); font-weight:700; }
-  .card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:14px; margin-bottom:12px; }
-  .row { display:flex; align-items:center; gap:8px; padding:7px 0; border-bottom:1px solid var(--line); flex-wrap:wrap; }
-  .row:last-child { border-bottom:0 }
-  .grow { flex:1; min-width:120px }
-  .mut { color:var(--mut); font-size:12.5px }
-  .stats { display:flex; gap:10px; flex-wrap:wrap; }
-  .stat { flex:1; min-width:130px; background:var(--card); border:1px solid var(--line); border-radius:14px; padding:12px; text-align:center; }
-  .stat b { display:block; font-size:24px; }
-  h2 { font-size:13px; letter-spacing:.08em; color:var(--mut); margin:16px 0 8px; text-transform:uppercase; }
-  input,select { font:inherit; padding:7px 9px; border:1px solid var(--line); border-radius:8px; background:#fff; max-width:100%; }
-  input[type=color] { padding:1px; width:38px; height:34px; }
-  input.num { width:84px } input.tiny { width:64px }
-  .green { color:var(--green) } .redtx { color:var(--red) } .amber { color:var(--amber) }
-  #login { max-width:320px; margin:12vh auto; text-align:center; }
-  #login input { font-size:26px; letter-spacing:.5em; text-align:center; width:100%; margin:14px 0; }
-  .err { color:var(--red); font-size:13px; min-height:18px; margin-bottom:8px }
-  table { width:100%; border-collapse:collapse; } td,th { text-align:left; padding:5px 6px; border-bottom:1px solid var(--line); font-size:14px } th { color:var(--mut); font-size:12px }
-  td.r,th.r { text-align:right }
-  .addbar { display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-top:10px; }
+  button.primary:hover { background:var(--red-deep); box-shadow:var(--shadow-lift); }
+  button.icon { padding:8px 10px; }
+  input,select {
+    font:inherit; padding:8px 11px; border:1.5px solid var(--line); border-radius:11px;
+    background:#fff; max-width:100%; color:var(--ink); transition:border-color .15s, box-shadow .15s;
+  }
+  input:focus,select:focus { outline:none; border-color:var(--red); box-shadow:0 0 0 3px rgba(198,60,10,.12); }
+  input[type=color] { padding:2px; width:40px; height:36px; border-radius:10px; cursor:pointer; }
+  input.num { width:88px; } input.tiny { width:70px; }
+  label.ck { display:flex; align-items:center; gap:6px; color:var(--ink2); font-size:12.5px; cursor:pointer; }
+
+  /* checkbox → pill switch */
+  input[type=checkbox].sw { appearance:none; width:38px; height:22px; border-radius:99px;
+    background:#e7ddd2; border:0; position:relative; cursor:pointer; transition:background .18s; flex:none; }
+  input[type=checkbox].sw::after { content:""; position:absolute; top:3px; left:3px; width:16px; height:16px;
+    border-radius:99px; background:#fff; box-shadow:0 1px 2px rgba(0,0,0,.25); transition:left .18s; }
+  input[type=checkbox].sw:checked { background:var(--green); }
+  input[type=checkbox].sw:checked::after { left:19px; }
+
+  .addbar { display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-top:12px;
+    padding-top:12px; border-top:1px dashed var(--line); }
+  .pillnav { display:flex; gap:6px; flex-wrap:wrap; margin:0 0 12px; }
+  .pillnav button { border-radius:99px; padding:7px 13px; font-size:12.5px; }
+  .pillnav button.on { background:var(--ink); color:#fff; border-color:var(--ink); }
+  .datebar { display:flex; align-items:center; justify-content:center; gap:8px; margin-bottom:14px; flex-wrap:wrap; }
+  .datebar b { font-size:15px; }
+
+  /* ---------- login ---------- */
+  #login { max-width:340px; margin:14vh auto 0; text-align:center; animation:fadein .25s ease; }
+  #login .tile { width:76px; height:76px; margin:0 auto 14px; border-radius:24px;
+    background:linear-gradient(140deg,#ffe3c2,#ffd1a6); display:grid; place-items:center; font-size:40px; }
+  #login h1 { font-size:22px; letter-spacing:-.5px; margin-bottom:2px; }
+  #login p.sub { color:var(--ink2); font-size:13.5px; margin-bottom:18px; }
+  #login .card { padding:22px; }
+  #login input { font-size:26px; letter-spacing:.5em; text-align:center; width:100%; margin-bottom:12px; }
+  .err { color:var(--danger); font-size:13px; min-height:18px; margin-bottom:8px; }
+
+  /* ---------- toasts ---------- */
+  #toasts { position:fixed; right:18px; bottom:18px; display:flex; flex-direction:column; gap:8px; z-index:50; }
+  .toast { background:var(--ink); color:#fff; padding:10px 15px; border-radius:12px; font-size:13px;
+    font-weight:600; box-shadow:var(--shadow-lift); animation:toastin .2s ease; max-width:340px; }
+  .toast.ok { background:var(--green); }
+  .toast.bad { background:var(--danger); }
+  @keyframes toastin { from { opacity:0; transform:translateY(8px);} to { opacity:1; transform:none;} }
+
+  /* ---------- narrow screens: sidebar becomes a top bar ---------- */
+  @media (max-width:860px) {
+    .shell { flex-direction:column; }
+    aside { width:100%; flex:none; height:auto; position:static; padding:12px 14px; }
+    .brand { padding-bottom:10px; }
+    aside nav { flex-direction:row; overflow-x:auto; padding-bottom:4px; }
+    aside nav button { white-space:nowrap; width:auto; }
+    .side-foot { flex-direction:row; align-items:center; padding-top:8px; }
+    .side-foot .who { flex:1; }
+    main { padding:18px 14px 50px; }
+  }
 </style>
 </head>
 <body>
-<header><div class="wrap">
-  <h1>🍛 PavBhaji POS — admin panel</h1>
-  <small id="who"></small>
-  <button class="ghost" id="backupBtn" hidden>⬇ backup</button>
-  <button class="ghost" id="logoutBtn" hidden>logout</button>
-</div></header>
-<div class="wrap">
 
 <div id="login">
-  <h2 style="font-size:16px;text-transform:none;color:var(--ink)">Enter the admin PIN</h2>
-  <input id="pin" type="password" inputmode="numeric" maxlength="8" autofocus>
-  <div class="err" id="loginErr"></div>
-  <button class="primary" onclick="doLogin()" style="width:100%">Log in</button>
+  <div class="tile">🍛</div>
+  <h1>PavBhaji POS</h1>
+  <p class="sub">Admin panel — enter the admin PIN</p>
+  <div class="card">
+    <input id="pin" type="password" inputmode="numeric" maxlength="8" autofocus placeholder="••••">
+    <div class="err" id="loginErr"></div>
+    <button class="primary" onclick="doLogin()" style="width:100%">Log in</button>
+  </div>
   <p class="mut" style="margin-top:14px">Same PIN as the admin uses in the phone app.</p>
 </div>
 
-<div id="app" hidden>
-  <nav id="tabs"></nav>
-  <div id="view"></div>
+<div id="app" class="shell" hidden>
+  <aside>
+    <div class="brand">
+      <div class="tile">🍛</div>
+      <div><b>PavBhaji POS</b><small>admin panel</small></div>
+    </div>
+    <nav id="tabs"></nav>
+    <div class="side-foot">
+      <span class="who" id="who"></span>
+      <button id="backupBtn">⬇ backup</button>
+      <button id="logoutBtn">logout</button>
+    </div>
+  </aside>
+  <main><div class="content"><div id="view"></div></div></main>
 </div>
 
-</div>
+<div id="toasts"></div>
+
 <script>
 'use strict';
 let token = '', me = null, tab = 'dashboard', dashTimer = null;
@@ -72,6 +218,16 @@ const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt
 const rupees = p => p % 100 === 0 ? '₹' + (p/100) : '₹' + (p/100).toFixed(2);
 const toPaise = s => { const v = parseFloat(String(s).replace('₹','').trim()); return isNaN(v) || v < 0 ? null : Math.round(v*100); };
 const clock = ms => new Date(ms).toTimeString().slice(0,5);
+
+// Non-blocking feedback instead of alert(): slides up bottom-right, self-clears.
+function toast(msg, kind) {
+  const el = document.createElement('div');
+  el.className = 'toast' + (kind ? ' ' + kind : '');
+  el.textContent = msg;
+  $('toasts').appendChild(el);
+  setTimeout(() => { el.style.opacity = '0'; el.style.transition = 'opacity .3s'; }, 2600);
+  setTimeout(() => el.remove(), 3000);
+}
 
 async function api(method, path, body) {
   const r = await fetch(path, {
@@ -95,7 +251,6 @@ async function doLogin() {
     }
     token = r.token; me = r.staff;
     $('login').hidden = true; $('app').hidden = false;
-    $('backupBtn').hidden = $('logoutBtn').hidden = false;
     $('who').textContent = me.name;
     show('dashboard');
   } catch (e) { $('loginErr').textContent = e.message; $('pin').value = ''; }
@@ -104,25 +259,30 @@ $('pin').addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); })
 function logout() {
   if (token) api('POST','/api/logout',{}).catch(()=>{});
   token = ''; me = null; clearInterval(dashTimer);
-  $('app').hidden = true; $('backupBtn').hidden = $('logoutBtn').hidden = true;
+  $('app').hidden = true;
   $('login').hidden = false; $('pin').value = ''; $('who').textContent = '';
 }
 $('logoutBtn').onclick = logout;
 $('backupBtn').onclick = async () => {
   const r = await fetch('/api/admin/backup', { headers:{'Authorization':'Bearer '+token} });
-  if (!r.ok) { alert('backup failed'); return; }
+  if (!r.ok) { toast('backup failed', 'bad'); return; }
   const blob = await r.blob();
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
   a.download = (r.headers.get('Content-Disposition')||'').match(/filename="(.+)"/)?.[1] || 'pbpos-backup.db';
   a.click(); URL.revokeObjectURL(a.href);
+  toast('Backup downloaded ✓', 'ok');
 };
 
-const TABS = { dashboard:'Dashboard', menu:'Menu & colours', staff:'Staff & PINs', tables:'Tables', billing:'Billing', bills:'Bills', report:'Day report', log:'Audit log' };
+const TABS = {
+  dashboard:['📊','Dashboard'], menu:['🎨','Menu & colours'], staff:['👥','Staff & PINs'],
+  tables:['🪑','Tables'], billing:['🧾','Billing'], bills:['💳','Bills'],
+  report:['📈','Day report'], log:['📜','Audit log']
+};
 function show(t) {
   tab = t; clearInterval(dashTimer);
-  $('tabs').innerHTML = Object.entries(TABS).map(([k,v]) =>
-    `<button class="${k===tab?'on':''}" onclick="show('${k}')">${v}</button>`).join('');
+  $('tabs').innerHTML = Object.entries(TABS).map(([k,[ic,v]]) =>
+    `<button class="${k===tab?'on':''}" onclick="show('${k}')"><span class="ic">${ic}</span>${v}</button>`).join('');
   ({dashboard, menu, staff, tables, billing, bills, report, log})[t]();
 }
 
@@ -132,14 +292,17 @@ async function dashboard() {
     const d = await api('GET','/api/admin/dashboard');
     if (tab !== 'dashboard') return;
     $('view').innerHTML = `
-      <div class="stats">
-        <div class="stat"><b class="green">${rupees(d.soldTotal)}</b><span class="mut">sales today</span></div>
-        <div class="stat"><b>${d.ordersOpened}</b><span class="mut">orders</span></div>
-        <div class="stat"><b class="amber">${d.ordersOpen}</b><span class="mut">tables open</span></div>
-        <div class="stat"><b>${d.kitchenPending}</b><span class="mut">plates cooking</span></div>
-        <div class="stat"><b>${d.devicesOnline}</b><span class="mut">phones online</span></div>
+      <div class="hero">
+        <span class="lbl">SALES TODAY</span>
+        <b class="big">${rupees(d.soldTotal)}</b>
+        <span class="mut">refreshes by itself · orders and the kitchen queue live in the phone app</span>
       </div>
-      <p class="mut" style="margin-top:10px">Refreshes automatically. Taking orders and the kitchen queue live in the phone app — this panel is for managing the shop.</p>`;
+      <div class="stats">
+        <div class="stat"><span class="lbl">orders</span><b>${d.ordersOpened}</b></div>
+        <div class="stat amber"><span class="lbl">tables open</span><b>${d.ordersOpen}</b></div>
+        <div class="stat"><span class="lbl">plates cooking</span><b>${d.kitchenPending}</b></div>
+        <div class="stat green"><span class="lbl">phones online</span><b>${d.devicesOnline}</b></div>
+      </div>`;
   };
   await paint(); dashTimer = setInterval(paint, 15000);
 }
@@ -149,7 +312,7 @@ async function menu() {
   const m = await api('GET','/api/menu');
   $('view').innerHTML = m.menu.map(cat => `
     <div class="card">
-      <div class="row" style="border-bottom:2px solid var(--line)"><b class="grow">${esc(cat.name)}</b></div>
+      <div class="row" style="border-bottom:2px solid var(--line)"><b class="grow" style="font-size:15px">${esc(cat.name)}</b></div>
       ${cat.items.map(i => `
       <div class="row" data-id="${i.id}">
         <input type="color" value="${/^#[0-9a-fA-F]{6}$/.test(i.colour) ? i.colour : '#999999'}" title="bucket colour">
@@ -161,9 +324,9 @@ async function menu() {
         </select>
         <input class="tiny cap" placeholder="cap 15" value="${i.batchCap ?? ''}" title="tawa cap (blank = default 15)">
         <input class="tiny age" placeholder="seal 10" value="${i.batchAgeMin ?? ''}" title="seal after minutes (blank = default 10)">
-        <label class="mut"><input type="checkbox" class="avail" ${i.available?'checked':''}> in stock</label>
+        <label class="ck"><input type="checkbox" class="sw avail" ${i.available?'checked':''}> in stock</label>
         <button onclick="saveItem(${i.id}, this)">Save</button>
-        <button title="hide everywhere" onclick="archiveItem(${i.id}, '${esc(i.name)}')">🗑</button>
+        <button class="icon" title="hide everywhere" onclick="archiveItem(${i.id}, '${esc(i.name)}')">🗑</button>
       </div>`).join('')}
       <div class="addbar">
         <input class="grow" placeholder="new dish name" id="nn${cat.id}">
@@ -172,14 +335,14 @@ async function menu() {
         <button class="primary" onclick="addItem(${cat.id})">+ add to ${esc(cat.name)}</button>
       </div>
     </div>`).join('') + `
-    <div class="addbar card"><input class="grow" id="newcat" placeholder="new category name">
+    <div class="card addbar" style="margin-top:2px"><input class="grow" id="newcat" placeholder="new category name">
       <button class="primary" onclick="addCat()">+ add category</button></div>`;
 }
 async function saveItem(id, btn) {
   const row = btn.closest('.row');
   const price = toPaise(row.querySelector('.price').value);
   const name = row.querySelector('.name').value.trim();
-  if (!name || price === null) { alert('name and a valid ₹ price are needed'); return; }
+  if (!name || price === null) { toast('name and a valid ₹ price are needed', 'bad'); return; }
   const body = {
     name, price,
     station: row.querySelector('.station').value,
@@ -188,30 +351,30 @@ async function saveItem(id, btn) {
     batchAgeMin: parseInt(row.querySelector('.age').value) || 0,
   };
   try { await api('PATCH', '/api/admin/menu-items/'+id, body); btn.textContent='Saved ✓'; setTimeout(()=>btn.textContent='Save',1200); }
-  catch (e) { alert(e.message); }
+  catch (e) { toast(e.message, 'bad'); }
 }
 document.addEventListener('change', async e => {
   if (e.target.classList?.contains('avail')) {
     const id = e.target.closest('.row').dataset.id;
     try { await api('PATCH','/api/admin/menu-items/'+id, { available: e.target.checked }); }
-    catch (err) { alert(err.message); e.target.checked = !e.target.checked; }
+    catch (err) { toast(err.message, 'bad'); e.target.checked = !e.target.checked; }
   }
 });
 async function archiveItem(id, name) {
   if (!confirm('Hide "'+name+'" everywhere? (it stays in old orders and reports)')) return;
-  try { await api('PATCH','/api/admin/menu-items/'+id, { active:false }); menu(); } catch (e) { alert(e.message); }
+  try { await api('PATCH','/api/admin/menu-items/'+id, { active:false }); menu(); } catch (e) { toast(e.message, 'bad'); }
 }
 async function addItem(catId) {
   const name = $('nn'+catId).value.trim(), price = toPaise($('np'+catId).value);
-  if (!name || price === null) { alert('name and ₹ price needed'); return; }
+  if (!name || price === null) { toast('name and ₹ price needed', 'bad'); return; }
   try {
     await api('POST','/api/admin/menu-items', { categoryId:catId, name, price, colour:'', station:$('ns'+catId).value });
     menu();
-  } catch (e) { alert(e.message); }
+  } catch (e) { toast(e.message, 'bad'); }
 }
 async function addCat() {
   const name = $('newcat').value.trim(); if (!name) return;
-  try { await api('POST','/api/admin/categories', { name }); menu(); } catch (e) { alert(e.message); }
+  try { await api('POST','/api/admin/categories', { name }); menu(); } catch (e) { toast(e.message, 'bad'); }
 }
 
 // ---- staff ----
@@ -222,7 +385,7 @@ async function staff() {
       <b class="grow">${esc(p.name)}</b>
       <span class="mut">${esc(p.role)}</span>
       <button onclick="resetPin(${p.id}, '${esc(p.name)}')">reset PIN</button>
-      <label class="mut"><input type="checkbox" ${p.active?'checked':''} onchange="staffActive(${p.id}, this)"> active</label>
+      <label class="ck"><input type="checkbox" class="sw" ${p.active?'checked':''} onchange="staffActive(${p.id}, this)"> active</label>
     </div>`).join('') + `
     <div class="addbar">
       <input id="stn" placeholder="name" class="grow">
@@ -230,22 +393,22 @@ async function staff() {
       <select id="str"><option>waiter</option><option>manager</option><option>chef</option><option>cashier</option><option>parcel</option><option>admin</option></select>
       <button class="primary" onclick="addStaff()">+ add staff</button>
     </div></div>
-    <p class="mut">A PIN is that person's signature — one each, never shared. Deactivating keeps their history.</p>`;
+    <p class="hint">A PIN is that person's signature — one each, never shared. Deactivating keeps their history.</p>`;
 }
 async function staffActive(id, cb) {
   try { await api('PATCH','/api/admin/staff/'+id, { active: cb.checked }); }
-  catch (e) { alert(e.message); cb.checked = !cb.checked; }
+  catch (e) { toast(e.message, 'bad'); cb.checked = !cb.checked; }
 }
 async function resetPin(id, name) {
   const pin = prompt('New 4-digit PIN for '+name+':'); if (pin === null) return;
-  if (!/^\d{4}$/.test(pin.trim())) { alert('4 digits, numbers only'); return; }
-  try { await api('PATCH','/api/admin/staff/'+id, { pin: pin.trim() }); alert('PIN changed for '+name); }
-  catch (e) { alert(e.message); }
+  if (!/^\d{4}$/.test(pin.trim())) { toast('4 digits, numbers only', 'bad'); return; }
+  try { await api('PATCH','/api/admin/staff/'+id, { pin: pin.trim() }); toast('PIN changed for '+name, 'ok'); }
+  catch (e) { toast(e.message, 'bad'); }
 }
 async function addStaff() {
   const name = $('stn').value.trim(), pin = $('stp').value.trim(), role = $('str').value;
-  if (!name || !/^\d{4}$/.test(pin)) { alert('name + 4-digit PIN needed'); return; }
-  try { await api('POST','/api/admin/staff', { name, pin, role }); staff(); } catch (e) { alert(e.message); }
+  if (!name || !/^\d{4}$/.test(pin)) { toast('name + 4-digit PIN needed', 'bad'); return; }
+  try { await api('POST','/api/admin/staff', { name, pin, role }); staff(); } catch (e) { toast(e.message, 'bad'); }
 }
 
 // ---- tables ----
@@ -253,9 +416,10 @@ async function tables() {
   const t = await api('GET','/api/admin/tables');
   $('view').innerHTML = `<div class="card">` + t.tables.map(x => `
     <div class="row">
-      <b class="grow">${esc(x.name)} ${x.kind==='parcel'?'<span class="mut">🥡 parcel</span>':''}</b>
+      <span>${x.kind==='parcel'?'🥡':'🍽'}</span>
+      <b class="grow">${esc(x.name)} ${x.kind==='parcel'?'<span class="mut">parcel</span>':''}</b>
       <button onclick="renameTable(${x.id}, '${esc(x.name)}')">rename</button>
-      <label class="mut"><input type="checkbox" ${x.active?'checked':''} onchange="tableActive(${x.id}, this)"> active</label>
+      <label class="ck"><input type="checkbox" class="sw" ${x.active?'checked':''} onchange="tableActive(${x.id}, this)"> active</label>
     </div>`).join('') + `
     <div class="addbar">
       <input id="tbn" placeholder="name (T11 or P4)" class="grow">
@@ -265,15 +429,15 @@ async function tables() {
 }
 async function tableActive(id, cb) {
   try { await api('PATCH','/api/admin/tables/'+id, { active: cb.checked }); }
-  catch (e) { alert(e.message); cb.checked = !cb.checked; }
+  catch (e) { toast(e.message, 'bad'); cb.checked = !cb.checked; }
 }
 async function renameTable(id, old) {
   const name = prompt('New name for '+old+':', old); if (!name || !name.trim()) return;
-  try { await api('PATCH','/api/admin/tables/'+id, { name: name.trim() }); tables(); } catch (e) { alert(e.message); }
+  try { await api('PATCH','/api/admin/tables/'+id, { name: name.trim() }); tables(); } catch (e) { toast(e.message, 'bad'); }
 }
 async function addTable() {
   const name = $('tbn').value.trim(); if (!name) return;
-  try { await api('POST','/api/admin/tables', { name, kind: $('tbk').value }); tables(); } catch (e) { alert(e.message); }
+  try { await api('POST','/api/admin/tables', { name, kind: $('tbk').value }); tables(); } catch (e) { toast(e.message, 'bad'); }
 }
 
 // ---- billing ----
@@ -285,7 +449,7 @@ async function billing() {
     <div class="row"><span style="min-width:110px">Footer line</span><input id="bsf" class="grow" value="${esc(d.billFooter)}"></div>
     <div class="addbar"><button class="primary" onclick="saveBilling()">Save</button></div>
   </div>
-  <p class="mut">These three lines print on every bill. The cashier prints bills from their phone
+  <p class="hint">These three lines print on every bill. The cashier prints bills from their phone
   (any printer the phone can see, or save-as-PDF to share on WhatsApp); a browser on this laptop
   can print one too by opening <b>/bill/&lt;order id&gt;</b>.</p>`;
 }
@@ -294,8 +458,8 @@ async function saveBilling() {
     await api('POST','/api/admin/bill-settings', {
       shopName:$('bsn').value.trim(), shopPhone:$('bsp').value.trim(), billFooter:$('bsf').value.trim()
     });
-    alert('Saved ✓ — next bill prints with the new header');
-  } catch (e) { alert(e.message); }
+    toast('Saved ✓ — next bill prints with the new header', 'ok');
+  } catch (e) { toast(e.message, 'bad'); }
 }
 
 // ---- bills (settled-bill history) ----
@@ -305,7 +469,7 @@ async function bills() {
   billsDate = d.date;
   const cashSum = d.bills.reduce((a,b)=>a+b.paidCash,0), onlineSum = d.bills.reduce((a,b)=>a+b.paidOnline,0);
   $('view').innerHTML = `
-    <div class="row" style="border:0;justify-content:center">
+    <div class="datebar">
       <button onclick="shiftBills(-1)">◀</button><b>${d.date}</b><button onclick="shiftBills(1)">▶</button>
       <button onclick="billsDate='';bills()">today</button>
       <span class="mut">${d.bills.length} bills · 💵 ${rupees(cashSum)} · 📲 ${rupees(onlineSum)}</span>
@@ -318,11 +482,11 @@ async function bills() {
         ${b.discount>0?`<span class="amber" title="${esc(b.discountNote)}">−${rupees(b.discount)}</span>`:''}
         <span class="mut">${b.paidCash>0?'💵 '+rupees(b.paidCash):''} ${b.paidOnline>0?'📲 '+rupees(b.paidOnline):''}</span>
         <b>${rupees(b.total)}</b>
-        <button onclick="event.stopPropagation();window.open('/bill/${b.orderId}?token='+token)">🖨</button>
+        <button class="icon" onclick="event.stopPropagation();window.open('/bill/${b.orderId}?token='+token)">🖨</button>
       </div>
       <div hidden style="padding:4px 8px 10px 52px"></div>`).join('')
     : '<p class="mut">no bills for this day</p>') + `</div>
-    <p class="mut">Every closed table's bill lives here — items, discount and how it was paid. 🖨 reprints it.</p>`;
+    <p class="hint">Every closed table's bill lives here — items, discount and how it was paid. 🖨 reprints it.</p>`;
 }
 async function toggleBill(rowEl, orderId) {
   const box = rowEl.nextElementSibling;
@@ -355,27 +519,27 @@ async function report() {
     ? arr.map(l => `<tr><td>${l.qty}× ${esc(l.name)}</td><td class="r ${cls||''}">${rupees(l.value)}</td></tr>`).join('')
     : '<tr><td class="mut">nothing</td><td></td></tr>';
   $('view').innerHTML = `
-    <div class="row" style="border:0;justify-content:center">
+    <div class="datebar">
       <button onclick="shiftRep(-1)">◀</button><b>${d.date}</b><button onclick="shiftRep(1)">▶</button>
       <button onclick="repDate='';report()">today</button>
     </div>
     <div class="stats">
-      <div class="stat"><b class="green">${rupees(d.soldTotal)}</b><span class="mut">sales (served)</span></div>
-      <div class="stat"><b>${d.ordersOpened}</b><span class="mut">orders</span></div>
-      <div class="stat"><b class="redtx">${rupees(d.cancelledTotal)}</b><span class="mut">cancelled</span></div>
+      <div class="stat green"><span class="lbl">sales (served)</span><b>${rupees(d.soldTotal)}</b></div>
+      <div class="stat"><span class="lbl">orders</span><b>${d.ordersOpened}</b></div>
+      <div class="stat red"><span class="lbl">cancelled</span><b>${rupees(d.cancelledTotal)}</b></div>
     </div>
     <div class="stats" style="margin-top:10px">
-      <div class="stat"><b>${rupees(d.paidCash||0)}</b><span class="mut">💵 cash in drawer</span></div>
-      <div class="stat"><b>${rupees(d.paidOnline||0)}</b><span class="mut">📲 online / UPI</span></div>
-      <div class="stat"><b class="amber">${rupees(d.discountTotal||0)}</b><span class="mut">discounts given</span></div>
+      <div class="stat"><span class="lbl">💵 cash in drawer</span><b>${rupees(d.paidCash||0)}</b></div>
+      <div class="stat"><span class="lbl">📲 online / UPI</span><b>${rupees(d.paidOnline||0)}</b></div>
+      <div class="stat amber"><span class="lbl">discounts given</span><b>${rupees(d.discountTotal||0)}</b></div>
     </div>
-    ${d.ordersOpen>0?`<p class="redtx" style="margin-top:8px">⚠ ${d.ordersOpen} order(s) still open for this date</p>`:''}
+    ${d.ordersOpen>0?`<p class="redtx" style="margin-top:10px">⚠ ${d.ordersOpen} order(s) still open for this date</p>`:''}
     <h2>Sold (served items)</h2><div class="card"><table>${lines(d.sold)}
-      <tr><th>TOTAL</th><th class="r green">${rupees(d.soldTotal)}</th></tr></table></div>
+      <tr><th>TOTAL</th><th class="r green" style="font-size:14px">${rupees(d.soldTotal)}</th></tr></table></div>
     <h2>By waiter</h2><div class="card"><table>${d.waiters.map(w =>
       `<tr><td>${esc(w.name)} <span class="mut">(${w.qty} items)</span></td><td class="r">${rupees(w.value)}</td></tr>`).join('') || '<tr><td class="mut">nothing</td></tr>'}</table></div>
     <h2>Cancelled</h2><div class="card"><table>${lines(d.cancelled,'redtx')}</table>
-      ${d.cancelLog.map(c => `<p class="mut">${clock(c.at)} · ${esc(c.by)}: ${esc(c.detail)}</p>`).join('')}</div>`;
+      ${d.cancelLog.map(c => `<p class="mut" style="margin-top:6px">${clock(c.at)} · ${esc(c.by)}: ${esc(c.detail)}</p>`).join('')}</div>`;
 }
 function shiftRep(days) {
   const t = new Date(repDate + 'T12:00:00');
@@ -392,9 +556,9 @@ async function log() {
   logEvents = d.events; paintLog();
 }
 function paintLog() {
-  $('view').innerHTML = `<nav>` + Object.entries(LOG_TYPES).map(([k,v]) =>
+  $('view').innerHTML = `<div class="pillnav">` + Object.entries(LOG_TYPES).map(([k,v]) =>
     `<button class="${logType===k?'on':''}" onclick="logType='${k}';log()">${v}</button>`).join('') +
-    `</nav><div class="card">` + (logEvents.length ? logEvents.map(e => `
+    `</div><div class="card">` + (logEvents.length ? logEvents.map(e => `
     <div class="row"><span class="mut" style="min-width:46px">${clock(e.at)}</span>
       <b>${esc(e.by || 'system')}</b><span class="mut">${esc(e.action)}</span>
       <span class="grow">${esc(e.detail)}</span></div>`).join('') : '<p class="mut">nothing in this filter</p>') +

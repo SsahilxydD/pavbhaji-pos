@@ -8,21 +8,19 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationBarItemDefaults
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -36,6 +34,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.pavbhaji.pos.Deps
@@ -44,8 +43,12 @@ import com.pavbhaji.pos.data.TableStateDto
 import com.pavbhaji.pos.ui.AppHeader
 import com.pavbhaji.pos.ui.BhajiRed
 import com.pavbhaji.pos.ui.ConnBanner
-import com.pavbhaji.pos.ui.GoodGreen
+import com.pavbhaji.pos.ui.ErrorBanner
 import com.pavbhaji.pos.ui.HeaderTextAction
+import com.pavbhaji.pos.ui.ListSkeleton
+import com.pavbhaji.pos.ui.Pb
+import com.pavbhaji.pos.ui.Pill
+import com.pavbhaji.pos.ui.PbCard
 import com.pavbhaji.pos.ui.S
 import com.pavbhaji.pos.ui.WarnAmber
 import com.pavbhaji.pos.ui.ageMinutes
@@ -87,10 +90,10 @@ fun ManagerHome(onLogout: () -> Unit, onBack: (() -> Unit)? = null) {
                 ReadyScreen(onLogout = onLogout, showLogout = onBack == null)
             }
         }
-        NavigationBar(containerColor = Color(0xFFFFFDFB)) {
+        NavigationBar(containerColor = Color.White, tonalElevation = 0.dp) {
             NavigationBarItem(
                 selected = tab == 0, onClick = { tab = 0 },
-                icon = { Text("▦", fontSize = 17.sp) },
+                icon = { Text("▦", fontSize = 18.sp) },
                 label = { Text(S.tablesTitle, fontSize = 11.sp, fontWeight = FontWeight.Bold) },
                 colors = NavigationBarItemDefaults.colors(
                     selectedTextColor = BhajiRed, indicatorColor = Color(0xFFFFE0CC)
@@ -100,10 +103,10 @@ fun ManagerHome(onLogout: () -> Unit, onBack: (() -> Unit)? = null) {
                 selected = tab == 1, onClick = { tab = 1 },
                 icon = {
                     BadgedBox(badge = {
-                        if (readyCount > 0) Badge(containerColor = GoodGreen) {
+                        if (readyCount > 0) Badge(containerColor = Pb.successDeep) {
                             Text("$readyCount", fontSize = 10.sp, color = Color.White)
                         }
-                    }) { Text("🛎", fontSize = 17.sp) }
+                    }) { Text("🛎", fontSize = 18.sp) }
                 },
                 label = { Text(S.readyTitle, fontSize = 11.sp, fontWeight = FontWeight.Bold) },
                 colors = NavigationBarItemDefaults.colors(
@@ -121,12 +124,13 @@ fun TablesScreen(
     onBack: (() -> Unit)?
 ) {
     var tables by remember { mutableStateOf<List<TableStateDto>>(emptyList()) }
+    var loaded by remember { mutableStateOf(false) }
     var loadError by remember { mutableStateOf<String?>(null) }
     val connected by Deps.live.connected.collectAsState()
 
     suspend fun refresh() {
         when (val r = Deps.api.tables()) {
-            is ApiResult.Ok -> { tables = r.value.tables; loadError = null }
+            is ApiResult.Ok -> { tables = r.value.tables; loadError = null; loaded = true }
             is ApiResult.Err -> loadError = r.message
         }
     }
@@ -147,11 +151,10 @@ fun TablesScreen(
             actions = { if (onBack == null) HeaderTextAction(S.logout, onLogout) }
         )
         ConnBanner(connected)
-        if (loadError != null) {
-            Text(
-                loadError!!, color = MaterialTheme.colorScheme.error, fontSize = 13.sp,
-                modifier = Modifier.padding(horizontal = 14.dp, vertical = 4.dp)
-            )
+        ErrorBanner(loadError)
+        if (!loaded) {
+            ListSkeleton(rows = 4, rowHeight = 118.dp)
+            return@Column
         }
         // Dine-in first, parcel slots in their own section below — the admin
         // (or anyone) punches walk-up orders on P1/P2/… without eating a table.
@@ -168,14 +171,15 @@ fun TablesScreen(
                 item(key = "hdrDine", span = { GridItemSpan(maxLineSpan) }) { GridSection(S.gridTables) }
             }
             items(dine, key = { it.id }) { t ->
-                TableCard(t, onClick = { onOpenTable(t) })
+                TableCard(t, onClick = { onOpenTable(t) }, modifier = Modifier.animateItem())
             }
             if (parcel.isNotEmpty()) {
                 item(key = "hdrParcel", span = { GridItemSpan(maxLineSpan) }) { GridSection(S.gridParcel) }
                 items(parcel, key = { it.id }) { t ->
-                    TableCard(t, onClick = { onOpenTable(t) })
+                    TableCard(t, onClick = { onOpenTable(t) }, modifier = Modifier.animateItem())
                 }
             }
+            item(key = "tail", span = { GridItemSpan(maxLineSpan) }) { Spacer(Modifier.height(20.dp)) }
         }
     }
 }
@@ -185,19 +189,9 @@ private fun GridSection(text: String) {
     Text(
         text,
         fontSize = 12.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 1.2.sp,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        color = Pb.ink3,
         modifier = Modifier.padding(top = 6.dp, bottom = 2.dp)
     )
-}
-
-@Composable
-private fun Pill(text: String, bg: Color, fg: Color) {
-    Surface(color = bg, shape = RoundedCornerShape(8.dp)) {
-        Text(
-            text, color = fg, fontSize = 10.sp, fontWeight = FontWeight.ExtraBold,
-            modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp)
-        )
-    }
 }
 
 // Card colour = the waiter's NEXT MOVE, not raw kitchen status:
@@ -205,48 +199,57 @@ private fun Pill(text: String, bg: Color, fg: Color) {
 //   green   = plates on the ready line — go get them
 //   blue    = everything served — collect the money and close
 @Composable
-private fun TableCard(t: TableStateDto, onClick: () -> Unit) {
+private fun TableCard(t: TableStateDto, onClick: () -> Unit, modifier: Modifier = Modifier) {
     val o = t.order
     val hasReady = (o?.readyCount ?: 0) > 0
     val cooking = (o?.pendingCount ?: 0) > 0
     val collect = o != null && !hasReady && !cooking
 
-    Surface(
+    PbCard(
         onClick = onClick,
-        shape = RoundedCornerShape(18.dp),
+        corner = 18.dp,
         color = when {
-            o == null -> Color(0xFFFBF7F1)
-            hasReady -> Color(0xFFE4F6EA)
-            cooking -> Color(0xFFFFF3E2)
-            else -> Color(0xFFE9F0FB)
+            o == null -> Pb.quietCard
+            hasReady -> Pb.successBg
+            cooking -> Pb.warnBg
+            else -> Pb.infoBg
         },
         border = when {
-            hasReady -> BorderStroke(2.dp, Color(0xFF59B87E))
-            cooking -> BorderStroke(1.dp, Color(0xFFF2C88F))
-            collect -> BorderStroke(1.dp, Color(0xFF8FB2E4))
+            hasReady -> BorderStroke(2.dp, Pb.successLine)
+            cooking -> BorderStroke(1.dp, Pb.warnLine)
+            collect -> BorderStroke(1.dp, Pb.infoLine)
             else -> BorderStroke(1.dp, Color(0xFFEDE5DD))
         },
-        shadowElevation = if (o != null) 2.dp else 0.dp,
-        modifier = Modifier.height(118.dp)
+        elevation = if (o != null) 2.dp else 0.dp,
+        modifier = modifier.heightIn(min = 118.dp)
     ) {
-        Column(Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
+        Column(
+            Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.SpaceBetween
+        ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(t.name, fontSize = 22.sp, fontWeight = FontWeight.ExtraBold, modifier = Modifier.weight(1f))
+                Text(
+                    t.name, fontSize = 22.sp, fontWeight = FontWeight.ExtraBold,
+                    letterSpacing = (-0.5).sp,
+                    maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f)
+                )
                 if (o != null) {
                     Text(
                         "#${o.orderNo}", fontSize = 13.sp, fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        color = Pb.ink2
                     )
                 }
             }
-            Spacer(Modifier.weight(1f))
+            Spacer(Modifier.height(8.dp))
             if (o == null) {
-                Text(S.freeTable, fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(S.freeTable, fontSize = 14.sp, color = Pb.ink3)
             } else {
                 Text(
                     if (com.pavbhaji.pos.ui.pricesVisible()) "${rupees(o.total)} · ${itemsLabel(o.itemCount)}"
                     else itemsLabel(o.itemCount),
-                    fontSize = 15.sp, fontWeight = FontWeight.Bold
+                    fontSize = 15.sp, fontWeight = FontWeight.Bold,
+                    maxLines = 1, overflow = TextOverflow.Ellipsis
                 )
                 Spacer(Modifier.height(5.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(5.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -254,16 +257,16 @@ private fun TableCard(t: TableStateDto, onClick: () -> Unit) {
                         // Parcel slots carry the customer's name — that's what
                         // you shout across the counter, not who punched it.
                         "${ageMinutes(o.openedAt)} · ${o.customerName.ifEmpty { o.openedByName }}",
-                        fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
+                        fontSize = 11.sp, color = Pb.ink2,
+                        maxLines = 1, overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f, fill = false)
                     )
                     when {
-                        hasReady -> Pill(S.readyPickup(o.readyCount), Color(0xFF1E8F53), Color.White)
+                        hasReady -> Pill(S.readyPickup(o.readyCount), Pb.successDeep, Color.White)
                         cooking -> Pill(S.inKitchen, Color(0xFFF5E3C2), WarnAmber)
                         else -> Pill(
                             if (com.pavbhaji.pos.ui.pricesVisible()) S.collectAmt(rupees(o.total)) else S.collect,
-                            Color(0xFF2F6FCC), Color.White
+                            Pb.infoDeep, Color.White
                         )
                     }
                 }

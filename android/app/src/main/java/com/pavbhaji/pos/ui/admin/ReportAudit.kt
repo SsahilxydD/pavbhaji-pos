@@ -101,40 +101,54 @@ fun ReportScreen(onBack: () -> Unit, onOpenLog: () -> Unit) {
             }
 
             SectionTitle(S.soldSection)
-            if (rep.sold.isEmpty()) Text(S.nothingYet, fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            rep.sold.forEach {
-                Row(Modifier.fillMaxWidth().padding(vertical = 2.dp)) {
-                    Text("${it.qty}× ${it.name}", fontSize = 14.sp, modifier = Modifier.weight(1f))
-                    Text(rupees(it.value), fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+            com.pavbhaji.pos.ui.PbCard(modifier = Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
+                    if (rep.sold.isEmpty()) Text(S.nothingYet, fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    rep.sold.forEach {
+                        Row(Modifier.fillMaxWidth().padding(vertical = 3.dp)) {
+                            Text("${it.qty}× ${it.name}", fontSize = 14.sp, modifier = Modifier.weight(1f))
+                            Text(rupees(it.value), fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                        }
+                    }
+                    androidx.compose.material3.HorizontalDivider(Modifier.padding(vertical = 6.dp))
+                    Row(Modifier.fillMaxWidth()) {
+                        Text(S.totalRow, fontSize = 14.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+                        Text(rupees(rep.soldTotal), fontSize = 15.sp, fontWeight = FontWeight.ExtraBold, color = GoodGreen)
+                    }
                 }
-            }
-            Row(Modifier.fillMaxWidth().padding(top = 6.dp)) {
-                Text(S.totalRow, fontSize = 14.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-                Text(rupees(rep.soldTotal), fontSize = 14.sp, fontWeight = FontWeight.ExtraBold, color = GoodGreen)
             }
 
             SectionTitle(S.byWaiter)
-            rep.waiters.forEach {
-                Row(Modifier.fillMaxWidth().padding(vertical = 2.dp)) {
-                    Text("${it.name} (${S.itemsN(it.qty)})", fontSize = 14.sp, modifier = Modifier.weight(1f))
-                    Text(rupees(it.value), fontSize = 14.sp)
+            com.pavbhaji.pos.ui.PbCard(modifier = Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
+                    if (rep.waiters.isEmpty()) Text(S.nothingYet, fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    rep.waiters.forEach {
+                        Row(Modifier.fillMaxWidth().padding(vertical = 3.dp)) {
+                            Text("${it.name} (${S.itemsN(it.qty)})", fontSize = 14.sp, modifier = Modifier.weight(1f))
+                            Text(rupees(it.value), fontSize = 14.sp)
+                        }
+                    }
                 }
             }
 
             SectionTitle(S.cancelledSection)
-            if (rep.cancelled.isEmpty()) Text(S.noneParty, fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            rep.cancelled.forEach {
-                Row(Modifier.fillMaxWidth().padding(vertical = 2.dp)) {
-                    Text("${it.qty}× ${it.name}", fontSize = 14.sp, modifier = Modifier.weight(1f))
-                    Text(rupees(it.value), fontSize = 14.sp, color = MaterialTheme.colorScheme.error)
+            com.pavbhaji.pos.ui.PbCard(modifier = Modifier.fillMaxWidth()) {
+                Column(Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
+                    if (rep.cancelled.isEmpty()) Text(S.noneParty, fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    rep.cancelled.forEach {
+                        Row(Modifier.fillMaxWidth().padding(vertical = 3.dp)) {
+                            Text("${it.qty}× ${it.name}", fontSize = 14.sp, modifier = Modifier.weight(1f))
+                            Text(rupees(it.value), fontSize = 14.sp, color = MaterialTheme.colorScheme.error)
+                        }
+                    }
+                    rep.cancelLog.forEach {
+                        Text(
+                            "${clockTime(it.at)} · ${it.by}: ${it.detail}",
+                            fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(vertical = 2.dp)
+                        )
+                    }
                 }
-            }
-            rep.cancelLog.forEach {
-                Text(
-                    "${clockTime(it.at)} · ${it.by}: ${it.detail}",
-                    fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(vertical = 2.dp)
-                )
             }
             Spacer(Modifier.height(40.dp))
         }

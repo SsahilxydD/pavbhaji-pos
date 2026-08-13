@@ -98,7 +98,12 @@ class Api(private val session: Session) {
 
     // ---- chef actions: colour buckets ----
     suspend fun takeBatch(id: Long): ApiResult<OkResp> = call("POST", "/api/batches/$id/take")
-    suspend fun readyBatch(id: Long): ApiResult<OkResp> = call("POST", "/api/batches/$id/ready")
+
+    // menuItemId ticks off just that variety of a clubbed bucket; null = the
+    // whole bucket. The server closes the bucket itself after the last tick.
+    suspend fun readyBatch(id: Long, menuItemId: Long? = null): ApiResult<OkResp> =
+        if (menuItemId == null) call("POST", "/api/batches/$id/ready")
+        else call("POST", "/api/batches/$id/ready", """{"menuItemId":$menuItemId}""")
 
     // ---- waiter actions ----
     @Serializable

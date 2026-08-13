@@ -181,6 +181,13 @@ object S {
     val hintSealed get() = t("sealed — take it", "सील — इसे लो", "સીલ — આ લો")
     val hintTapTables get() = t("tap for tables", "टेबल देखने को दबाओ", "ટેબલ જોવા દબાવો")
     fun bucketReady(qty: Long) = t("Bucket ready ✓ — all $qty plates", "बकेट तैयार ✓ — सभी $qty प्लेट", "બકેટ તૈયાર ✓ — બધી $qty પ્લેટ")
+    fun restReady(qty: Long) = t("Rest ready ✓ — $qty plates", "बाकी तैयार ✓ — $qty प्लेट", "બાકી તૈયાર ✓ — $qty પ્લેટ")
+    val tickHint get() = t(
+        "tap each dish as it finishes — its plates go out while the rest cook",
+        "हर डिश पूरी होते ही दबाओ — उसकी प्लेटें निकल जाएँगी, बाकी पकती रहेंगी",
+        "દરેક ડિશ થાય એટલે દબાવો — તેની પ્લેટ નીકળી જશે, બાકી રંધાતી રહેશે"
+    )
+    val donePlates get() = t("gone to the pass ✓", "पास पर चली गई ✓", "પાસ પર ગઈ ✓")
     fun cookingThis(who: String) = t(
         "🔒 $who is cooking this — pick another colour",
         "🔒 $who यह बना रहा है — दूसरा रंग लो",

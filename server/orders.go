@@ -2,6 +2,7 @@ package main
 
 import (
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -934,10 +935,12 @@ func (s *Server) handleCloseOrder(w http.ResponseWriter, r *http.Request) {
 // ---- The chef's bucket queue ----
 
 type BucketLine struct {
-	TableName string `json:"tableName"`
-	Qty       int64  `json:"qty"`
-	Note      string `json:"note"`
-	Name      string `json:"name"` // the variety — one colour bucket can hold several
+	TableName  string `json:"tableName"`
+	Qty        int64  `json:"qty"`
+	Note       string `json:"note"`
+	Name       string `json:"name"`       // the variety — one colour bucket can hold several
+	MenuItemID int64  `json:"menuItemId"` // the variety's identity, for per-variety ticks
+	Done       bool   `json:"done"`       // already flipped to ready (ticked off mid-bucket)
 }
 
 type Bucket struct {
@@ -987,22 +990,28 @@ func (s *Server) handleKitchen(w http.ResponseWriter, r *http.Request) {
 	}
 	out := buckets[:0]
 	for i := range buckets {
+		// Ready lines ride along flagged done: a taken bucket keeps showing a
+		// ticked-off variety (greyed, ✓) until the whole bucket closes, so the
+		// chef sees their tick land. Qty stays live-to-cook only — it drives
+		// the fill bar, the ready-button count and the hide rule below.
 		irows, err := s.db.Query(`
-			SELECT dt.name, ti.qty, ti.note, ti.name
+			SELECT dt.name, ti.qty, ti.note, ti.name, ti.menu_item_id, ti.status='ready'
 			FROM ticket_items ti
 			JOIN tickets tk ON tk.id=ti.ticket_id
 			JOIN orders o ON o.id=tk.order_id
 			JOIN dining_tables dt ON dt.id=o.table_id
-			WHERE ti.batch_id=? AND ti.status IN ('pending','preparing')
+			WHERE ti.batch_id=? AND ti.status IN ('pending','preparing','ready')
 			ORDER BY ti.id`, buckets[i].ID)
 		if err != nil {
 			continue
 		}
 		for irows.Next() {
 			var l BucketLine
-			irows.Scan(&l.TableName, &l.Qty, &l.Note, &l.Name)
+			irows.Scan(&l.TableName, &l.Qty, &l.Note, &l.Name, &l.MenuItemID, &l.Done)
 			buckets[i].Lines = append(buckets[i].Lines, l)
-			buckets[i].Qty += l.Qty
+			if !l.Done {
+				buckets[i].Qty += l.Qty
+			}
 		}
 		irows.Close()
 		// Title = the varieties actually inside, so a clubbed bucket reads
@@ -1105,13 +1114,26 @@ func (s *Server) handleBatchTake(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
-// POST /api/batches/{id}/ready — the whole bucket is done: every live line
-// flips to 'ready' stamped with this moment, which is exactly the order the
-// waiter's pickup queue sorts by. Only the chef who took it (or admin) may finish it.
+// POST /api/batches/{id}/ready — plates leave the tawa. With no body the whole
+// bucket is done: every live line flips to 'ready' stamped with this moment,
+// which is exactly the order the waiter's pickup queue sorts by. A clubbed
+// bucket cooks several varieties side by side and they rarely finish together,
+// so an optional {"menuItemId":N} ticks off just that variety — its plates go
+// to the pass while the rest keep cooking, and the bucket closes by itself
+// when the last variety is ticked. Only the chef who took it (or admin) may
+// finish any of it.
 func (s *Server) handleBatchReady(w http.ResponseWriter, r *http.Request) {
 	st := staffFrom(r)
 	batchID, _ := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	now := nowMs()
+
+	// The body is optional (older calls send none) — a decode error means "whole bucket".
+	var req struct {
+		MenuItemID int64 `json:"menuItemId"`
+	}
+	if r.Body != nil {
+		_ = json.NewDecoder(r.Body).Decode(&req)
+	}
 
 	tx, err := s.db.Begin()
 	if err != nil {
@@ -1137,28 +1159,66 @@ func (s *Server) handleBatchReady(w http.ResponseWriter, r *http.Request) {
 		fail(w, http.StatusForbidden, "only the chef who took this bucket can finish it")
 		return
 	}
-	if _, err := tx.Exec(`UPDATE batches SET status='ready', ready_at=? WHERE id=?`, now, batchID); err != nil {
-		fail(w, http.StatusInternalServerError, "could not finish bucket")
-		return
+
+	// Flip the requested slice: one variety, or everything still live.
+	flip := `UPDATE ticket_items SET status='ready', status_at=?, status_by=?
+		WHERE batch_id=? AND status IN ('pending','preparing')`
+	args := []any{now, st.ID, batchID}
+	if req.MenuItemID != 0 {
+		flip += ` AND menu_item_id=?`
+		args = append(args, req.MenuItemID)
 	}
-	if _, err := tx.Exec(`UPDATE ticket_items SET status='ready', status_at=?, status_by=?
-		WHERE batch_id=? AND status IN ('pending','preparing')`, now, st.ID, batchID); err != nil {
+	res, err := tx.Exec(flip, args...)
+	if err != nil {
 		fail(w, http.StatusInternalServerError, "could not mark items ready")
 		return
 	}
-	var qty int64
-	tx.QueryRow(`SELECT COALESCE(SUM(qty),0) FROM ticket_items WHERE batch_id=? AND status='ready'`, batchID).Scan(&qty)
-	if _, err := tx.Exec(`INSERT INTO events(at, staff_id, staff_name, action, detail) VALUES(?,?,?,?,?)`,
-		now, st.ID, st.Name, "batch:ready", fmt.Sprintf("%s ×%d ready — bucket #%d", dish, qty, batchID)); err != nil {
-		fail(w, http.StatusInternalServerError, "could not write audit event")
-		return
+	flipped, _ := res.RowsAffected()
+
+	// Anything left on the tawa? If not the bucket is finished, whichever
+	// route got it there.
+	var remaining int64
+	tx.QueryRow(`SELECT COALESCE(SUM(qty),0) FROM ticket_items
+		WHERE batch_id=? AND status IN ('pending','preparing')`, batchID).Scan(&remaining)
+	if remaining == 0 {
+		if _, err := tx.Exec(`UPDATE batches SET status='ready', ready_at=? WHERE id=?`, now, batchID); err != nil {
+			fail(w, http.StatusInternalServerError, "could not finish bucket")
+			return
+		}
+	}
+
+	// A tick on an already-done variety (double tap, or a race with the other
+	// phone) flips nothing: harmless, say ok and let the refresh catch up.
+	if flipped > 0 {
+		var qty int64
+		action, detail := "batch:ready", ""
+		if req.MenuItemID != 0 {
+			var variety string
+			tx.QueryRow(`SELECT name FROM menu_items WHERE id=?`, req.MenuItemID).Scan(&variety)
+			tx.QueryRow(`SELECT COALESCE(SUM(qty),0) FROM ticket_items
+				WHERE batch_id=? AND menu_item_id=? AND status='ready'`, batchID, req.MenuItemID).Scan(&qty)
+			if remaining > 0 {
+				action = "batch:item-ready"
+				detail = fmt.Sprintf("%s ×%d ready — bucket #%d (%d plates still cooking)", variety, qty, batchID, remaining)
+			} else {
+				detail = fmt.Sprintf("%s ×%d ready — bucket #%d finished", variety, qty, batchID)
+			}
+		} else {
+			tx.QueryRow(`SELECT COALESCE(SUM(qty),0) FROM ticket_items WHERE batch_id=? AND status='ready'`, batchID).Scan(&qty)
+			detail = fmt.Sprintf("%s ×%d ready — bucket #%d", dish, qty, batchID)
+		}
+		if _, err := tx.Exec(`INSERT INTO events(at, staff_id, staff_name, action, detail) VALUES(?,?,?,?,?)`,
+			now, st.ID, st.Name, action, detail); err != nil {
+			fail(w, http.StatusInternalServerError, "could not write audit event")
+			return
+		}
 	}
 	if err := tx.Commit(); err != nil {
 		fail(w, http.StatusInternalServerError, "could not commit")
 		return
 	}
 	s.hub.Broadcast("tables", "kitchen")
-	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "plates": qty})
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "plates": flipped, "remaining": remaining})
 }
 
 // ---- The waiter's ready line ----

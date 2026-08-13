@@ -66,6 +66,7 @@ import androidx.compose.ui.unit.sp
 import com.pavbhaji.pos.Deps
 import com.pavbhaji.pos.data.ApiResult
 import com.pavbhaji.pos.data.BucketDto
+import com.pavbhaji.pos.data.BucketLineDto
 import com.pavbhaji.pos.data.KitchenDto
 import com.pavbhaji.pos.ui.ConnBanner
 import com.pavbhaji.pos.ui.Kc
@@ -117,7 +118,11 @@ fun KitchenScreen(onLogout: () -> Unit, embedded: Boolean = false, onBack: (() -
                 data = r.value
                 loaded = true
                 loadError = null
-                // My cooking bucket stays open in front of me.
+                // My cooking bucket stays open in front of me; a bucket that
+                // closed (last variety ticked, or finished elsewhere) lets go.
+                if (expandedId != null && r.value.buckets.none { it.id == expandedId }) {
+                    expandedId = null
+                }
                 if (expandedId == null) {
                     expandedId = r.value.buckets.firstOrNull { it.status == "taken" && it.takenBy == myId }?.id
                 }
@@ -222,6 +227,20 @@ fun KitchenScreen(onLogout: () -> Unit, embedded: Boolean = false, onBack: (() -
                                     refresh(); busy = false
                                 }
                             }
+                        },
+                        onReadyVariety = { menuItemId ->
+                            // One variety leaves the tawa; the bucket stays open
+                            // in front of the chef until the last one is ticked.
+                            if (!busy) {
+                                busy = true
+                                scope.launch {
+                                    when (val r = Deps.api.readyBatch(b.id, menuItemId)) {
+                                        is ApiResult.Ok -> {}
+                                        is ApiResult.Err -> toast = r.message
+                                    }
+                                    refresh(); busy = false
+                                }
+                            }
                         }
                     )
                 }
@@ -269,6 +288,7 @@ private fun BucketCard(
     b: BucketDto, cap: Long, myId: Long, myBusy: Boolean,
     expanded: Boolean,
     onTap: () -> Unit, onTake: () -> Unit, onReady: () -> Unit,
+    onReadyVariety: (Long) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val colour = dishColour(b.colour, b.menuItemId)
@@ -359,34 +379,136 @@ private fun BucketCard(
                             .padding(start = 10.dp, end = 12.dp, top = 9.dp, bottom = 11.dp),
                         verticalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
-                        b.lines.forEach { l ->
-                            Row(horizontalArrangement = Arrangement.spacedBy(9.dp), verticalAlignment = Alignment.CenterVertically) {
-                                Text(l.tableName, color = Kc.ink, fontSize = 13.sp, fontWeight = FontWeight.ExtraBold,
-                                    modifier = Modifier.width(34.dp))
-                                Text("${l.qty}×", color = Kc.ink, fontSize = 13.sp, fontWeight = FontWeight.ExtraBold)
-                                // Per-line variety name: a colour bucket clubs
-                                // every same-colour bhaji, so lines can differ.
-                                Text(l.name.ifEmpty { b.name }, color = Kc.ink, fontSize = 13.sp, modifier = Modifier.weight(1f, fill = false))
-                                if (l.note.isNotEmpty()) {
-                                    Text("⚠ ${l.note}", color = Kc.note, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                        // A clubbed bucket cooks several varieties side by side
+                        // and they rarely finish together — group the table
+                        // lines back into varieties so the chef can tick each
+                        // off on its own. (menuItemId==0 means an old server
+                        // that can't do partial ready: keep the one-button UI.)
+                        val varieties = b.lines.groupBy { it.menuItemId to it.name.ifEmpty { b.name } }
+                        val tickable = mine && varieties.size > 1 && b.lines.all { it.menuItemId != 0L }
+                        if (tickable) {
+                            Text(S.tickHint, color = Kc.ink2, fontSize = 11.sp)
+                            varieties.forEach { (key, ls) ->
+                                VarietyTickRow(
+                                    name = key.second,
+                                    lines = ls,
+                                    done = ls.all { it.done },
+                                    onTick = { onReadyVariety(key.first) }
+                                )
+                            }
+                            val label = if (b.lines.any { it.done }) S.restReady(b.qty) else S.bucketReady(b.qty)
+                            BigAction(label, Kc.ready, Kc.readyFg, onReady)
+                        } else {
+                            b.lines.forEach { l ->
+                                Row(
+                                    Modifier.alpha(if (l.done) 0.45f else 1f),
+                                    horizontalArrangement = Arrangement.spacedBy(9.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(l.tableName, color = Kc.ink, fontSize = 13.sp, fontWeight = FontWeight.ExtraBold,
+                                        modifier = Modifier.width(34.dp))
+                                    Text("${l.qty}×", color = Kc.ink, fontSize = 13.sp, fontWeight = FontWeight.ExtraBold)
+                                    // Per-line variety name: a colour bucket clubs
+                                    // every same-colour bhaji, so lines can differ.
+                                    Text(
+                                        l.name.ifEmpty { b.name }, color = Kc.ink, fontSize = 13.sp,
+                                        textDecoration = if (l.done) androidx.compose.ui.text.style.TextDecoration.LineThrough else null,
+                                        modifier = Modifier.weight(1f, fill = false)
+                                    )
+                                    if (l.done) {
+                                        Text("✓", color = Kc.ready, fontSize = 13.sp, fontWeight = FontWeight.ExtraBold)
+                                    } else if (l.note.isNotEmpty()) {
+                                        Text("⚠ ${l.note}", color = Kc.note, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                                    }
                                 }
                             }
-                        }
-                        when {
-                            mine -> BigAction(S.bucketReady(b.qty), Kc.ready, Kc.readyFg, onReady)
-                            lockedByOther -> Text(
-                                S.cookingThis(b.takenByName),
-                                color = Kc.lockFg, fontSize = 12.sp,
-                                modifier = Modifier.padding(top = 4.dp)
-                            )
-                            myBusy -> Text(
-                                S.oneBucketRule,
-                                color = Kc.lockFg, fontSize = 12.sp,
-                                modifier = Modifier.padding(top = 4.dp)
-                            )
-                            else -> BigAction(S.takeBucket, Kc.take, Kc.takeFg, onTake)
+                            when {
+                                mine -> BigAction(S.bucketReady(b.qty), Kc.ready, Kc.readyFg, onReady)
+                                lockedByOther -> Text(
+                                    S.cookingThis(b.takenByName),
+                                    color = Kc.lockFg, fontSize = 12.sp,
+                                    modifier = Modifier.padding(top = 4.dp)
+                                )
+                                myBusy -> Text(
+                                    S.oneBucketRule,
+                                    color = Kc.lockFg, fontSize = 12.sp,
+                                    modifier = Modifier.padding(top = 4.dp)
+                                )
+                                else -> BigAction(S.takeBucket, Kc.take, Kc.takeFg, onTake)
+                            }
                         }
                     }
+                }
+            }
+        }
+    }
+}
+
+// One variety of a clubbed bucket: 3× Cheese and 4× Regular share a tawa but
+// rarely finish together, so each gets its own big row — the WHOLE row is the
+// tick. Done rows stay put, struck through with a solid green ✓, until the
+// last tick closes the bucket.
+@Composable
+private fun VarietyTickRow(
+    name: String, lines: List<BucketLineDto>, done: Boolean, onTick: () -> Unit
+) {
+    val view = LocalView.current
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    val scale by animateFloatAsState(
+        if (pressed && !done) 0.97f else 1f,
+        spring(dampingRatio = 0.65f, stiffness = 1100f), label = "tick"
+    )
+    Surface(
+        onClick = {
+            view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+            onTick()
+        },
+        enabled = !done,
+        interactionSource = interaction,
+        color = if (done) Kc.inside else Kc.card,
+        shape = RoundedCornerShape(13.dp),
+        border = androidx.compose.foundation.BorderStroke(
+            1.dp, if (done) Kc.border else Kc.ink2.copy(alpha = 0.5f)
+        ),
+        modifier = Modifier.fillMaxWidth().graphicsLayer { scaleX = scale; scaleY = scale }
+    ) {
+        Row(
+            Modifier.padding(horizontal = 13.dp, vertical = 12.dp).heightIn(min = 46.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                Text(
+                    "${lines.sumOf { it.qty }}× $name",
+                    color = if (done) Kc.ink2 else Kc.ink,
+                    fontSize = 17.sp, fontWeight = FontWeight.ExtraBold,
+                    textDecoration = if (done) androidx.compose.ui.text.style.TextDecoration.LineThrough else null
+                )
+                Text(
+                    if (done) S.donePlates else lines.joinToString("   ") { "${it.tableName} ×${it.qty}" },
+                    color = if (done) Kc.ready else Kc.ink2,
+                    fontSize = 12.sp, fontWeight = FontWeight.SemiBold
+                )
+                if (!done) {
+                    lines.filter { it.note.isNotEmpty() }.forEach { l ->
+                        Text(
+                            "⚠ ${l.tableName}: ${l.note}",
+                            color = Kc.note, fontSize = 12.sp, fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                }
+            }
+            // The tick itself: hollow ring while cooking, solid green once out.
+            Box(
+                Modifier
+                    .size(42.dp)
+                    .background(if (done) Kc.ready else Color.Transparent, CircleShape)
+                    .border(2.5.dp, if (done) Kc.ready else Kc.ink2.copy(alpha = 0.75f), CircleShape),
+                contentAlignment = Alignment.Center
+            ) {
+                if (done) {
+                    Text("✓", color = Kc.readyFg, fontSize = 21.sp, fontWeight = FontWeight.ExtraBold)
                 }
             }
         }

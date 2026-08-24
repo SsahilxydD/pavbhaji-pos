@@ -138,6 +138,7 @@ func buildServer(port int, dataDir string) (*Server, *http.ServeMux, error) {
 	// Colour buckets: chefs take and finish them
 	mux.HandleFunc("POST /api/batches/{id}/take", s.requireRole("chef admin", s.handleBatchTake))
 	mux.HandleFunc("POST /api/batches/{id}/ready", s.requireRole("chef admin", s.handleBatchReady))
+	mux.HandleFunc("POST /api/batches/{id}/release", s.requireRole("chef admin", s.handleBatchRelease))
 
 	// Strict division of labour, enforced here and nowhere else:
 	//   - punching: manager/admin (+ parcel manager, scoped to parcel tables)

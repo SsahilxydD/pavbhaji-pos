@@ -164,7 +164,6 @@ object S {
     )
     fun noteFor(name: String) = t("Note for $name", "$name के लिए नोट", "$name માટે નોંધ")
     val notePlaceholder get() = t("less spicy, no onion…", "कम तीखा, बिना प्याज़…", "ઓછું તીખું, ડુંગળી વગર…")
-    val bhajiByColour get() = t("🎨 BHAJI — tap a colour", "🎨 भाजी — रंग चुनो", "🎨 ભાજી — રંગ પસંદ કરો")
     fun varietiesN(n: Int) = t("$n varieties", "$n तरह", "$n જાત")
     val outOfStock get() = t("out of stock", "खत्म", "ખલાસ")
 
@@ -183,9 +182,26 @@ object S {
     fun bucketReady(qty: Long) = t("Bucket ready ✓ — all $qty plates", "बकेट तैयार ✓ — सभी $qty प्लेट", "બકેટ તૈયાર ✓ — બધી $qty પ્લેટ")
     fun restReady(qty: Long) = t("Rest ready ✓ — $qty plates", "बाकी तैयार ✓ — $qty प्लेट", "બાકી તૈયાર ✓ — $qty પ્લેટ")
     val tickHint get() = t(
-        "tap each dish as it finishes — its plates go out while the rest cook",
-        "हर डिश पूरी होते ही दबाओ — उसकी प्लेटें निकल जाएँगी, बाकी पकती रहेंगी",
-        "દરેક ડિશ થાય એટલે દબાવો — તેની પ્લેટ નીકળી જશે, બાકી રંધાતી રહેશે"
+        "tap each plate the moment it is done — it goes straight to the pass, the rest stay on the tawa",
+        "हर प्लेट बनते ही उसे दबाओ — वह सीधी पास पर चली जाएगी, बाकी तवे पर ही रहेंगी",
+        "દરેક પ્લેટ થાય એટલે તેને દબાવો — તે સીધી પાસ પર જશે, બાકી તવા પર જ રહેશે"
+    )
+    fun plateLeft(left: Long, total: Long) = t(
+        "$left of $total left",
+        "$total में से $left बाकी",
+        "$total માંથી $left બાકી"
+    )
+    val platesAllOut get() = t("all out ✓", "सब बाहर ✓", "બધી બહાર ✓")
+    val platePass get() = t("at the pass ✓", "पास पर ✓", "પાસ પર ✓")
+    val leaveBucket get() = t(
+        "Leave bucket ↩ — come back later",
+        "बकेट छोड़ो ↩ — बाद में आना",
+        "બકેટ છોડો ↩ — પછી આવજો"
+    )
+    fun readyTicked(qty: Long) = t(
+        "Ticked ready ✓ — $qty plates out",
+        "टिक की हुई तैयार ✓ — $qty प्लेट बाहर",
+        "ટિક કરેલી તૈયાર ✓ — $qty પ્લેટ બહાર"
     )
     val donePlates get() = t("gone to the pass ✓", "पास पर चली गई ✓", "પાસ પર ગઈ ✓")
     fun cookingThis(who: String) = t(

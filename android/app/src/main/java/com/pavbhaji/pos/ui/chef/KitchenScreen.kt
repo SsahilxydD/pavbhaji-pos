@@ -76,8 +76,9 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 // The chef's screen is a queue of colour buckets, oldest first.
-// Tap a bucket to open its lines; "Take" locks it to this chef;
-// "Bucket ready" flips every plate inside to READY in one go.
+// Tap a bucket to open its lines; "Take" locks it to this chef; tapping a
+// bhaji inside sends THAT bhaji to the pass the instant it is done, and
+// "Leave bucket" hands the bucket back with the rest still cooking.
 @Composable
 fun KitchenScreen(onLogout: () -> Unit, embedded: Boolean = false, onBack: (() -> Unit)? = null) {
     val scope = rememberCoroutineScope()
@@ -229,13 +230,45 @@ fun KitchenScreen(onLogout: () -> Unit, embedded: Boolean = false, onBack: (() -
                             }
                         },
                         onReadyVariety = { menuItemId ->
-                            // One variety leaves the tawa; the bucket stays open
-                            // in front of the chef until the last one is ticked.
+                            // One tap = that bhaji is done. It goes straight to
+                            // the pass; whatever is still on the tawa stays in
+                            // the bucket, cooking.
                             if (!busy) {
                                 busy = true
                                 scope.launch {
                                     when (val r = Deps.api.readyBatch(b.id, menuItemId)) {
                                         is ApiResult.Ok -> {}
+                                        is ApiResult.Err -> toast = r.message
+                                    }
+                                    refresh(); busy = false
+                                }
+                            }
+                        },
+                        onReadyPlate = { lineId ->
+                            // One tap = ONE plate. Four of the same bhaji for
+                            // one table are four rows and four taps: the one
+                            // that is done leaves for the pass, the other three
+                            // stay on the tawa.
+                            if (!busy) {
+                                busy = true
+                                scope.launch {
+                                    when (val r = Deps.api.readyPlate(b.id, lineId)) {
+                                        is ApiResult.Ok -> {}
+                                        is ApiResult.Err -> toast = r.message
+                                    }
+                                    refresh(); busy = false
+                                }
+                            }
+                        },
+                        onLeave = {
+                            // Step away without finishing: the bucket unlocks
+                            // with its plates still inside, so this chef can
+                            // start another colour and come back to it.
+                            if (!busy) {
+                                busy = true
+                                scope.launch {
+                                    when (val r = Deps.api.releaseBatch(b.id)) {
+                                        is ApiResult.Ok -> if (expandedId == b.id) expandedId = null
                                         is ApiResult.Err -> toast = r.message
                                     }
                                     refresh(); busy = false
@@ -288,7 +321,7 @@ private fun BucketCard(
     b: BucketDto, cap: Long, myId: Long, myBusy: Boolean,
     expanded: Boolean,
     onTap: () -> Unit, onTake: () -> Unit, onReady: () -> Unit,
-    onReadyVariety: (Long) -> Unit,
+    onReadyVariety: (Long) -> Unit, onReadyPlate: (Long) -> Unit, onLeave: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val colour = dishColour(b.colour, b.menuItemId)
@@ -379,25 +412,49 @@ private fun BucketCard(
                             .padding(start = 10.dp, end = 12.dp, top = 9.dp, bottom = 11.dp),
                         verticalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
-                        // A clubbed bucket cooks several varieties side by side
-                        // and they rarely finish together — group the table
-                        // lines back into varieties so the chef can tick each
-                        // off on its own. (menuItemId==0 means an old server
-                        // that can't do partial ready: keep the one-button UI.)
-                        val varieties = b.lines.groupBy { it.menuItemId to it.name.ifEmpty { b.name } }
-                        val tickable = mine && varieties.size > 1 && b.lines.all { it.menuItemId != 0L }
-                        if (tickable) {
+                        // Nothing on the tawa is clubbed here: every plate is its
+                        // own row. A table that ordered 4 bhajis does not get
+                        // all 4 off the pan in the same second, so 4 plates are
+                        // 4 ticks. The varieties are only headings — they tell
+                        // the chef what is left of each, they are not buttons.
+                        // (id==0 means an old server that cannot split a line:
+                        // fall back to whole-variety ticks, then to one button.)
+                        val perPlate = mine && b.lines.isNotEmpty() && b.lines.all { it.id != 0L }
+                        val perVariety = mine && !perPlate && b.lines.all { it.menuItemId != 0L }
+                        if (perPlate) {
                             Text(S.tickHint, color = Kc.ink2, fontSize = 11.sp)
-                            varieties.forEach { (key, ls) ->
-                                VarietyTickRow(
-                                    name = key.second,
-                                    lines = ls,
-                                    done = ls.all { it.done },
-                                    onTick = { onReadyVariety(key.first) }
+                            platesOf(b).groupBy { it.variety }.forEach { (variety, plates) ->
+                                PlateGroupHeader(
+                                    name = variety,
+                                    left = plates.count { !it.done }.toLong(),
+                                    total = plates.size.toLong(),
+                                    colour = colour
                                 )
+                                // Ticked plates sink to the bottom of their
+                                // variety, so the next one to cook is always the
+                                // top row — same spot on the screen, every tap.
+                                plates.sortedBy { it.done }.forEach { p ->
+                                    PlateTickRow(p) { onReadyPlate(p.lineId) }
+                                }
                             }
-                            val label = if (b.lines.any { it.done }) S.restReady(b.qty) else S.bucketReady(b.qty)
-                            BigAction(label, Kc.ready, Kc.readyFg, onReady)
+                            // No bucket-wide ready button: a bucket is finished
+                            // by finishing the plates in it, and the server
+                            // closes it on the last one. This button is the way
+                            // OUT of a bucket that still needs time — it drops
+                            // the lock so another colour can be started now.
+                            BigAction(S.leaveBucket, Kc.lockBg, Kc.lockFg, onLeave)
+                        } else if (perVariety) {
+                            Text(S.tickHint, color = Kc.ink2, fontSize = 11.sp)
+                            b.lines.groupBy { it.menuItemId to it.name.ifEmpty { b.name } }
+                                .forEach { (key, ls) ->
+                                    VarietyTickRow(
+                                        name = key.second,
+                                        lines = ls,
+                                        done = ls.all { it.done },
+                                        onTick = { onReadyVariety(key.first) }
+                                    )
+                                }
+                            BigAction(S.leaveBucket, Kc.lockBg, Kc.lockFg, onLeave)
                         } else {
                             b.lines.forEach { l ->
                                 Row(
@@ -444,13 +501,122 @@ private fun BucketCard(
     }
 }
 
-// One variety of a clubbed bucket: 3× Cheese and 4× Regular share a tawa but
-// rarely finish together, so each gets its own big row — the WHOLE row is the
-// tick. Done rows stay put, struck through with a solid green ✓, until the
-// last tick closes the bucket.
+// One plate on the tawa. A ticket line of 4 is four of these, all pointing at
+// the same lineId — the server splits that line one plate at a time, so ticking
+// any of them sends exactly one plate to the pass.
+private data class Plate(
+    val lineId: Long, val table: String, val variety: String,
+    val note: String, val done: Boolean
+)
+
+private fun platesOf(b: BucketDto): List<Plate> =
+    b.lines.flatMap { l ->
+        val variety = l.name.ifEmpty { b.name }
+        List(l.qty.toInt().coerceAtLeast(1)) {
+            Plate(l.id, l.tableName, variety, l.note, l.done)
+        }
+    }
+
+// The heading over a variety's plates — not a button, just the count that tells
+// the chef how much of this bhaji is still on the pan.
+@Composable
+private fun PlateGroupHeader(name: String, left: Long, total: Long, colour: Color) {
+    Row(
+        Modifier.fillMaxWidth().padding(top = 6.dp, bottom = 1.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(7.dp)
+    ) {
+        Box(Modifier.size(9.dp).background(colour, RoundedCornerShape(3.dp)))
+        Text(
+            name, color = Kc.ink, fontSize = 13.sp, fontWeight = FontWeight.ExtraBold,
+            maxLines = 1, modifier = Modifier.weight(1f, fill = false)
+        )
+        Spacer(Modifier.weight(1f))
+        Text(
+            if (left == 0L) S.platesAllOut else S.plateLeft(left, total),
+            color = if (left == 0L) Kc.ready else Kc.ink2,
+            fontSize = 11.5.sp, fontWeight = FontWeight.Bold
+        )
+    }
+}
+
+// One plate, one row, one tap. The WHOLE row is the button; a ticked plate stays
+// on screen struck through with a solid green ✓ so the chef can see their tap
+// landed, and the bucket closes itself when the last one goes out.
+@Composable
+private fun PlateTickRow(p: Plate, onTick: () -> Unit) {
+    val view = LocalView.current
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    val scale by animateFloatAsState(
+        if (pressed && !p.done) 0.97f else 1f,
+        spring(dampingRatio = 0.65f, stiffness = 1100f), label = "plate"
+    )
+    Surface(
+        onClick = {
+            view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+            onTick()
+        },
+        enabled = !p.done,
+        interactionSource = interaction,
+        color = if (p.done) Kc.inside else Kc.card,
+        shape = RoundedCornerShape(12.dp),
+        border = androidx.compose.foundation.BorderStroke(
+            1.dp, if (p.done) Kc.border else Kc.ink2.copy(alpha = 0.5f)
+        ),
+        modifier = Modifier.fillMaxWidth().graphicsLayer { scaleX = scale; scaleY = scale }
+    ) {
+        Row(
+            Modifier.padding(horizontal = 12.dp, vertical = 9.dp).heightIn(min = 40.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            // Which table this one plate belongs to — the only thing that tells
+            // two otherwise identical plates apart.
+            Text(
+                p.table, color = if (p.done) Kc.ink2 else Kc.ink,
+                fontSize = 14.sp, fontWeight = FontWeight.ExtraBold,
+                maxLines = 1, modifier = Modifier.width(40.dp)
+            )
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(
+                    p.variety, color = if (p.done) Kc.ink2 else Kc.ink,
+                    fontSize = 14.5.sp, fontWeight = FontWeight.Bold, maxLines = 1,
+                    textDecoration = if (p.done) androidx.compose.ui.text.style.TextDecoration.LineThrough else null
+                )
+                if (p.done) {
+                    Text(S.platePass, color = Kc.ready, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                } else if (p.note.isNotEmpty()) {
+                    Text("⚠ ${p.note}", color = Kc.note, fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold)
+                }
+            }
+            Box(
+                Modifier
+                    .size(38.dp)
+                    .background(if (p.done) Kc.ready else Color.Transparent, CircleShape)
+                    .border(
+                        2.5.dp,
+                        if (p.done) Kc.ready else Kc.ink2.copy(alpha = 0.75f),
+                        CircleShape
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                if (p.done) {
+                    Text("✓", color = Kc.readyFg, fontSize = 19.sp, fontWeight = FontWeight.ExtraBold)
+                }
+            }
+        }
+    }
+}
+
+// One bhaji of a bucket: 3× Cheese and 4× Regular share a tawa but rarely
+// finish together, so each gets its own big row — the WHOLE row is the button,
+// and one tap sends that bhaji to the pass immediately. Done rows stay put,
+// struck through with a solid green ✓, until the last one closes the bucket.
 @Composable
 private fun VarietyTickRow(
-    name: String, lines: List<BucketLineDto>, done: Boolean, onTick: () -> Unit
+    name: String, lines: List<BucketLineDto>, done: Boolean,
+    onTick: () -> Unit
 ) {
     val view = LocalView.current
     val interaction = remember { MutableInteractionSource() }
@@ -504,7 +670,11 @@ private fun VarietyTickRow(
                 Modifier
                     .size(42.dp)
                     .background(if (done) Kc.ready else Color.Transparent, CircleShape)
-                    .border(2.5.dp, if (done) Kc.ready else Kc.ink2.copy(alpha = 0.75f), CircleShape),
+                    .border(
+                        2.5.dp,
+                        if (done) Kc.ready else Kc.ink2.copy(alpha = 0.75f),
+                        CircleShape
+                    ),
                 contentAlignment = Alignment.Center
             ) {
                 if (done) {

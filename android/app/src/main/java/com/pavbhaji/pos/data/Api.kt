@@ -105,6 +105,15 @@ class Api(private val session: Session) {
         if (menuItemId == null) call("POST", "/api/batches/$id/ready")
         else call("POST", "/api/batches/$id/ready", """{"menuItemId":$menuItemId}""")
 
+    // One plate is done. Not the bucket, not the variety — the single plate on
+    // that ticket line. The server splits the line so the rest keeps cooking.
+    suspend fun readyPlate(id: Long, ticketItemId: Long): ApiResult<OkResp> =
+        call("POST", "/api/batches/$id/ready", """{"ticketItemId":$ticketItemId}""")
+
+    // Step away from a bucket without finishing it: the plates stay in the
+    // bucket, the lock lets go, and this chef is free to take another colour.
+    suspend fun releaseBatch(id: Long): ApiResult<OkResp> = call("POST", "/api/batches/$id/release")
+
     // ---- waiter actions ----
     @Serializable
     private data class TicketReq(val clientTicketId: String, val items: List<NewTicketLine>)

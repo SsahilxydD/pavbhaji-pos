@@ -76,6 +76,7 @@ data class BootstrapDto(
 
 @Serializable
 data class BucketLineDto(
+    val id: Long = 0, // the ticket line — a single-plate tick targets THIS row
     val tableName: String, val qty: Long, val note: String = "",
     val name: String = "", // the variety — one colour bucket can hold several
     val menuItemId: Long = 0, // the variety's identity, for per-variety ticks

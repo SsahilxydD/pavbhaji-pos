@@ -58,6 +58,9 @@ fun PosApp() {
                     session.clearLogin()
                     stage = Stage.Login
                 }
+                // Newer build sitting on the counter PC? Offer it here, once,
+                // where nobody is mid-order.
+                UpdateGate()
                 Column {
                     when (session.staffRole) {
                         "waiter" -> ServeScreen(onLogout = logout)

@@ -176,3 +176,18 @@ data class AuditEventDto(
 
 @Serializable
 data class NewTicketLine(val menuItemId: Long, val qty: Long, val note: String = "")
+
+// What the shop server is holding for the phones. `url` is a path on that same
+// server — the phone never learns where the build originally came from.
+@Serializable
+data class AppUpdateDto(
+    val available: Boolean = false,
+    val versionCode: Int = 0,
+    val versionName: String = "",
+    val notes: String = "",
+    val mandatory: Boolean = false,
+    val size: Long = 0,
+    val sha256: String = "",
+    val url: String = "",
+    val serverBuild: String = ""
+)

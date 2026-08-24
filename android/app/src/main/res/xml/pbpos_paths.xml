@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The installer runs as a different app, so the downloaded APK has to be
+     shared through a FileProvider rather than a bare file:// path. -->
+<paths>
+    <cache-path name="updates" path="updates/"/>
+</paths>

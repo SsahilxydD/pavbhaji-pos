@@ -25,6 +25,25 @@ object S {
     val save get() = t("Save", "सेव करो", "સેવ કરો")
     val add get() = t("Add", "जोड़ो", "ઉમેરો")
     val logout get() = t("Logout", "बाहर निकलो", "બહાર નીકળો")
+
+    // ---- app updates (pulled from the counter PC over the shop WiFi) ----
+    val updateTitle get() = t("New version", "नया वर्जन", "નવું વર્ઝન")
+    val updateNow get() = t("Update now", "अभी अपडेट करो", "હમણાં અપડેટ કરો")
+    val updateLater get() = t("Later", "बाद में", "પછી")
+    val updateDownloading get() = t(
+        "Downloading from the counter PC…",
+        "काउंटर वाले PC से डाउनलोड हो रहा है…",
+        "કાઉન્ટરના PC પરથી ડાઉનલોડ થાય છે…"
+    )
+    val updateAllowTitle get() = t(
+        "One-time permission", "एक बार की परमिशन", "એક વખતની પરમિશન"
+    )
+    val updateAllowBody get() = t(
+        "Android asks once before an app may install its own update. Turn it on for PavBhaji POS, come back, and tap Update again.",
+        "कोई भी ऐप खुद का अपडेट लगाए, उससे पहले Android एक बार पूछता है. PavBhaji POS के लिए चालू कर दो, फिर वापस आकर Update दबाओ.",
+        "કોઈ પણ એપ પોતાનું અપડેટ લગાવે એ પહેલાં Android એક વાર પૂછે છે. PavBhaji POS માટે ચાલુ કરો, પછી પાછા આવીને Update દબાવો."
+    )
+    val updateOpenSettings get() = t("Open settings", "सेटिंग खोलो", "સેટિંગ ખોલો")
     val reconnecting get() = t(
         "reconnecting to server… check WiFi",
         "सर्वर से दोबारा जुड़ रहे हैं… WiFi देखो",

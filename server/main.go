@@ -26,10 +26,10 @@ func main() {
 	flag.BoolVar(&worker, "worker", false, "internal: run as the supervised worker process")
 	flag.Parse()
 
-	if !worker {
-		supervise() // never returns
-	}
 	dataDir = resolveDataDir(dataDir)
+	if !worker {
+		supervise(dataDir) // never returns
+	}
 	run(port, dataDir, headless)
 }
 
@@ -38,7 +38,10 @@ func main() {
 // exit). Deliberate stops — window closed, Ctrl+C, kill — stop everything.
 // This is what turns "the exe crashed at 7pm on a Saturday" from a shop
 // outage into a 3-second blip nobody notices.
-func supervise() {
+// It is also the only place that can swap the exe: a build downloaded during
+// yesterday's service goes live here, before a single table is open.
+func supervise(dataDir string) {
+	applyStagedUpdate(dataDir)
 	exe, err := os.Executable()
 	if err != nil {
 		return // can't find ourselves: run unsupervised rather than not at all
@@ -65,6 +68,11 @@ func supervise() {
 			child.Store(cmd.Process)
 			runErr = cmd.Wait()
 			child.Store(nil)
+		}
+		if !stopping.Load() && exitCodeOf(runErr) == updateExitCode {
+			applyStagedUpdate(dataDir)
+			rapid = 0
+			continue // asked for, not a crash: come straight back on the new build
 		}
 		if runErr == nil || stopping.Load() {
 			os.Exit(0) // clean exit or requested stop — really stop
@@ -135,6 +143,11 @@ func buildServer(port int, dataDir string) (*Server, *http.ServeMux, error) {
 	mux.HandleFunc("GET /api/pickup", s.requireRole("*", s.handlePickup))
 	mux.HandleFunc("GET /ws", s.requireRole("*", s.handleWS))
 
+	// App updates: this machine holds the APK it pulled from the internet and
+	// hands it to the phones over the shop WiFi. No phone needs a data pack.
+	mux.HandleFunc("GET /api/app-update", s.requireRole("*", s.handleAppUpdate))
+	mux.HandleFunc("GET /api/app-update.apk", s.requireRole("*", s.handleAppUpdateAPK))
+
 	// Colour buckets: chefs take and finish them
 	mux.HandleFunc("POST /api/batches/{id}/take", s.requireRole("chef admin", s.handleBatchTake))
 	mux.HandleFunc("POST /api/batches/{id}/ready", s.requireRole("chef admin", s.handleBatchReady))
@@ -184,9 +197,14 @@ func buildServer(port int, dataDir string) (*Server, *http.ServeMux, error) {
 	mux.HandleFunc("GET /api/admin/bill-settings", s.requireRole("admin", s.handleBillSettings))
 	mux.HandleFunc("POST /api/admin/bill-settings", s.requireRole("admin", s.handleBillSettings))
 
+	mux.HandleFunc("GET /api/admin/update", s.requireRole("admin", s.handleUpdateStatus))
+	mux.HandleFunc("POST /api/admin/update/check", s.requireRole("admin", s.handleUpdateCheck))
+	mux.HandleFunc("POST /api/admin/update/apply", s.requireRole("admin", s.handleUpdateApply))
+
 	go s.autoBackup()
 	go s.autoSealBatches()
 	go s.discoveryResponder()
+	go s.autoUpdate()
 
 	return s, mux, nil
 }

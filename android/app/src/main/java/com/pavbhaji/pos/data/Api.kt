@@ -79,6 +79,9 @@ class Api(private val session: Session) {
 
     suspend fun logout(): ApiResult<OkResp> = call("POST", "/api/logout")
 
+    // What newer build, if any, the counter PC has already downloaded for us.
+    suspend fun appUpdate(): ApiResult<AppUpdateDto> = call("GET", "/api/app-update")
+
     // ---- shared reads ----
     suspend fun bootstrap(): ApiResult<BootstrapDto> = call("GET", "/api/bootstrap")
 

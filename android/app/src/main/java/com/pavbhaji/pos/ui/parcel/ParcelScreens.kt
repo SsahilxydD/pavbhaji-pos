@@ -64,7 +64,6 @@ import com.pavbhaji.pos.ui.items as itemsLabel
 import com.pavbhaji.pos.ui.rupees
 import com.pavbhaji.pos.ui.waiter.MenuRow
 import com.pavbhaji.pos.ui.waiter.TableOrderScreen
-import com.pavbhaji.pos.ui.waiter.bhajiColourItems
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.util.UUID
@@ -255,7 +254,6 @@ fun AddParcelScreen(onDone: (Long) -> Unit, onBack: () -> Unit) {
 
     var custName by remember { mutableStateOf("") }
     var custPhone by remember { mutableStateOf("") }
-    var selColourKey by remember { mutableStateOf<String?>(null) }
     var menu by remember { mutableStateOf<List<CategoryDto>>(emptyList()) }
     val cart = remember { mutableStateListOf<CartLine>() }
     var clientTicketId by remember { mutableStateOf(UUID.randomUUID().toString()) }
@@ -372,18 +370,11 @@ fun AddParcelScreen(onDone: (Long) -> Unit, onBack: () -> Unit) {
                 }
             }
 
-            // ---- menu: colour rail for bhajis, flat lists for extras ----
+            // ---- menu: one straight list per category, bhajis and extras
+            // together in menu order. No colour grouping. ----
             item { SectionTitle(S.addItems) }
-            bhajiColourItems(
-                kitchen = menu.flatMap { c -> c.items.filter { it.station == "kitchen" } },
-                selectedKey = selColourKey,
-                onSelect = { selColourKey = it },
-                cartQty = cartQty,
-                onAdd = { m -> addToCart(m.id, m.name, m.price) }
-            )
             menu.forEach { c ->
-                val counterItems = c.items.filter { it.station == "counter" }
-                if (counterItems.isEmpty()) return@forEach
+                if (c.items.isEmpty()) return@forEach
                 item {
                     Text(
                         c.name.uppercase(),
@@ -392,14 +383,14 @@ fun AddParcelScreen(onDone: (Long) -> Unit, onBack: () -> Unit) {
                         modifier = Modifier.padding(top = 10.dp, bottom = 2.dp)
                     )
                 }
-                counterItems.forEach { m ->
+                c.items.forEach { m ->
                     item {
                         MenuRow(
                             name = m.name,
                             price = m.price,
                             available = m.available,
                             colour = dishColour(m.colour, m.id),
-                            counter = true,
+                            counter = m.station == "counter",
                             inCart = cartQty[m.id] ?: 0,
                             onClick = { if (m.available) addToCart(m.id, m.name, m.price) }
                         )

@@ -1,18 +1,13 @@
 package com.pavbhaji.pos.ui.waiter
 
 import android.view.HapticFeedbackConstants
-import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.lazy.LazyListScope
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -65,7 +60,6 @@ import com.pavbhaji.pos.ui.CardLine
 import com.pavbhaji.pos.ui.ConnBanner
 import com.pavbhaji.pos.ui.ErrorBanner
 import com.pavbhaji.pos.ui.Pb
-import com.pavbhaji.pos.ui.PinBelowHistory
 import com.pavbhaji.pos.ui.QtyStepper
 import com.pavbhaji.pos.ui.ReasonDialog
 import com.pavbhaji.pos.ui.S
@@ -104,7 +98,6 @@ fun TableOrderScreen(tableId: Long, tableName: String, onBack: () -> Unit) {
     var cancelTarget by remember { mutableStateOf<OrderItemDto?>(null) }
     var noteEditIdx by remember { mutableStateOf<Int?>(null) }
     var toast by remember { mutableStateOf<String?>(null) }
-    var selColourKey by remember { mutableStateOf<String?>(null) }
 
     var loadError by remember { mutableStateOf<String?>(null) }
     suspend fun refresh() {
@@ -172,23 +165,12 @@ fun TableOrderScreen(tableId: Long, tableName: String, onBack: () -> Unit) {
         ErrorBanner(loadError)
         toast?.let { LaunchedEffect(it) { kotlinx.coroutines.delay(2500); toast = null } }
 
-        // Sent KOTs pile up ABOVE the working area and slide off the top of
-        // the screen, so the cart and menu stay where the thumb knows them;
-        // scroll up to re-read what the kitchen already has.
+        // Opening a table shows the ticket first: what the kitchen already
+        // has sits at the top, the cart and menu follow underneath. No
+        // auto-scroll — the waiter decides where to look.
         val listState = rememberLazyListState()
-        val boundary = o?.let { 1 + it.tickets.sumOf { t -> 1 + t.items.size } } ?: 0
-        PinBelowHistory(listState, boundary)
 
-        BoxWithConstraints(Modifier.weight(1f)) {
-            // The pin only holds if a viewport of content sits below the sent
-            // pile; when the menu alone is shorter, the tail spacer makes up
-            // the difference. The row estimate must stay BELOW any real row
-            // height: a too-long tail is harmless blank space, a too-short one
-            // clamps the pin a few px shy and the pile pushes the menu again.
-            val counterRows = menu.sumOf { c -> c.items.count { it.station == "counter" } }
-            val filler =
-                if (o == null) 16.dp
-                else maxOf(16.dp, maxHeight - 160.dp - 40.dp * (counterRows + 1))
+        Box(Modifier.weight(1f)) {
             LazyColumn(
                 Modifier.fillMaxSize().padding(horizontal = 12.dp),
                 state = listState
@@ -266,20 +248,12 @@ fun TableOrderScreen(tableId: Long, tableName: String, onBack: () -> Unit) {
                     }
                 }
 
-                // ---- menu picker: colour is the bhaji category (rail on top,
-                // tapped colour's varieties beneath — mirrors the kitchen's
-                // colour buckets); extras/drinks keep their flat category lists ----
+                // ---- menu picker: one straight list per menu category —
+                // bhajis and extras/drinks under the same headers, in menu
+                // order. No colour grouping; every dish is one tap away. ----
                 item(key = "hdrAdd") { SectionTitle(S.addItems) }
-                bhajiColourItems(
-                    kitchen = menu.flatMap { c -> c.items.filter { it.station == "kitchen" } },
-                    selectedKey = selColourKey,
-                    onSelect = { selColourKey = it },
-                    cartQty = cartQty,
-                    onAdd = { m -> addToCart(m.id, m.name, m.price) }
-                )
                 menu.forEach { c ->
-                    val counterItems = c.items.filter { it.station == "counter" }
-                    if (counterItems.isEmpty()) return@forEach
+                    if (c.items.isEmpty()) return@forEach
                     item(key = "cat${c.id}") {
                         Text(
                             c.name.uppercase(),
@@ -288,21 +262,21 @@ fun TableOrderScreen(tableId: Long, tableName: String, onBack: () -> Unit) {
                             modifier = Modifier.padding(top = 10.dp, bottom = 2.dp)
                         )
                     }
-                    counterItems.forEach { m ->
+                    c.items.forEach { m ->
                         item(key = "menu${m.id}") {
                             MenuRow(
                                 name = m.name,
                                 price = m.price,
                                 available = m.available,
                                 colour = dishColour(m.colour, m.id),
-                                counter = true,
+                                counter = m.station == "counter",
                                 inCart = cartQty[m.id] ?: 0,
                                 onClick = { if (m.available) addToCart(m.id, m.name, m.price) }
                             )
                         }
                     }
                 }
-                item(key = "tail") { Spacer(Modifier.height(filler)) }
+                item(key = "tail") { Spacer(Modifier.height(16.dp)) }
             }
 
             // A "sent ✓" note floats over the list instead of shoving it down.
@@ -402,94 +376,6 @@ fun TableOrderScreen(tableId: Long, tableName: String, onBack: () -> Unit) {
             },
             dismissButton = { TextButton(onClick = { noteEditIdx = null }) { Text(S.back) } }
         )
-    }
-}
-
-// Colour is the bhaji category: a horizontal rail of colour chips, and the
-// varieties of the tapped colour listed beneath. Same-colour bhajis club into
-// the same kitchen bucket, so the picker mirrors the tawa exactly. Counter
-// items (extras/drinks) are not part of this — they keep their category lists.
-fun LazyListScope.bhajiColourItems(
-    kitchen: List<com.pavbhaji.pos.data.MenuItemDto>,
-    selectedKey: String?,
-    onSelect: (String) -> Unit,
-    cartQty: Map<Long, Long>,
-    onAdd: (com.pavbhaji.pos.data.MenuItemDto) -> Unit
-) {
-    if (kitchen.isEmpty()) return
-    val groups = LinkedHashMap<String, MutableList<com.pavbhaji.pos.data.MenuItemDto>>()
-    kitchen.forEach { m ->
-        // '' colour → private key: an uncoloured dish is its own group, exactly
-        // like the server's bucket clubbing.
-        groups.getOrPut(m.colour.ifEmpty { "item:${m.id}" }) { mutableListOf() }.add(m)
-    }
-    val selKey = selectedKey?.takeIf { groups.containsKey(it) } ?: groups.keys.first()
-    item(key = "bhajiRail") {
-        Column {
-            Text(
-                S.bhajiByColour,
-                fontSize = 11.sp, fontWeight = FontWeight.SemiBold,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(top = 10.dp, bottom = 4.dp)
-            )
-            Row(
-                Modifier
-                    .fillMaxWidth()
-                    .horizontalScroll(rememberScrollState())
-                    .padding(vertical = 4.dp),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                verticalAlignment = Alignment.Bottom
-            ) {
-                groups.forEach { (key, list) ->
-                    ColourChip(
-                        colour = com.pavbhaji.pos.ui.dishColour(list.first().colour, list.first().id),
-                        count = list.size,
-                        selected = key == selKey,
-                        onClick = { onSelect(key) }
-                    )
-                }
-            }
-        }
-    }
-    groups.getValue(selKey).forEach { m ->
-        item(key = "bhaji${m.id}") {
-            MenuRow(
-                name = m.name, price = m.price, available = m.available,
-                colour = com.pavbhaji.pos.ui.dishColour(m.colour, m.id),
-                counter = false,
-                inCart = cartQty[m.id] ?: 0,
-                onClick = { if (m.available) onAdd(m) }
-            )
-        }
-    }
-}
-
-// One swatch on the rail: the colour itself is the label; a small count says
-// how many varieties live inside it.
-@Composable
-private fun ColourChip(colour: Color, count: Int, selected: Boolean, onClick: () -> Unit) {
-    // The tapped swatch springs bigger instead of snapping — the rail feels alive.
-    val size by animateDpAsState(
-        if (selected) 46.dp else 38.dp,
-        spring(dampingRatio = 0.55f, stiffness = 700f), label = "chip"
-    )
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Surface(
-            onClick = onClick,
-            shape = CircleShape,
-            color = colour,
-            border = if (selected) androidx.compose.foundation.BorderStroke(3.dp, Color(0xFF3A2A20))
-            else androidx.compose.foundation.BorderStroke(1.dp, Color(0x33000000)),
-            shadowElevation = if (selected) 3.dp else 0.dp,
-            modifier = Modifier.size(size)
-        ) {}
-        if (count > 1) {
-            Text(
-                "$count", fontSize = 10.sp, fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(top = 2.dp)
-            )
-        }
     }
 }
 

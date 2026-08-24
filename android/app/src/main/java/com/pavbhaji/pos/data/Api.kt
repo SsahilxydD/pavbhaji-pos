@@ -222,10 +222,10 @@ class Api(private val session: Session) {
 
     suspend fun menuItemCreate(
         categoryId: Long, name: String, price: Long,
-        colour: String = "", station: String = "kitchen"
+        colour: String = "", station: String = "kitchen", serveWithFood: Boolean = false
     ): ApiResult<OkResp> =
         call("POST", "/api/admin/menu-items",
-            """{"categoryId":$categoryId,"name":${json.encodeToString(name)},"price":$price,"colour":"$colour","station":"$station"}""")
+            """{"categoryId":$categoryId,"name":${json.encodeToString(name)},"price":$price,"colour":"$colour","station":"$station","serveWithFood":$serveWithFood}""")
 
     suspend fun menuItemPatch(id: Long, patch: String): ApiResult<OkResp> =
         call("PATCH", "/api/admin/menu-items/$id", patch)

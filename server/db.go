@@ -1,13 +1,13 @@
 package main
 
 import (
-	"strings"
 	"crypto/rand"
 	"crypto/sha256"
 	"database/sql"
 	"encoding/hex"
 	"fmt"
 	"log"
+	"strings"
 	"time"
 
 	_ "modernc.org/sqlite"
@@ -52,6 +52,9 @@ CREATE TABLE IF NOT EXISTS menu_items (
   sort INTEGER NOT NULL DEFAULT 0,
   colour TEXT NOT NULL DEFAULT '',
   station TEXT NOT NULL DEFAULT 'kitchen' CHECK(station IN ('kitchen','counter')),
+  -- counter item that must not leave the counter before this table's bhaji is
+  -- cooked (extra pav, butter, onion). Drinks stay 0 and go out immediately.
+  serve_with_food INTEGER NOT NULL DEFAULT 0,
   batch_cap INTEGER,     -- this dish's tawa capacity; NULL = global default (meta batch_cap)
   batch_age_min INTEGER  -- minutes before an open bucket auto-seals; NULL = global default
 );
@@ -104,6 +107,7 @@ CREATE TABLE IF NOT EXISTS ticket_items (
   status_by INTEGER,
   cancel_reason TEXT,
   station TEXT NOT NULL DEFAULT 'kitchen',
+  serve_with_food INTEGER NOT NULL DEFAULT 0,
   batch_id INTEGER REFERENCES batches(id)
 );
 CREATE INDEX IF NOT EXISTS ticket_items_by_ticket ON ticket_items(ticket_id);
@@ -177,6 +181,14 @@ func openDB(path string) *sql.DB {
 	ensureColumn(db, "menu_items", "batch_cap", `ALTER TABLE menu_items ADD COLUMN batch_cap INTEGER`)
 	ensureColumn(db, "menu_items", "batch_age_min", `ALTER TABLE menu_items ADD COLUMN batch_age_min INTEGER`)
 	ensureColumn(db, "ticket_items", "station", `ALTER TABLE ticket_items ADD COLUMN station TEXT NOT NULL DEFAULT 'kitchen'`)
+	// First run on a shop that already has a menu: everything under Extras is the
+	// stuff that must ride out with the bhaji (pav, butter, onion). Drinks and any
+	// other counter item keep going straight to the table; admin can flip any of it.
+	if ensureColumn(db, "menu_items", "serve_with_food", `ALTER TABLE menu_items ADD COLUMN serve_with_food INTEGER NOT NULL DEFAULT 0`) {
+		db.Exec(`UPDATE menu_items SET serve_with_food=1 WHERE station='counter'
+			AND category_id IN (SELECT id FROM categories WHERE LOWER(name)='extras')`)
+	}
+	ensureColumn(db, "ticket_items", "serve_with_food", `ALTER TABLE ticket_items ADD COLUMN serve_with_food INTEGER NOT NULL DEFAULT 0`)
 	ensureColumn(db, "ticket_items", "batch_id", `ALTER TABLE ticket_items ADD COLUMN batch_id INTEGER REFERENCES batches(id)`)
 	ensureColumn(db, "orders", "customer_name", `ALTER TABLE orders ADD COLUMN customer_name TEXT NOT NULL DEFAULT ''`)
 	ensureColumn(db, "orders", "customer_phone", `ALTER TABLE orders ADD COLUMN customer_phone TEXT NOT NULL DEFAULT ''`)
@@ -229,7 +241,9 @@ func openDB(path string) *sql.DB {
 	return db
 }
 
-func ensureColumn(db *sql.DB, table, column, ddl string) {
+// ensureColumn adds a column if it is missing and reports whether it did, so a
+// caller can run a one-time backfill on the upgrade that introduced it.
+func ensureColumn(db *sql.DB, table, column, ddl string) bool {
 	rows, err := db.Query(`SELECT name FROM pragma_table_info(?)`, table)
 	if err != nil {
 		log.Fatalf("migrate %s: %v", table, err)
@@ -239,13 +253,14 @@ func ensureColumn(db *sql.DB, table, column, ddl string) {
 		var name string
 		rows.Scan(&name)
 		if name == column {
-			return
+			return false
 		}
 	}
 	if _, err := db.Exec(ddl); err != nil {
 		log.Fatalf("migrate %s.%s: %v", table, column, err)
 	}
 	log.Printf("migrated: added %s.%s", table, column)
+	return true
 }
 
 func nowMs() int64 { return time.Now().UnixMilli() }
@@ -313,40 +328,41 @@ func seedIfEmpty(db *sql.DB) {
 	}
 
 	type seedItem struct {
-		name    string
-		price   int // paise
-		colour  string
-		station string
+		name     string
+		price    int // paise
+		colour   string
+		station  string
+		withFood bool // wait for the table's kitchen plates before handing over
 	}
 	seedMenu := []struct {
 		cat   string
 		items []seedItem
 	}{
 		{"Bhaji", []seedItem{
-			{"Pav Bhaji", 12000, "#FF8A3D", "kitchen"},
-			{"Cheese Pav Bhaji", 15000, "#FFC93D", "kitchen"},
-			{"Jain Pav Bhaji", 13000, "#6FCF6F", "kitchen"},
-			{"Khada Pav Bhaji", 14000, "#C79BFF", "kitchen"},
+			{"Pav Bhaji", 12000, "#FF8A3D", "kitchen", false},
+			{"Cheese Pav Bhaji", 15000, "#FFC93D", "kitchen", false},
+			{"Jain Pav Bhaji", 13000, "#6FCF6F", "kitchen", false},
+			{"Khada Pav Bhaji", 14000, "#C79BFF", "kitchen", false},
 		}},
 		// Extras never enter the kitchen: the pav/extras counter handles them,
 		// the waiter just carries. Only bhaji cooks in colour buckets.
 		{"Extras", []seedItem{
-			{"Extra Pav (2 pc)", 2000, "#E8483F", "counter"},
-			{"Extra Butter", 1500, "#5BC8DB", "counter"},
-			{"Chopped Onion", 1000, "#6FCF6F", "counter"},
+			{"Extra Pav (2 pc)", 2000, "#E8483F", "counter", true},
+			{"Extra Butter", 1500, "#5BC8DB", "counter", true},
+			{"Chopped Onion", 1000, "#6FCF6F", "counter", true},
 		}},
 		{"Drinks", []seedItem{
-			{"Chaas", 3000, "#5BC8DB", "counter"},
-			{"Masala Soda", 4000, "#E8483F", "counter"},
-			{"Water Bottle", 2000, "#5BC8DB", "counter"},
+			{"Chaas", 3000, "#5BC8DB", "counter", false},
+			{"Masala Soda", 4000, "#E8483F", "counter", false},
+			{"Water Bottle", 2000, "#5BC8DB", "counter", false},
 		}},
 	}
 	for ci, c := range seedMenu {
 		res, _ := db.Exec(`INSERT INTO categories(name, sort) VALUES(?,?)`, c.cat, ci)
 		catID, _ := res.LastInsertId()
 		for ii, it := range c.items {
-			db.Exec(`INSERT INTO menu_items(category_id, name, price, sort, colour, station) VALUES(?,?,?,?,?,?)`,
-				catID, it.name, it.price, ii, it.colour, it.station)
+			db.Exec(`INSERT INTO menu_items(category_id, name, price, sort, colour, station, serve_with_food) VALUES(?,?,?,?,?,?,?)`,
+				catID, it.name, it.price, ii, it.colour, it.station, boolInt(it.withFood))
 		}
 	}
 	for i := 1; i <= 10; i++ {

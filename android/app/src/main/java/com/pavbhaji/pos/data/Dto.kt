@@ -19,6 +19,8 @@ data class MenuItemDto(
     val id: Long, val name: String, val price: Long,
     val available: Boolean = true, val sort: Int = 0,
     val colour: String = "", val station: String = "kitchen",
+    // counter item that must be carried out with the table's bhaji, not before it
+    val serveWithFood: Boolean = false,
     val batchCap: Long? = null, val batchAgeMin: Long? = null
 )
 
@@ -104,6 +106,8 @@ data class PickupLineDto(
     val itemId: Long, val name: String, val qty: Long, val note: String = "",
     val colour: String = "", val station: String = "kitchen",
     val tableName: String = "", val sinceMs: Long = 0,
+    // listed, but the counter holds it until this table's bhaji is off the tawa
+    val waiting: Boolean = false, val waitingOn: Long = 0,
     val servedBy: String = "" // only on history lines
 )
 

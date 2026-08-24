@@ -165,6 +165,7 @@ fun MenuAdmin(onBack: () -> Unit) {
             mutableStateOf(if (mi.price % 100 == 0L) "${mi.price / 100}" else "${mi.price / 100.0}")
         }
         var station by remember(mi.id) { mutableStateOf(mi.station) }
+        var withFood by remember(mi.id) { mutableStateOf(mi.serveWithFood) }
         var cap by remember(mi.id) { mutableStateOf(mi.batchCap?.toString() ?: "") }
         var ageMin by remember(mi.id) { mutableStateOf(mi.batchAgeMin?.toString() ?: "") }
         AlertDialog(
@@ -196,6 +197,8 @@ fun MenuAdmin(onBack: () -> Unit) {
                                 modifier = Modifier.weight(1f)
                             )
                         }
+                    } else {
+                        WithFoodToggle(withFood) { withFood = it }
                     }
                     TextButton(onClick = {
                         scope.launch {
@@ -210,9 +213,12 @@ fun MenuAdmin(onBack: () -> Unit) {
                     val p = parseRupees(price)
                     if (p != null && name.trim().isNotEmpty()) {
                         scope.launch {
+                            // Station is patched before the flag is read server-side,
+                            // so flipping to counter and holding it for the bhaji in
+                            // the same save works; kitchen items never carry the flag.
                             val tuning = if (station == "kitchen")
                                 ""","batchCap":${cap.toLongOrNull() ?: 0},"batchAgeMin":${ageMin.toLongOrNull() ?: 0}"""
-                            else ""
+                            else ""","serveWithFood":$withFood"""
                             Deps.api.menuItemPatch(
                                 mi.id,
                                 """{"name":${Deps.api.json.encodeToString(kotlinx.serialization.serializer<String>(), name.trim())},"price":$p,"station":"$station"$tuning}"""
@@ -232,6 +238,7 @@ fun MenuAdmin(onBack: () -> Unit) {
         var price by remember(cat.id) { mutableStateOf("") }
         var colour by remember(cat.id) { mutableStateOf(DishPaletteHex[cat.items.size % DishPaletteHex.size]) }
         var station by remember(cat.id) { mutableStateOf("kitchen") }
+        var withFood by remember(cat.id) { mutableStateOf(false) }
         var morePicker by remember { mutableStateOf(false) }
         AlertDialog(
             onDismissRequest = { addToCat = null },
@@ -244,6 +251,7 @@ fun MenuAdmin(onBack: () -> Unit) {
                         label = { Text(S.priceRs) }, modifier = Modifier.padding(top = 8.dp)
                     )
                     StationPicker(station) { station = it }
+                    if (station == "counter") WithFoodToggle(withFood) { withFood = it }
                     ColourSwatchRow(colour, onSelect = { colour = it }, onMore = { morePicker = true })
                 }
             },
@@ -252,7 +260,7 @@ fun MenuAdmin(onBack: () -> Unit) {
                     val p = parseRupees(price)
                     if (p != null && name.trim().isNotEmpty()) {
                         scope.launch {
-                            Deps.api.menuItemCreate(cat.id, name.trim(), p, colour, station)
+                            Deps.api.menuItemCreate(cat.id, name.trim(), p, colour, station, withFood)
                             addToCat = null; refresh()
                         }
                     }
@@ -326,6 +334,7 @@ private fun MenuItemCard(
                 val sub = buildString {
                     append(rupees(mi.price))
                     if (mi.station == "counter") append(" · " + S.counterTag)
+                    if (mi.serveWithFood) append(" · " + S.withFoodTag)
                     if (!mi.available) append(" · " + S.outOfStock)
                 }
                 Text(
@@ -354,6 +363,24 @@ private fun StationPicker(station: String, onSelect: (String) -> Unit) {
         FilterChip(
             selected = station == "counter", onClick = { onSelect("counter") },
             label = { Text(S.stationCounter) }
+        )
+    }
+}
+
+// A counter item skips the kitchen, so it reaches the waiter the moment it is
+// punched. That is right for a cold drink and wrong for extra pav, which would
+// land minutes before the bhaji it belongs to. This holds the flagged ones back
+// until the table's last plate leaves the tawa.
+@Composable
+private fun WithFoodToggle(checked: Boolean, onChange: (Boolean) -> Unit) {
+    Column(Modifier.padding(top = 10.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(S.withFoodToggle, fontSize = 14.sp, modifier = Modifier.weight(1f))
+            Switch(checked = checked, onCheckedChange = onChange)
+        }
+        Text(
+            S.withFoodHint, fontSize = 11.sp,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
         )
     }
 }

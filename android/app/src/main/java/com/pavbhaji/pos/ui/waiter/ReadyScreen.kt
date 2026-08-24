@@ -159,15 +159,25 @@ private fun TableCarryCard(g: ReadyGroup, modifier: Modifier = Modifier) {
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        Box(Modifier.size(11.dp).background(dishColour(l.colour, l.itemId), RoundedCornerShape(4.dp)))
+                        Box(
+                            Modifier.size(11.dp).background(
+                                dishColour(l.colour, l.itemId).copy(alpha = if (l.waiting) 0.35f else 1f),
+                                RoundedCornerShape(4.dp)
+                            )
+                        )
                         Column(Modifier.weight(1f)) {
                             Text(
                                 "${l.qty}× ${l.name}", fontSize = 14.sp, fontWeight = FontWeight.Bold,
-                                maxLines = 1, overflow = TextOverflow.Ellipsis
+                                maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                color = if (l.waiting) Pb.ink3 else Color.Unspecified
                             )
                             val sub = listOfNotNull(
                                 if (l.note.isNotEmpty()) "⚠ ${l.note}" else null,
-                                if (l.station == "counter") S.justCarry else null
+                                when {
+                                    l.waiting -> S.waitsForBhaji(l.waitingOn)
+                                    l.station == "counter" -> S.justCarry
+                                    else -> null
+                                }
                             ).joinToString(" · ")
                             if (sub.isNotEmpty()) Text(
                                 sub, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
@@ -345,26 +355,45 @@ private fun HistoryRow(l: PickupLineDto, modifier: Modifier = Modifier) {
 @Composable
 private fun ServeRow(l: PickupLineDto, onServe: () -> Unit, modifier: Modifier = Modifier) {
     val counter = l.station == "counter"
+    // A held line (extra pav while the table's bhaji is still on the tawa) keeps
+    // its slot in the queue so nobody forgets it, but reads as not-yours-yet:
+    // quiet card, dimmed text, an hourglass where the button would be. The age
+    // chip is hidden too — it only nags about time the waiter can't act on.
+    val held = l.waiting
     Surface(
         shape = RoundedCornerShape(14.dp),
-        color = if (counter) Pb.counterBg else Color.White,
+        color = when {
+            held -> Pb.quietCard
+            counter -> Pb.counterBg
+            else -> Color.White
+        },
         border = BorderStroke(1.dp, CardLine),
-        shadowElevation = 1.dp,
+        shadowElevation = if (held) 0.dp else 1.dp,
         modifier = modifier
     ) {
         Row(
             Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Box(Modifier.size(11.dp).background(dishColour(l.colour, l.itemId), RoundedCornerShape(4.dp)))
+            Box(
+                Modifier.size(11.dp).background(
+                    dishColour(l.colour, l.itemId).copy(alpha = if (held) 0.35f else 1f),
+                    RoundedCornerShape(4.dp)
+                )
+            )
             Column(Modifier.weight(1f).padding(start = 9.dp)) {
                 Text(
                     "${l.qty}× ${l.name}", fontSize = 15.sp, fontWeight = FontWeight.Bold,
-                    maxLines = 1, overflow = TextOverflow.Ellipsis
+                    maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    color = if (held) Pb.ink3 else Color.Unspecified
                 )
                 val sub = listOfNotNull(
                     if (l.note.isNotEmpty()) "⚠ ${l.note}" else null,
-                    if (counter) S.justCarry else null
+                    when {
+                        held -> S.waitsForBhaji(l.waitingOn)
+                        counter -> S.justCarry
+                        else -> null
+                    }
                 ).joinToString(" · ")
                 if (sub.isNotEmpty()) Text(
                     sub, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
@@ -372,14 +401,26 @@ private fun ServeRow(l: PickupLineDto, onServe: () -> Unit, modifier: Modifier =
                     else Pb.ink2
                 )
             }
-            ReadyAge(l.sinceMs)
+            if (!held) ReadyAge(l.sinceMs)
             // The table number is what a waiter scans the list for — loudest thing in the row.
             Text(
                 l.tableName, fontSize = 20.sp, fontWeight = FontWeight.ExtraBold,
                 letterSpacing = (-0.5).sp,
+                color = if (held) Pb.ink3 else Color.Unspecified,
                 modifier = Modifier.padding(horizontal = 10.dp)
             )
-            ServeButton(counter = counter, onClick = onServe)
+            if (held) HeldPill() else ServeButton(counter = counter, onClick = onServe)
+        }
+    }
+}
+
+// Where the serve button sits on a held line: same footprint so the list keeps
+// its rhythm, but nothing to press until the kitchen lets the plate go.
+@Composable
+private fun HeldPill() {
+    Surface(color = Pb.skeleton, shape = RoundedCornerShape(12.dp)) {
+        Box(Modifier.heightIn(min = 40.dp).padding(horizontal = 13.dp), contentAlignment = Alignment.Center) {
+            Text("⏳", fontSize = 15.sp, maxLines = 1)
         }
     }
 }

@@ -114,6 +114,12 @@ object S {
         "બધું પહોંચી ગયું 🎉 પ્લેટ તૈયાર થતાં જ અહીં દેખાશે."
     )
     val justCarry get() = t("✋ just carry", "✋ बस ले जाओ", "✋ ખાલી લઈ જાઓ")
+    // Extra pav & co: on the list so nobody forgets it, but held till the bhaji is ready.
+    fun waitsForBhaji(n: Long) = t(
+        "⏳ goes with the bhaji · $n still cooking",
+        "⏳ भाजी के साथ जाएगा · $n अभी बन रही है",
+        "⏳ ભાજી સાથે જશે · $n હજી બની રહી છે"
+    )
     val readyTitle get() = t("Ready", "तैयार", "તૈયાર")
     val servedBtn get() = t("Served ✓", "परोसा ✓", "પીરસ્યું ✓")
     val servedSection get() = t("SERVED — for checking", "परोसा हुआ — देखने के लिए", "પીરસેલું — જોવા માટે")
@@ -249,6 +255,17 @@ object S {
     val stationKitchen get() = t("🍳 kitchen", "🍳 किचन", "🍳 રસોડું")
     val stationCounter get() = t("✋ counter", "✋ काउंटर", "✋ કાઉન્ટર")
     val counterTag get() = t("✋ counter", "✋ काउंटर", "✋ કાઉન્ટર")
+    val withFoodTag get() = t("⏳ with the bhaji", "⏳ भाजी के साथ", "⏳ ભાજી સાથે")
+    val withFoodToggle get() = t(
+        "Carry out with the table's bhaji",
+        "टेबल की भाजी के साथ ले जाओ",
+        "ટેબલની ભાજી સાથે લઈ જાઓ"
+    )
+    val withFoodHint get() = t(
+        "Extra pav, butter, onion — held at the counter till the bhaji is ready. Leave off for drinks and water.",
+        "एक्स्ट्रा पाव, बटर, प्याज़ — भाजी तैयार होने तक काउंटर पर रुकेगा। ठंडे पीने की चीज़ों के लिए बंद रखो।",
+        "એક્સ્ટ્રા પાવ, બટર, ડુંગળી — ભાજી તૈયાર થાય ત્યાં સુધી કાઉન્ટર પર રોકાશે. પીણાં માટે બંધ રાખો."
+    )
     val bucketColour get() = t("Bucket colour", "बकेट का रंग", "બકેટનો રંગ")
     val orMixOwn get() = t("or mix your own", "या अपना रंग बनाओ", "અથવા તમારો રંગ બનાવો")
 

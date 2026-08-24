@@ -11,15 +11,18 @@ import (
 )
 
 type MenuItem struct {
-	ID          int64  `json:"id"`
-	Name        string `json:"name"`
-	Price       int64  `json:"price"` // paise
-	Available   bool   `json:"available"`
-	Sort        int    `json:"sort"`
-	Colour      string `json:"colour"`      // dish identity hue, admin-picked ('' = app picks a fallback)
-	Station     string `json:"station"`     // 'kitchen' = goes into colour buckets, 'counter' = waiter hands over
-	BatchCap    *int64 `json:"batchCap"`    // tawa capacity override; nil = global default
-	BatchAgeMin *int64 `json:"batchAgeMin"` // auto-seal minutes override; nil = global default
+	ID        int64  `json:"id"`
+	Name      string `json:"name"`
+	Price     int64  `json:"price"` // paise
+	Available bool   `json:"available"`
+	Sort      int    `json:"sort"`
+	Colour    string `json:"colour"`  // dish identity hue, admin-picked ('' = app picks a fallback)
+	Station   string `json:"station"` // 'kitchen' = goes into colour buckets, 'counter' = waiter hands over
+	// Counter item that may not be handed over while this table still has bhaji
+	// on the tawa — extra pav, butter, onion. Meaningless for kitchen items.
+	ServeWithFood bool   `json:"serveWithFood"`
+	BatchCap      *int64 `json:"batchCap"`    // tawa capacity override; nil = global default
+	BatchAgeMin   *int64 `json:"batchAgeMin"` // auto-seal minutes override; nil = global default
 }
 
 type Category struct {
@@ -100,7 +103,7 @@ func (s *Server) loadMenu() []Category {
 	}
 	for i := range cats {
 		irows, err := s.db.Query(
-			`SELECT id, name, price, available, sort, colour, station, batch_cap, batch_age_min FROM menu_items
+			`SELECT id, name, price, available, sort, colour, station, serve_with_food, batch_cap, batch_age_min FROM menu_items
 			 WHERE active=1 AND category_id=? ORDER BY sort, id`, cats[i].ID)
 		if err != nil {
 			continue
@@ -108,7 +111,7 @@ func (s *Server) loadMenu() []Category {
 		for irows.Next() {
 			var m MenuItem
 			var bc, ba sql.NullInt64
-			irows.Scan(&m.ID, &m.Name, &m.Price, &m.Available, &m.Sort, &m.Colour, &m.Station, &bc, &ba)
+			irows.Scan(&m.ID, &m.Name, &m.Price, &m.Available, &m.Sort, &m.Colour, &m.Station, &m.ServeWithFood, &bc, &ba)
 			if bc.Valid {
 				m.BatchCap = &bc.Int64
 			}
@@ -405,10 +408,10 @@ func punchLines(tx *sql.Tx, ticketID, staffID int64, items []ticketLine, globalC
 	for _, it := range items {
 		var name, station, colour string
 		var price, itemCap int64
-		var available bool
-		err := tx.QueryRow(`SELECT name, price, available, station, COALESCE(batch_cap, ?), colour
+		var available, withFood bool
+		err := tx.QueryRow(`SELECT name, price, available, station, COALESCE(batch_cap, ?), colour, serve_with_food
 			FROM menu_items WHERE id=? AND active=1`,
-			globalCap, it.MenuItemID).Scan(&name, &price, &available, &station, &itemCap, &colour)
+			globalCap, it.MenuItemID).Scan(&name, &price, &available, &station, &itemCap, &colour, &withFood)
 		if err != nil {
 			return nil, http.StatusBadRequest, "menu item not found (was it just removed?)"
 		}
@@ -427,9 +430,12 @@ func punchLines(tx *sql.Tx, ticketID, staffID int64, items []ticketLine, globalC
 			}
 			batchID = id
 		}
-		if _, err := tx.Exec(`INSERT INTO ticket_items(ticket_id, menu_item_id, name, price, qty, note, status, status_at, status_by, station, batch_id)
-			VALUES(?,?,?,?,?,?,'pending',?,?,?,?)`,
-			ticketID, it.MenuItemID, name, price, it.Qty, strings.TrimSpace(it.Note), now, staffID, station, batchID); err != nil {
+		// The wait-for-bhaji flag is snapshotted with the line: a menu edit
+		// mid-service must not change what a waiter is already holding.
+		if _, err := tx.Exec(`INSERT INTO ticket_items(ticket_id, menu_item_id, name, price, qty, note, status, status_at, status_by, station, serve_with_food, batch_id)
+			VALUES(?,?,?,?,?,?,'pending',?,?,?,?,?)`,
+			ticketID, it.MenuItemID, name, price, it.Qty, strings.TrimSpace(it.Note), now, staffID, station,
+			boolInt(withFood && station == "counter"), batchID); err != nil {
 			return nil, http.StatusInternalServerError, "could not save items"
 		}
 		summary = append(summary, fmt.Sprintf("%d× %s", it.Qty, name))
@@ -779,6 +785,24 @@ func (s *Server) handleItemStatus(w http.ResponseWriter, r *http.Request) {
 		fail(w, http.StatusConflict, fmt.Sprintf("can't move %s from %s to %s as %s", name, from, req.To, st.Role))
 		return
 	}
+	// Extra pav and its kind wait at the counter. The app greys the row out, but
+	// a stale phone must not be able to hand one over while this table still has
+	// bhaji on the tawa — otherwise the pav lands cold, minutes before the food.
+	if req.To == "served" && from == "pending" && station == "counter" {
+		var withFood bool
+		var cooking int64
+		s.db.QueryRow(`SELECT ti.serve_with_food,
+			(SELECT COALESCE(SUM(k.qty),0) FROM ticket_items k
+			   JOIN tickets ktk ON ktk.id=k.ticket_id
+			  WHERE ktk.order_id=? AND k.station='kitchen'
+			    AND k.status IN ('pending','preparing'))
+			FROM ticket_items ti WHERE ti.id=?`, orderID, itemID).Scan(&withFood, &cooking)
+		if withFood && cooking > 0 {
+			fail(w, http.StatusConflict, fmt.Sprintf("%s goes out with the bhaji — %d still cooking for %s",
+				name, cooking, tableName))
+			return
+		}
+	}
 	s.db.Exec(`UPDATE ticket_items SET status=?, status_at=?, status_by=? WHERE id=?`,
 		req.To, nowMs(), st.ID, itemID)
 	audit(s.db, st.ID, st.Name, "item:"+req.To, fmt.Sprintf("%s: %d× %s (%s → %s)", tableName, qty, name, from, req.To))
@@ -935,7 +959,7 @@ func (s *Server) handleCloseOrder(w http.ResponseWriter, r *http.Request) {
 // ---- The chef's bucket queue ----
 
 type BucketLine struct {
-	ID         int64  `json:"id"`         // the ticket_items row — a tick targets THIS line
+	ID         int64  `json:"id"` // the ticket_items row — a tick targets THIS line
 	TableName  string `json:"tableName"`
 	Qty        int64  `json:"qty"`
 	Note       string `json:"note"`
@@ -1342,6 +1366,10 @@ type PickupLine struct {
 	Station   string `json:"station"` // 'counter' lines appear the moment they're punched
 	TableName string `json:"tableName"`
 	SinceMs   int64  `json:"sinceMs"` // when it became carryable (ready_at, or punch time for counter)
+	// A counter line flagged serve-with-food, listed but not yet handable because
+	// this table still has bhaji cooking. WaitingOn is how many plates are left.
+	Waiting   bool   `json:"waiting"`
+	WaitingOn int64  `json:"waitingOn"`
 	ServedBy  string `json:"servedBy"` // only on history lines: who carried it
 }
 
@@ -1351,7 +1379,12 @@ type PickupLine struct {
 func (s *Server) handlePickup(w http.ResponseWriter, r *http.Request) {
 	lines := []PickupLine{}
 	rows, err := s.db.Query(`
-		SELECT ti.id, ti.name, ti.qty, ti.note, ti.status_at, dt.name, COALESCE(m.colour,''), ti.station
+		SELECT ti.id, ti.name, ti.qty, ti.note, ti.status_at, dt.name, COALESCE(m.colour,''), ti.station,
+		       ti.serve_with_food,
+		       (SELECT COALESCE(SUM(k.qty),0) FROM ticket_items k
+		          JOIN tickets ktk ON ktk.id=k.ticket_id
+		         WHERE ktk.order_id=o.id AND k.station='kitchen'
+		           AND k.status IN ('pending','preparing'))
 		FROM ticket_items ti
 		JOIN tickets tk ON tk.id=ti.ticket_id
 		JOIN orders o ON o.id=tk.order_id AND o.status='open'
@@ -1362,7 +1395,16 @@ func (s *Server) handlePickup(w http.ResponseWriter, r *http.Request) {
 	if err == nil {
 		for rows.Next() {
 			var l PickupLine
-			rows.Scan(&l.ItemID, &l.Name, &l.Qty, &l.Note, &l.SinceMs, &l.TableName, &l.Colour, &l.Station)
+			var withFood bool
+			var cooking int64
+			rows.Scan(&l.ItemID, &l.Name, &l.Qty, &l.Note, &l.SinceMs, &l.TableName, &l.Colour, &l.Station,
+				&withFood, &cooking)
+			// Extra pav stays on the list so nobody forgets it, but it is not
+			// handable until the last bhaji for this table leaves the tawa.
+			if withFood && l.Station == "counter" && cooking > 0 {
+				l.Waiting = true
+				l.WaitingOn = cooking
+			}
 			lines = append(lines, l)
 		}
 		rows.Close()

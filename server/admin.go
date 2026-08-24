@@ -88,6 +88,8 @@ func (s *Server) handleMenuItemCreate(w http.ResponseWriter, r *http.Request) {
 		Price      int64  `json:"price"` // paise
 		Colour     string `json:"colour"`
 		Station    string `json:"station"`
+		// counter item that must wait for the table's bhaji before it goes out
+		ServeWithFood bool `json:"serveWithFood"`
 	}
 	if !readJSON(w, r, &req) {
 		return
@@ -117,8 +119,9 @@ func (s *Server) handleMenuItemCreate(w http.ResponseWriter, r *http.Request) {
 	}
 	var maxSort int
 	s.db.QueryRow(`SELECT COALESCE(MAX(sort),0)+1 FROM menu_items WHERE category_id=?`, req.CategoryID).Scan(&maxSort)
-	res, err := s.db.Exec(`INSERT INTO menu_items(category_id, name, price, sort, colour, station) VALUES(?,?,?,?,?,?)`,
-		req.CategoryID, req.Name, req.Price, maxSort, req.Colour, req.Station)
+	res, err := s.db.Exec(`INSERT INTO menu_items(category_id, name, price, sort, colour, station, serve_with_food) VALUES(?,?,?,?,?,?,?)`,
+		req.CategoryID, req.Name, req.Price, maxSort, req.Colour, req.Station,
+		boolInt(req.ServeWithFood && req.Station == "counter"))
 	if err != nil {
 		fail(w, http.StatusInternalServerError, "could not create item")
 		return
@@ -134,15 +137,16 @@ func (s *Server) handleMenuItemPatch(w http.ResponseWriter, r *http.Request) {
 	st := staffFrom(r)
 	id, _ := strconv.ParseInt(r.PathValue("id"), 10, 64)
 	var req struct {
-		Name        *string `json:"name"`
-		Price       *int64  `json:"price"`
-		Available   *bool   `json:"available"`
-		Active      *bool   `json:"active"`
-		Sort        *int    `json:"sort"`
-		Colour      *string `json:"colour"`
-		Station     *string `json:"station"`
-		BatchCap    *int64  `json:"batchCap"`    // 0 = back to global default
-		BatchAgeMin *int64  `json:"batchAgeMin"` // 0 = back to global default
+		Name          *string `json:"name"`
+		Price         *int64  `json:"price"`
+		Available     *bool   `json:"available"`
+		Active        *bool   `json:"active"`
+		Sort          *int    `json:"sort"`
+		Colour        *string `json:"colour"`
+		Station       *string `json:"station"`
+		ServeWithFood *bool   `json:"serveWithFood"`
+		BatchCap      *int64  `json:"batchCap"`    // 0 = back to global default
+		BatchAgeMin   *int64  `json:"batchAgeMin"` // 0 = back to global default
 	}
 	if !readJSON(w, r, &req) {
 		return
@@ -224,7 +228,24 @@ func (s *Server) handleMenuItemPatch(w http.ResponseWriter, r *http.Request) {
 		if *req.Station == "counter" {
 			changes = append(changes, curName+" → counter (waiter hands it over, skips the kitchen)")
 		} else {
+			// Kitchen items already travel through their bucket; the
+			// wait-for-bhaji flag would be a no-op left lying around.
+			s.db.Exec(`UPDATE menu_items SET serve_with_food=0 WHERE id=?`, id)
 			changes = append(changes, curName+" → kitchen (cooked in colour buckets)")
+		}
+	}
+	if req.ServeWithFood != nil {
+		var station string
+		s.db.QueryRow(`SELECT station FROM menu_items WHERE id=?`, id).Scan(&station)
+		if station != "counter" {
+			fail(w, http.StatusBadRequest, "only counter items can wait for the bhaji")
+			return
+		}
+		s.db.Exec(`UPDATE menu_items SET serve_with_food=? WHERE id=?`, boolInt(*req.ServeWithFood), id)
+		if *req.ServeWithFood {
+			changes = append(changes, curName+" now waits for the table's bhaji")
+		} else {
+			changes = append(changes, curName+" goes out immediately again")
 		}
 	}
 	if len(changes) > 0 {

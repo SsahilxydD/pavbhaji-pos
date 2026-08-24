@@ -376,7 +376,11 @@ func (s *Server) applyStagedIfIdle() {
 // applyStagedUpdate runs in the supervisor, before the server exists. A running
 // exe cannot be overwritten, but it can be renamed out of the way — which is
 // exactly what leaves the old build sitting there as the rollback.
-func applyStagedUpdate(dataDir string) bool {
+//
+// `exe` is passed in, never looked up here: on Linux /proc/self/exe follows the
+// rename, so after one swap os.Executable() reports the *.old path and every
+// later swap or rollback would aim at the wrong file.
+func applyStagedUpdate(dataDir, exe string) bool {
 	st, ok := readStaged(dataDir)
 	if !ok {
 		return false
@@ -393,13 +397,6 @@ func applyStagedUpdate(dataDir string) bool {
 		log.Printf("update: staged build failed its checksum, discarding it (%v)", err)
 		os.Remove(src)
 		os.Remove(notePath)
-		return false
-	}
-	exe, err := os.Executable()
-	if err != nil {
-		return false
-	}
-	if exe, err = filepath.EvalSymlinks(exe); err != nil {
 		return false
 	}
 	old := exe + ".old"
@@ -443,6 +440,23 @@ func installExe(src, dst string) error {
 		return err
 	}
 	return os.Chmod(dst, 0o755)
+}
+
+// rollbackUpdate puts yesterday's build back. This is the whole reason the old
+// exe is renamed rather than deleted: a build that will not even start must not
+// be able to keep a shop shut until someone who knows about files walks in.
+func rollbackUpdate(exe string) bool {
+	old := exe + ".old"
+	if _, err := os.Stat(old); err != nil {
+		return false
+	}
+	if err := installExe(old, exe); err != nil {
+		log.Printf("update: rollback failed: %v", err)
+		return false
+	}
+	os.Remove(old)
+	log.Println("update: the new build would not start — put the previous one back")
+	return true
 }
 
 // exitCodeOf digs the process exit status out of whatever Wait returned.

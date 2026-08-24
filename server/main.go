@@ -41,11 +41,15 @@ func main() {
 // It is also the only place that can swap the exe: a build downloaded during
 // yesterday's service goes live here, before a single table is open.
 func supervise(dataDir string) {
-	applyStagedUpdate(dataDir)
+	// Resolve our own path once, before anything can rename it out from under us.
 	exe, err := os.Executable()
 	if err != nil {
 		return // can't find ourselves: run unsupervised rather than not at all
 	}
+	if resolved, err := filepath.EvalSymlinks(exe); err == nil {
+		exe = resolved
+	}
+	justUpdated := applyStagedUpdate(dataDir, exe)
 	var child atomic.Pointer[os.Process]
 	var stopping atomic.Bool
 	sig := make(chan os.Signal, 1)
@@ -70,7 +74,7 @@ func supervise(dataDir string) {
 			child.Store(nil)
 		}
 		if !stopping.Load() && exitCodeOf(runErr) == updateExitCode {
-			applyStagedUpdate(dataDir)
+			justUpdated = applyStagedUpdate(dataDir, exe)
 			rapid = 0
 			continue // asked for, not a crash: come straight back on the new build
 		}
@@ -80,7 +84,14 @@ func supervise(dataDir string) {
 		if time.Since(started) < 5*time.Second {
 			rapid++
 		} else {
-			rapid = 0
+			rapid, justUpdated = 0, false
+		}
+		// A brand-new build that dies on sight is the one failure that could
+		// keep the shop shut, so it gets exactly one chance before the
+		// previous build comes back.
+		if rapid >= 3 && justUpdated && rollbackUpdate(exe) {
+			justUpdated, rapid = false, 0
+			continue
 		}
 		if rapid >= 5 {
 			log.Println("server keeps dying immediately — giving up. Run it from a console to see the error.")

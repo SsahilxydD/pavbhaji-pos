@@ -44,6 +44,7 @@ import com.journeyapps.barcodescanner.ScanContract
 import com.journeyapps.barcodescanner.ScanOptions
 import com.pavbhaji.pos.Deps
 import com.pavbhaji.pos.data.Discovery
+import com.pavbhaji.pos.data.Session
 import kotlinx.coroutines.launch
 
 // Connecting a phone should be zero work: the screen hunts for the laptop by
@@ -89,8 +90,13 @@ fun ConnectScreen(onConnected: () -> Unit) {
 
     LaunchedEffect(searchKey) {
         searching = true; error = null
+        // The shop server lives on the internet now, so it is the first thing
+        // to try; a LAN sweep only matters if somebody ever puts a machine back
+        // on the counter.
+        val cloud = Discovery.verify(Session.CLOUD_SERVER)
         val lastPort = Deps.session.serverAddr.substringAfterLast(':', "").toIntOrNull()
-        val found = Discovery.search(listOfNotNull(lastPort))
+        val found = (listOfNotNull(cloud) + Discovery.search(listOfNotNull(lastPort)))
+            .distinctBy { it.addr }
         candidates = found
         searching = false
         searchedOnce = true
@@ -232,12 +238,13 @@ fun ConnectScreen(onConnected: () -> Unit) {
 // Accepts "192.168.1.50:8177", bare "192.168.1.50" (default port assumed),
 // or scanned/link forms like "http://192.168.1.50:8177/".
 private fun normalizeAddr(raw: String): String? {
-    var a = raw.trim()
-        .removePrefix("pbpos://")
-        .removePrefix("http://")
-        .removePrefix("https://")
-        .substringBefore('/')
-        .trim()
+    var a = raw.trim().removePrefix("pbpos://")
+    // A full URL is the shop server itself (https, no port) — keep it whole.
+    if (a.startsWith("http://") || a.startsWith("https://")) {
+        val u = a.trimEnd('/')
+        return if (u.substringAfter("://").isEmpty()) null else u
+    }
+    a = a.substringBefore('/').trim()
     if (a.isEmpty()) return null
     if (!a.contains(':')) a = "$a:${Discovery.DEFAULT_PORT}"
     return a

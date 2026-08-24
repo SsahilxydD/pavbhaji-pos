@@ -42,7 +42,7 @@ class Api(private val session: Session) {
 
     private val jsonMedia = "application/json; charset=utf-8".toMediaType()
 
-    fun baseUrl() = "http://" + session.serverAddr
+    fun baseUrl() = session.httpBase()
 
     private suspend inline fun <reified T> call(
         method: String, path: String, body: String? = null, auth: Boolean = true

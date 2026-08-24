@@ -26,22 +26,15 @@ object S {
     val add get() = t("Add", "जोड़ो", "ઉમેરો")
     val logout get() = t("Logout", "बाहर निकलो", "બહાર નીકળો")
 
-    // ---- app updates (pulled from the counter PC over the shop WiFi) ----
-    val updateTitle get() = t("New version", "नया वर्जन", "નવું વર્ઝન")
-    val updateNow get() = t("Update now", "अभी अपडेट करो", "હમણાં અપડેટ કરો")
+    // ---- app updates (the app pulls and installs them by itself) ----
     val updateLater get() = t("Later", "बाद में", "પછી")
-    val updateDownloading get() = t(
-        "Downloading from the counter PC…",
-        "काउंटर वाले PC से डाउनलोड हो रहा है…",
-        "કાઉન્ટરના PC પરથી ડાઉનલોડ થાય છે…"
-    )
     val updateAllowTitle get() = t(
         "One-time permission", "एक बार की परमिशन", "એક વખતની પરમિશન"
     )
     val updateAllowBody get() = t(
-        "Android asks once before an app may install its own update. Turn it on for PavBhaji POS, come back, and tap Update again.",
-        "कोई भी ऐप खुद का अपडेट लगाए, उससे पहले Android एक बार पूछता है. PavBhaji POS के लिए चालू कर दो, फिर वापस आकर Update दबाओ.",
-        "કોઈ પણ એપ પોતાનું અપડેટ લગાવે એ પહેલાં Android એક વાર પૂછે છે. PavBhaji POS માટે ચાલુ કરો, પછી પાછા આવીને Update દબાવો."
+        "Android asks once before an app may install its own updates. Turn it on for PavBhaji POS and you will never be asked again — every new version arrives on its own.",
+        "कोई भी ऐप खुद के अपडेट लगाए, उससे पहले Android एक बार पूछता है. PavBhaji POS के लिए चालू कर दो — फिर हर नया वर्जन अपने आप आ जाएगा, दोबारा पूछेगा नहीं.",
+        "કોઈ પણ એપ પોતાના અપડેટ લગાવે એ પહેલાં Android એક વાર પૂછે છે. PavBhaji POS માટે ચાલુ કરો — પછી દર નવું વર્ઝન જાતે આવી જશે, ફરી નહીં પૂછે."
     )
     val updateOpenSettings get() = t("Open settings", "सेटिंग खोलो", "સેટિંગ ખોલો")
     val reconnecting get() = t(

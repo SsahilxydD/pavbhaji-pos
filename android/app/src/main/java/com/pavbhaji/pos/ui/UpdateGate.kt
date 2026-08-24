@@ -1,32 +1,34 @@
 package com.pavbhaji.pos.ui
 
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.unit.dp
 import com.pavbhaji.pos.data.AppUpdater
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
 
-// The whole update experience on a phone: one dialog, once, after the staff
-// member is already logged in. It never interrupts an order — it appears on the
-// home screen of whatever role they are, and "Later" is always honoured unless
-// the build was published as mandatory.
+// The whole update experience on a phone: nothing.
+//
+// This just keeps a quiet loop running while somebody is logged in — ask the
+// server, pull anything newer down in the background. The swap itself happens
+// when the phone is put down (MainActivity.onStop), so no order is ever
+// interrupted and no waiter is ever asked to decide anything.
+//
+// One dialog survives, and only once per phone: Android's own switch that lets
+// an app install anything at all. Without it the update can be downloaded but
+// never applied, so it is worth interrupting for.
 @Composable
 fun UpdateGate() {
     val ctx = LocalContext.current
-    val scope = rememberCoroutineScope()
 
-    LaunchedEffect(Unit) { AppUpdater.check(ctx) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            AppUpdater.poll(ctx)
+            delay(5 * 60 * 1000L)
+        }
+    }
 
     if (AppUpdater.needsInstallPermission) {
         AlertDialog(
@@ -39,45 +41,10 @@ fun UpdateGate() {
                 }
             },
             dismissButton = {
-                TextButton(onClick = { AppUpdater.dismiss() }) { Text(S.updateLater) }
+                TextButton(onClick = { AppUpdater.dismissPermissionPrompt() }) {
+                    Text(S.updateLater)
+                }
             }
         )
-        return
     }
-
-    val u = AppUpdater.pending ?: return
-
-    AlertDialog(
-        onDismissRequest = { if (!AppUpdater.downloading && !u.mandatory) AppUpdater.dismiss() },
-        title = { Text(S.updateTitle + "  " + u.versionName) },
-        text = {
-            Column {
-                if (u.notes.isNotBlank()) Text(u.notes)
-                AppUpdater.error?.let {
-                    Spacer(Modifier.height(8.dp))
-                    Text(it)
-                }
-                if (AppUpdater.downloading) {
-                    Spacer(Modifier.height(12.dp))
-                    Text(S.updateDownloading)
-                    Spacer(Modifier.height(6.dp))
-                    LinearProgressIndicator(
-                        progress = { AppUpdater.progress },
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                }
-            }
-        },
-        confirmButton = {
-            TextButton(
-                enabled = !AppUpdater.downloading,
-                onClick = { scope.launch { AppUpdater.downloadAndInstall(ctx) } }
-            ) { Text(S.updateNow) }
-        },
-        dismissButton = {
-            if (!u.mandatory && !AppUpdater.downloading) {
-                TextButton(onClick = { AppUpdater.dismiss() }) { Text(S.updateLater) }
-            }
-        }
-    )
 }

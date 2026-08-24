@@ -43,8 +43,8 @@ object Discovery {
 
     // Snappy client just for probing — Api's 4s timeouts are too patient here.
     private val probeHttp = OkHttpClient.Builder()
-        .connectTimeout(1200, TimeUnit.MILLISECONDS)
-        .readTimeout(1500, TimeUnit.MILLISECONDS)
+        .connectTimeout(3, TimeUnit.SECONDS)
+        .readTimeout(3, TimeUnit.SECONDS)
         .build()
 
     // One full hunt: broadcast first, sweep only if nobody answered.
@@ -58,15 +58,16 @@ object Discovery {
     // signature so a new app can still connect to a server exe from before
     // /api/ping existed.
     suspend fun verify(addr: String): Found? = withContext(Dispatchers.IO) {
+        val base = asHttpBase(addr)
         try {
-            probeHttp.newCall(Request.Builder().url("http://$addr/api/ping").get().build())
+            probeHttp.newCall(Request.Builder().url("$base/api/ping").get().build())
                 .execute().use { r ->
                     if (r.code == 200) {
                         val info = json.decodeFromString<ServerInfo>(r.body?.string() ?: "")
                         return@withContext if (info.app == "pbpos") Found(addr, info.id, info.name) else null
                     }
                 }
-            probeHttp.newCall(Request.Builder().url("http://$addr/").get().build())
+            probeHttp.newCall(Request.Builder().url("$base/").get().build())
                 .execute().use { r ->
                     if (r.isSuccessful && r.body?.string()?.contains("PavBhaji POS") == true)
                         Found(addr, "", "PavBhaji POS") else null

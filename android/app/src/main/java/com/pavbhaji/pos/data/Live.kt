@@ -43,7 +43,7 @@ class Live(private val session: Session, private val api: Api) {
                 val opened = MutableStateFlow(true)
                 val sawOpen = AtomicBoolean(false)
                 val req = Request.Builder()
-                    .url("ws://" + session.serverAddr + "/ws?token=" + session.token)
+                    .url(session.wsBase() + "/ws?token=" + session.token)
                     .build()
                 ws = api.http.newWebSocket(req, object : WebSocketListener() {
                     override fun onOpen(webSocket: WebSocket, response: Response) {
@@ -76,6 +76,10 @@ class Live(private val session: Session, private val api: Api) {
     // updating it here heals the whole app. Only trusts a server proving the
     // same identity — or any single one if this install never saw an id.
     private suspend fun rediscover(deep: Boolean) {
+        // A server on the internet does not move. Dead dials there mean this
+        // phone has lost its connection, and sweeping the shop WiFi for a
+        // machine that was never on it only burns battery.
+        if (session.serverAddr.startsWith("http")) return
         val lastPort = session.serverAddr.substringAfterLast(':', "").toIntOrNull()
         val found = if (deep) Discovery.search(listOfNotNull(lastPort)) else Discovery.broadcast()
         val ours = found.firstOrNull { it.id.isNotEmpty() && it.id == session.serverId }

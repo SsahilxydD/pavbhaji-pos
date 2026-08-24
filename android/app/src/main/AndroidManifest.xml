@@ -3,8 +3,8 @@
     <uses-permission android:name="android.permission.INTERNET"/>
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
     <uses-permission android:name="android.permission.CAMERA"/>
-    <!-- Updates arrive from the counter PC over the shop WiFi; Android still
-         asks the staff member to confirm each install. -->
+    <!-- The app pulls its own updates off the server and installs them itself,
+         without a tap, once Android trusts it as its own installer. -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"/>
     <uses-feature android:name="android.hardware.camera" android:required="false"/>
     <application
@@ -30,7 +30,11 @@
             android:stateNotNeeded="true"
             android:theme="@style/zxing_CaptureTheme"
             android:windowSoftInputMode="stateAlwaysHidden"/>
-        <!-- Hands the downloaded APK to the system installer. -->
+        <!-- Where PackageInstaller reports back: done, refused, or needs a tap. -->
+        <receiver
+            android:name=".data.InstallReceiver"
+            android:exported="false"/>
+        <!-- Fallback path: hand the APK to the system installer instead. -->
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.updates"

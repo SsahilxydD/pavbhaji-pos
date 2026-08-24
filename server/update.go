@@ -222,7 +222,12 @@ func (s *Server) checkForUpdates() {
 	}
 	base := s.updateBase()
 	s.checkAndroidUpdate(base)
-	s.checkServerUpdate(base)
+	// The exe channel only ever holds Windows builds. The server itself now
+	// runs on the VPS under systemd, which updates it a far safer way, so a
+	// non-Windows build must never try to swap itself for one.
+	if runtime.GOOS == "windows" {
+		s.checkServerUpdate(base)
+	}
 	setMeta(s.db, "update_last_check", fmt.Sprint(nowMs()))
 }
 

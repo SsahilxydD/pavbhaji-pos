@@ -484,10 +484,17 @@ fun BillScreen(tableId: Long, tableName: String, onBack: () -> Unit) {
         )
     }
     if (confirmClose) {
+        // Unserved plates no longer block the close — the cashier just sees
+        // exactly what is going out unserved before they tap it.
+        val left = (order?.tickets ?: emptyList()).flatMap { it.items }
+            .filter { it.status != "served" && it.status != "cancelled" }
+            .map { "• ${it.qty}× ${it.name}" }
         ConfirmDialog(
             title = S.closeQ(tableName),
-            body = S.totalLine(rupees(bill?.total ?: order?.total ?: 0)) + "\n" + S.collectFirst,
-            confirmLabel = S.closeTable,
+            body = S.totalLine(rupees(bill?.total ?: order?.total ?: 0)) + "\n" + S.collectFirst +
+                if (left.isEmpty()) ""
+                else "\n\n" + S.notServedYet + "\n" + left.joinToString("\n") + "\n" + S.closeAnywayHint,
+            confirmLabel = if (left.isEmpty()) S.closeTable else S.closeAnyway,
             onConfirm = { confirmClose = false; closeNow() },
             onDismiss = { confirmClose = false }
         )

@@ -174,6 +174,13 @@ object S {
     fun closeQ(table: String) = t("Close $table?", "$table बंद करें?", "$table બંધ કરવું?")
     fun totalLine(amt: String) = t("Total: $amt", "कुल: $amt", "કુલ: $amt")
     val collectFirst get() = t("Collect payment before closing.", "बंद करने से पहले पैसे ले लो।", "બંધ કરતાં પહેલાં પૈસા લઈ લો.")
+    val notServedYet get() = t("Not served yet:", "अभी तक परोसा नहीं गया:", "હજી પીરસાયું નથી:")
+    val closeAnyway get() = t("Close anyway", "फिर भी बंद करो", "તોય બંધ કરો")
+    val closeAnywayHint get() = t(
+        "\nThese are already on the bill and will count as served once the table closes. Don't want to give them? Get them cancelled first.",
+        "\nये बिल में पहले से हैं और टेबल बंद होते ही परोसे हुए गिने जाएँगे। नहीं देनी हैं तो पहले रद्द करा दो।",
+        "\nઆ બિલમાં પહેલેથી છે અને ટેબલ બંધ થતાં જ પીરસાયેલા ગણાશે. નથી આપવા? તો પહેલાં રદ કરાવી દો."
+    )
     val cantClose get() = t("Can't close yet", "अभी बंद नहीं हो सकता", "હજી બંધ ન થાય")
     val cantCloseHint get() = t(
         "\nOnly waiters mark plates served, one by one as they carry them. Wait for that — or cancel items with a reason.",

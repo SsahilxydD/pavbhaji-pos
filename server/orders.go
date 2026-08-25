@@ -866,9 +866,12 @@ func (s *Server) handleItemCancel(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
-// POST /api/orders/{id}/close — only when every line is served or cancelled.
-// Otherwise 409 with a human-readable list of blockers. No force flag: the
-// day-close report must reconcile, so we never fake item states.
+// POST /api/orders/{id}/close — the cashier owns the table's exit. Unserved
+// lines do NOT block it (25 Aug 2026): whatever is still pending/on the tawa
+// when the money is settled gets force-served with the close, so the kitchen
+// queue clears and the day report reconciles against the bill it was paid on.
+// The audit event names every line that went out that way. The money gates
+// (bill generated, subtotal fresh, payment adds up) still stand.
 func (s *Server) handleCloseOrder(w http.ResponseWriter, r *http.Request) {
 	st := staffFrom(r)
 	orderID, _ := strconv.ParseInt(r.PathValue("id"), 10, 64)
@@ -896,21 +899,14 @@ func (s *Server) handleCloseOrder(w http.ResponseWriter, r *http.Request) {
 		fail(w, http.StatusInternalServerError, "db error")
 		return
 	}
-	var blockers []string
+	var unserved []string
 	for rows.Next() {
 		var qty int64
 		var name, status string
 		rows.Scan(&qty, &name, &status)
-		blockers = append(blockers, fmt.Sprintf("%d× %s — still %s", qty, name, status))
+		unserved = append(unserved, fmt.Sprintf("%d× %s (was %s)", qty, name, status))
 	}
 	rows.Close()
-	if len(blockers) > 0 {
-		writeJSON(w, http.StatusConflict, apiError{
-			Error:    "some items are not served or cancelled yet",
-			Blockers: blockers,
-		})
-		return
-	}
 
 	var total int64
 	tx.QueryRow(`SELECT COALESCE(SUM(qty*price),0) FROM ticket_items ti
@@ -938,6 +934,17 @@ func (s *Server) handleCloseOrder(w http.ResponseWriter, r *http.Request) {
 	}
 
 	now := nowMs()
+	// Sweep whatever never made it out. Same shape as a cancel: the batch row
+	// is left alone — an emptied bucket drops out of the chef's queue on its
+	// own (qty 0) and never holds its chef hostage.
+	if len(unserved) > 0 {
+		if _, err := tx.Exec(`UPDATE ticket_items SET status='served', status_at=?, status_by=?
+			WHERE ticket_id IN (SELECT id FROM tickets WHERE order_id=?)
+			  AND status NOT IN ('served','cancelled')`, now, st.ID, orderID); err != nil {
+			fail(w, http.StatusInternalServerError, "could not clear the unserved items")
+			return
+		}
+	}
 	if _, err := tx.Exec(`UPDATE orders SET status='closed', closed_by=?, closed_at=? WHERE id=?`,
 		st.ID, now, orderID); err != nil {
 		fail(w, http.StatusInternalServerError, "could not close order")
@@ -949,6 +956,10 @@ func (s *Server) handleCloseOrder(w http.ResponseWriter, r *http.Request) {
 		detail += fmt.Sprintf(", discount %s", billRupees(bDiscount))
 	}
 	detail += ")"
+	if len(unserved) > 0 {
+		detail += fmt.Sprintf(" · closed with %d unserved line(s): %s",
+			len(unserved), strings.Join(unserved, ", "))
+	}
 	if _, err := tx.Exec(`INSERT INTO events(at, staff_id, staff_name, action, detail) VALUES(?,?,?,?,?)`,
 		now, st.ID, st.Name, "order:closed", detail); err != nil {
 		fail(w, http.StatusInternalServerError, "could not write audit event")

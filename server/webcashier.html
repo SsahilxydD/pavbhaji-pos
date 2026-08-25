@@ -361,10 +361,25 @@ function askDiscount() {
 
 function confirmClose() {
   var total = cur.bill ? cur.bill.total : cur.order.total;
-  showModal('Close ' + cur.order.tableName + '?',
-    '<div class="mut">Total: ' + rupees(total) + '<br>Collect payment before closing.</div>',
+  // Unserved plates don't block the close any more — but the cashier is told
+  // exactly what is going out unserved before they tap it.
+  var left = [];
+  (cur.order.tickets || []).forEach(function (tk) {
+    (tk.items || []).forEach(function (it) {
+      if (it.status !== 'served' && it.status !== 'cancelled') left.push(it.qty + '× ' + it.name);
+    });
+  });
+  var body = '<div class="mut">Total: ' + rupees(total) + '<br>Collect payment before closing.</div>';
+  if (left.length) {
+    body += '<div class="amber" style="font-size:13px;font-weight:600;margin-top:8px">' +
+      'Abhi tak serve nahi hua:<br>• ' + left.map(esc).join('<br>• ') + '</div>' +
+      '<div class="hint">Table band ho jayega aur ye plates served maan liye jayenge (bill me ye already counted hain). ' +
+      'Nahi dena hai to pehle manager se cancel karao.</div>';
+  }
+  showModal('Close ' + cur.order.tableName + '?', body,
     [{ label:'Back', cls:'ghost' },
-     { label:'Close table', cls:'okbtn', act: function () { hideModal(); closeOrder(); } }]);
+     { label: left.length ? 'Close anyway' : 'Close table', cls:'okbtn',
+       act: function () { hideModal(); closeOrder(); } }]);
 }
 
 async function closeOrder() {

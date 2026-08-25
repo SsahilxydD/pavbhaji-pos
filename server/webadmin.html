@@ -569,6 +569,38 @@ async function olderLog() {
   const d = await api('GET','/api/admin/audit?beforeId=' + logEvents[logEvents.length-1].id + (logType ? '&type='+logType : ''));
   logEvents = logEvents.concat(d.events); paintLog();
 }
+
+// ---- handoff from the PIN gate at "/" ----------------------------------
+// The shop has one link. When someone types the admin PIN there, the gate
+// already holds a live session — adopting it here means the admin isn't
+// asked for the same PIN twice. Typing /admin directly still shows the
+// login box below, so this page keeps working on its own.
+const TOK = 'pbpos.token', WHO = 'pbpos.staff';
+(function adopt() {
+  let t, s;
+  try { t = localStorage.getItem(TOK); s = JSON.parse(localStorage.getItem(WHO) || 'null'); }
+  catch (e) { return; }
+  if (!t || !s || s.role !== 'admin') return;
+  token = t; me = s;
+  $('login').hidden = true; $('app').hidden = false;
+  $('who').textContent = me.name;
+  show('dashboard');
+})();
+
+// Keep the shared session in step: a PIN typed here should also unlock a jump
+// to /manager, and logging out here must not leave a stale token behind.
+const _doLogin = doLogin;
+doLogin = async function () {
+  await _doLogin();
+  if (token) { localStorage.setItem(TOK, token); localStorage.setItem(WHO, JSON.stringify(me)); }
+};
+const _logout = logout;
+logout = function () {
+  _logout();
+  localStorage.removeItem(TOK); localStorage.removeItem(WHO);
+  location.replace('/');
+};
+$('logoutBtn').onclick = logout;
 </script>
 </body>
 </html>

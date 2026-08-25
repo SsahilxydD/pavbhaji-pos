@@ -1,0 +1,346 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#a93307">
+<title>PavBhaji POS — Manager</title>
+<link rel="stylesheet" href="/pos.css">
+</head>
+<body>
+
+<div class="top">
+  <div class="tile">🍽</div>
+  <div class="ttl"><b>Manager</b><small id="who"></small></div>
+  <button id="logoutBtn">logout</button>
+</div>
+
+<div class="tabs" id="tabs"></div>
+<div class="wrap" id="view"></div>
+<div id="bar"></div>
+<div id="toasts"></div>
+
+<script>
+'use strict';
+var TOK = 'pbpos.token', WHO = 'pbpos.staff';
+var token = localStorage.getItem(TOK) || '';
+var me = null;
+try { me = JSON.parse(localStorage.getItem(WHO) || 'null'); } catch (e) { me = null; }
+// The server enforces the role on every call; this is only so a cashier who
+// hand-types /manager gets sent home instead of staring at dead buttons.
+if (!token || !me || (me.role !== 'manager' && me.role !== 'admin')) location.replace('/');
+
+var $ = function (id) { return document.getElementById(id); };
+var esc = function (s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+    return { '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c];
+  });
+};
+var rupees = function (p) { return p % 100 === 0 ? '₹' + (p / 100) : '₹' + (p / 100).toFixed(2); };
+var clock = function (ms) { return new Date(ms).toTimeString().slice(0, 5); };
+var uid = function () {
+  if (window.crypto && crypto.randomUUID) return crypto.randomUUID();
+  return 'w' + Date.now() + Math.random().toString(16).slice(2, 12);
+};
+
+function toast(msg, kind) {
+  var el = document.createElement('div');
+  el.className = 'toast' + (kind ? ' ' + kind : '');
+  el.textContent = msg;
+  $('toasts').appendChild(el);
+  setTimeout(function () { el.style.opacity = '0'; el.style.transition = 'opacity .3s'; }, 2600);
+  setTimeout(function () { el.remove(); }, 3000);
+}
+
+function signOut(silent) {
+  if (token && !silent) fetch('/api/logout', { method:'POST', headers:{ 'Authorization':'Bearer ' + token } });
+  localStorage.removeItem(TOK); localStorage.removeItem(WHO);
+  location.replace('/');
+}
+$('logoutBtn').onclick = function () { signOut(false); };
+$('who').textContent = me.name;
+
+async function api(method, path, body) {
+  var r = await fetch(path, {
+    method: method,
+    headers: { 'Content-Type':'application/json', 'Authorization':'Bearer ' + token },
+    body: body === undefined ? undefined : JSON.stringify(body)
+  });
+  if (r.status === 401) { signOut(true); throw new Error('session expired'); }
+  var d = await r.json().catch(function () { return {}; });
+  if (!r.ok) { var e = new Error(d.error || ('server error ' + r.status)); e.blockers = d.blockers; throw e; }
+  return d;
+}
+
+// ---------------------------------------------------------------- state
+var tab = 'tables', timer = null, menu = [], cart = [], openTable = null, parcelMode = false;
+
+var TABS = { tables:['🪑','Tables'], parcel:['🥡','Parcel'], kitchen:['🔥','Kitchen'] };
+function paintTabs() {
+  $('tabs').innerHTML = Object.keys(TABS).map(function (k) {
+    return '<button class="' + (k === tab ? 'on' : '') + '" data-tab="' + k + '">' +
+           TABS[k][0] + ' ' + TABS[k][1] + '</button>';
+  }).join('');
+}
+$('tabs').addEventListener('click', function (e) {
+  var b = e.target.closest('button[data-tab]');
+  if (b) show(b.dataset.tab);
+});
+
+function show(t) {
+  tab = t; clearInterval(timer);
+  openTable = null; cart = []; parcelMode = (t === 'parcel');
+  $('bar').innerHTML = '';
+  paintTabs();
+  ({ tables:tables, parcel:parcel, kitchen:kitchen })[t]();
+}
+
+async function loadMenu() {
+  if (menu.length) return menu;
+  var d = await api('GET', '/api/menu');
+  menu = d.menu || [];
+  return menu;
+}
+
+// ---------------------------------------------------------------- tables
+async function tables() {
+  var paint = async function () {
+    var d = await api('GET', '/api/tables');
+    if (tab !== 'tables' || openTable) return;
+    var list = (d.tables || []).filter(function (t) { return t.kind !== 'parcel'; });
+    var parcels = (d.tables || []).filter(function (t) { return t.kind === 'parcel' && t.order; });
+    $('view').innerHTML =
+      '<h2>Tables</h2><div class="grid">' + list.map(tableTile).join('') + '</div>' +
+      (parcels.length ? '<h2>Chal rahe parcel</h2><div class="grid">' + parcels.map(tableTile).join('') + '</div>' : '');
+  };
+  await paint().catch(function (e) { toast(e.message, 'bad'); });
+  timer = setInterval(function () { paint().catch(function () {}); }, 10000);
+}
+
+function tableTile(t) {
+  var o = t.order;
+  return '<button class="tile-btn' + (o ? ' busy' : '') + '" data-table="' + t.id + '" data-name="' + esc(t.name) + '">' +
+    '<span class="nm">' + (t.kind === 'parcel' ? '🥡 ' : '') + esc(t.name) + '</span>' +
+    (o
+      ? '<span class="sub">#' + o.orderNo + ' · ' + clock(o.openedAt) + ' · ' + o.itemCount + ' plate</span>' +
+        (o.pendingCount ? '<span class="sub">⏳ ' + o.pendingCount + ' banna baaki</span>' : '') +
+        (o.readyCount ? '<span class="sub">✅ ' + o.readyCount + ' ready</span>' : '') +
+        '<span class="amt">' + rupees(o.total) + '</span>'
+      : '<span class="sub">khaali</span><span class="amt" style="color:var(--ink3)">—</span>') +
+    '</button>';
+}
+
+$('view').addEventListener('click', function (e) {
+  var t = e.target.closest('button[data-table]');
+  if (t) openTableView(Number(t.dataset.table), t.dataset.name);
+});
+
+// ------------------------------------------------------- one table's order
+async function openTableView(id, name) {
+  clearInterval(timer);
+  openTable = { id: id, name: name };
+  cart = [];
+  await refreshTable();
+}
+
+async function refreshTable() {
+  var d = await api('GET', '/api/dining-tables/' + openTable.id + '/order');
+  var o = d.order;
+  openTable.order = o;
+  var html = '<div class="row" style="margin-bottom:12px">' +
+    '<button class="ghost" id="backBtn" style="min-height:42px;padding:9px 14px">‹ Tables</button>' +
+    '<b class="grow" style="font-size:17px;text-align:center">' + esc(openTable.name) + '</b>' +
+    '<span style="width:86px"></span></div>';
+
+  if (!o) {
+    html += '<div class="empty">Is table pe koi order nahi.<br>Neeche se items add karo.</div>';
+  } else {
+    html += '<div class="card"><div class="row" style="margin-bottom:6px">' +
+      '<b>Order #' + o.orderNo + '</b>' +
+      '<span class="right mut">' + clock(o.openedAt) + ' · ' + esc(o.openedByName) + '</span></div>';
+    (o.tickets || []).forEach(function (tk) {
+      html += '<div class="mut" style="margin:10px 0 2px;font-weight:700">KOT #' + tk.ticketNo + ' · ' + clock(tk.createdAt) + '</div>';
+      (tk.items || []).forEach(function (it) {
+        html += '<div class="line">' +
+          '<span class="qty">' + it.qty + '×</span>' +
+          '<span class="grow"><span class="nm">' + esc(it.name) + '</span>' +
+          (it.note ? '<div class="note">📝 ' + esc(it.note) + '</div>' : '') +
+          (it.cancelReason ? '<div class="note">✕ ' + esc(it.cancelReason) + '</div>' : '') +
+          '</span>' +
+          '<span class="pill p-' + it.status + '">' + it.status + '</span>' +
+          (it.status === 'pending'
+            ? '<button class="danger" data-cancel="' + it.id + '" data-nm="' + esc(it.name) + '" style="min-height:38px;padding:8px 11px;font-size:13px">cancel</button>'
+            : '') +
+          '</div>';
+      });
+    });
+    html += '<div class="row" style="margin-top:12px;padding-top:11px;border-top:1px solid var(--line)">' +
+      '<b>Total</b><b class="right tnum">' + rupees(o.total) + '</b></div></div>';
+  }
+
+  html += '<button class="primary" id="addBtn" style="width:100%">+ Items add karo</button>';
+  $('view').innerHTML = html;
+  $('bar').innerHTML = '';
+  $('backBtn').onclick = function () { show('tables'); };
+  $('addBtn').onclick = function () { picker(openTable.name, sendTicket); };
+
+  $('view').querySelectorAll('button[data-cancel]').forEach(function (b) {
+    b.onclick = async function () {
+      var reason = prompt('Cancel "' + b.dataset.nm + '" — kyun? (kam se kam 2 akshar)');
+      if (reason === null) return;
+      try {
+        await api('POST', '/api/items/' + b.dataset.cancel + '/cancel', { reason: reason.trim() });
+        toast('Cancel ho gaya', 'ok');
+        await refreshTable();
+      } catch (e) { toast(e.message, 'bad'); }
+    };
+  });
+}
+
+// ---------------------------------------------------------------- picker
+async function picker(title, onSend) {
+  clearInterval(timer);
+  try { await loadMenu(); } catch (e) { toast(e.message, 'bad'); return; }
+  var html = '<div class="row" style="margin-bottom:12px">' +
+    '<button class="ghost" id="pBack" style="min-height:42px;padding:9px 14px">‹ Back</button>' +
+    '<b class="grow" style="font-size:17px;text-align:center">' + esc(title) + '</b>' +
+    '<span style="width:86px"></span></div>';
+  menu.forEach(function (c) {
+    html += '<h2>' + esc(c.name) + '</h2><div class="card">';
+    (c.items || []).forEach(function (it) {
+      html += '<div class="line" data-item="' + it.id + '">' +
+        '<span class="grow"><span class="nm">' + esc(it.name) + '</span>' +
+        '<div class="mut tnum">' + rupees(it.price) + (it.available ? '' : ' · khatam') + '</div></span>' +
+        '<span class="step">' +
+          '<button data-dec="' + it.id + '">−</button>' +
+          '<b id="q' + it.id + '">0</b>' +
+          '<button data-inc="' + it.id + '" data-nm="' + esc(it.name) + '" data-pr="' + it.price + '">+</button>' +
+        '</span></div>';
+    });
+    html += '</div>';
+  });
+  $('view').innerHTML = html;
+  $('pBack').onclick = function () {
+    cart = [];
+    if (parcelMode) show('parcel'); else refreshTable();
+  };
+  $('view').querySelectorAll('button[data-inc]').forEach(function (b) {
+    b.onclick = function () { bump(Number(b.dataset.inc), 1, b.dataset.nm, Number(b.dataset.pr), onSend); };
+  });
+  $('view').querySelectorAll('button[data-dec]').forEach(function (b) {
+    b.onclick = function () { bump(Number(b.dataset.dec), -1, '', 0, onSend); };
+  });
+  paintCartBar(onSend);
+}
+
+function bump(id, delta, name, price, onSend) {
+  var line = cart.filter(function (l) { return l.menuItemId === id; })[0];
+  if (!line) {
+    if (delta < 0) return;
+    line = { menuItemId: id, name: name, price: price, qty: 0, note: '' };
+    cart.push(line);
+  }
+  line.qty += delta;
+  if (line.qty <= 0) cart = cart.filter(function (l) { return l.menuItemId !== id; });
+  var q = $('q' + id);
+  if (q) q.textContent = String(line.qty > 0 ? line.qty : 0);
+  paintCartBar(onSend);
+}
+
+function cartTotal() {
+  return cart.reduce(function (s, l) { return s + l.qty * l.price; }, 0);
+}
+
+function paintCartBar(onSend) {
+  if (!cart.length) { $('bar').innerHTML = ''; return; }
+  var n = cart.reduce(function (s, l) { return s + l.qty; }, 0);
+  $('bar').className = 'bar';
+  $('bar').innerHTML =
+    '<span class="tot">' + n + ' plate · ' + rupees(cartTotal()) + '</span>' +
+    '<button class="primary" id="sendBtn">Kitchen bhejo</button>';
+  $('sendBtn').onclick = function () { onSend(); };
+}
+
+async function sendTicket() {
+  var btn = $('sendBtn'); if (btn) btn.disabled = true;
+  try {
+    await api('POST', '/api/dining-tables/' + openTable.id + '/tickets', {
+      clientTicketId: uid(),
+      items: cart.map(function (l) { return { menuItemId: l.menuItemId, qty: l.qty, note: l.note }; })
+    });
+    cart = [];
+    $('bar').innerHTML = '';
+    toast('Kitchen ko bhej diya ✓', 'ok');
+    await refreshTable();
+  } catch (e) {
+    toast(e.message, 'bad');
+    if (btn) btn.disabled = false;
+  }
+}
+
+// ---------------------------------------------------------------- parcel
+function parcel() {
+  $('view').innerHTML =
+    '<h2>Naya parcel</h2><div class="card">' +
+    '<label class="fld"><span>Customer ka naam *</span><input id="pcName" maxlength="60" placeholder="naam"></label>' +
+    '<label class="fld"><span>Phone (optional)</span><input id="pcPhone" inputmode="tel" maxlength="20" placeholder="98xxxxxxxx"></label>' +
+    '<button class="primary" id="pcNext" style="width:100%">Items chuno ›</button></div>' +
+    '<p class="hint">Parcel banane ke baad wo Tables screen pe "chal rahe parcel" me dikhega.</p>';
+  $('pcNext').onclick = function () {
+    var nm = $('pcName').value.trim();
+    if (!nm) { toast('Customer ka naam chahiye', 'bad'); return; }
+    openTable = { parcelName: nm, parcelPhone: $('pcPhone').value.trim() };
+    cart = [];
+    picker('🥡 ' + nm, sendParcel);
+  };
+}
+
+async function sendParcel() {
+  var btn = $('sendBtn'); if (btn) btn.disabled = true;
+  try {
+    await api('POST', '/api/parcels', {
+      customerName: openTable.parcelName,
+      customerPhone: openTable.parcelPhone,
+      clientTicketId: uid(),
+      items: cart.map(function (l) { return { menuItemId: l.menuItemId, qty: l.qty, note: l.note }; })
+    });
+    cart = [];
+    toast('Parcel ban gaya ✓', 'ok');
+    show('tables');
+  } catch (e) {
+    toast(e.message, 'bad');
+    if (btn) btn.disabled = false;
+  }
+}
+
+// ---------------------------------------------------------------- kitchen
+async function kitchen() {
+  var paint = async function () {
+    var d = await api('GET', '/api/kitchen');
+    if (tab !== 'kitchen') return;
+    var bs = d.buckets || [];
+    if (!bs.length) { $('view').innerHTML = '<div class="empty">Kitchen khaali hai — kuch pending nahi.</div>'; return; }
+    $('view').innerHTML = '<h2>Tawa pe / queue me</h2>' + bs.map(function (b) {
+      return '<div class="card"><div class="row" style="margin-bottom:6px">' +
+        '<b>' + esc(b.name) + '</b>' +
+        '<span class="pill p-' + b.status + '">' + b.status + '</span>' +
+        '<span class="right mut tnum">' + b.qty + '/' + (b.cap || d.cap) + '</span></div>' +
+        (b.takenByName ? '<div class="mut">👨‍🍳 ' + esc(b.takenByName) + '</div>' : '') +
+        (b.lines || []).map(function (l) {
+          return '<div class="line"><span class="qty">' + l.qty + '×</span>' +
+            '<span class="grow"><span class="nm">' + esc(l.tableName) + '</span>' +
+            (l.note ? '<div class="note">📝 ' + esc(l.note) + '</div>' : '') + '</span>' +
+            (l.done ? '<span class="pill p-ready">ready</span>' : '') + '</div>';
+        }).join('') + '</div>';
+    }).join('');
+  };
+  await paint().catch(function (e) { toast(e.message, 'bad'); });
+  timer = setInterval(function () { paint().catch(function () {}); }, 8000);
+}
+
+show('tables');
+</script>
+</body>
+</html>

@@ -1,0 +1,268 @@
+/* Shared skin for the browser screens (login gate, manager, cashier).
+   Phone-first on purpose: these run on the staff's own iPhones in Safari,
+   so every tap target clears 44px and every input sits at >=16px — below
+   that iOS zooms the page on focus and the layout jumps. No CDNs, no web
+   fonts: the shop's link is a cheap VPS and the page must paint instantly. */
+:root {
+  --red:#c63c0a; --red-deep:#a93307; --red-dark:#7a2e0e;
+  --ink:#221a12; --ink2:#6e6055; --ink3:#9c8d80;
+  --line:#efe6da; --bg:#faf6f0; --card:#ffffff;
+  --green:#1e8f53; --green-bg:#e4f6ea;
+  --amber:#b26a00; --amber-bg:#fff3e2;
+  --blue:#1f5fa8; --blue-bg:#e8f0fa;
+  --danger:#d23b2e; --danger-bg:#fdecea;
+  --shadow:0 1px 2px rgba(60,35,20,.06), 0 4px 16px rgba(60,35,20,.05);
+  --r:16px;
+  --safe-b:env(safe-area-inset-bottom, 0px);
+}
+* { box-sizing:border-box; margin:0; -webkit-tap-highlight-color:transparent; }
+html { -webkit-text-size-adjust:100%; }
+body {
+  font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  background:var(--bg); color:var(--ink);
+  font-size:15px; line-height:1.45;
+  padding-bottom:calc(var(--safe-b) + 8px);
+  overscroll-behavior-y:contain;
+}
+[hidden] { display:none !important; }
+
+/* ---------- top bar ---------- */
+.top {
+  position:sticky; top:0; z-index:20;
+  background:linear-gradient(160deg,#d4450f,#a93307); color:#fff;
+  padding:calc(env(safe-area-inset-top, 0px) + 11px) 14px 11px;
+  display:flex; align-items:center; gap:11px;
+  box-shadow:0 2px 10px rgba(60,35,20,.12);
+}
+.top .tile {
+  width:36px; height:36px; border-radius:12px; background:rgba(255,255,255,.16);
+  display:grid; place-items:center; font-size:19px; flex:0 0 36px;
+}
+.top .ttl { flex:1; min-width:0; }
+.top .ttl b { display:block; font-size:15.5px; letter-spacing:-.2px; }
+.top .ttl small { display:block; opacity:.78; font-size:11.5px; }
+.top button {
+  font:inherit; font-weight:700; font-size:13px; cursor:pointer;
+  background:rgba(255,255,255,.14); color:#fff;
+  border:1px solid rgba(255,255,255,.28); border-radius:11px;
+  padding:9px 12px; min-height:38px;
+}
+.top button:active { background:rgba(255,255,255,.26); }
+
+/* ---------- tab strip ---------- */
+.tabs {
+  position:sticky; top:0; z-index:15;
+  display:flex; gap:6px; padding:9px 12px;
+  background:var(--bg); border-bottom:1px solid var(--line);
+  overflow-x:auto; -webkit-overflow-scrolling:touch;
+}
+.tabs button {
+  font:inherit; font-weight:700; font-size:13.5px; cursor:pointer; white-space:nowrap;
+  background:var(--card); color:var(--ink2);
+  border:1px solid var(--line); border-radius:99px;
+  padding:9px 15px; min-height:40px;
+}
+.tabs button.on { background:var(--red); color:#fff; border-color:var(--red); }
+
+.wrap { max-width:760px; margin:0 auto; padding:14px 12px 26px; }
+
+/* ---------- cards / rows ---------- */
+.card {
+  background:var(--card); border:1px solid var(--line); border-radius:var(--r);
+  padding:14px; margin-bottom:11px; box-shadow:var(--shadow);
+}
+h2 {
+  font-size:11.5px; letter-spacing:.09em; color:var(--ink3);
+  margin:18px 0 8px; text-transform:uppercase; font-weight:800;
+}
+h2:first-child { margin-top:4px; }
+.mut { color:var(--ink2); font-size:13px; }
+.hint { color:var(--ink3); font-size:12.5px; margin-top:9px; }
+.row { display:flex; align-items:center; gap:10px; }
+.row .grow { flex:1; min-width:0; }
+.right { margin-left:auto; }
+.tnum { font-variant-numeric:tabular-nums; }
+
+/* ---------- buttons ---------- */
+button.primary, button.ghost, button.danger, button.okbtn {
+  font:inherit; font-weight:700; font-size:15px; cursor:pointer;
+  border-radius:13px; padding:12px 16px; min-height:46px; border:1px solid transparent;
+}
+button.primary { background:var(--red); color:#fff; }
+button.primary:active { background:var(--red-deep); }
+button.okbtn { background:var(--green); color:#fff; }
+button.ghost { background:var(--card); color:var(--ink); border-color:var(--line); }
+button.danger { background:var(--danger-bg); color:var(--danger); border-color:#f6cfca; }
+button:disabled { opacity:.45; }
+.btnrow { display:flex; gap:9px; }
+.btnrow > * { flex:1; }
+
+/* ---------- inputs (>=16px or iOS zooms) ---------- */
+input, select, textarea {
+  font:inherit; font-size:16px; color:var(--ink);
+  background:var(--card); border:1px solid var(--line);
+  border-radius:12px; padding:12px 13px; width:100%; min-height:46px;
+}
+input:focus, select, textarea:focus { outline:2px solid #f3c3ab; outline-offset:1px; }
+input.num { font-variant-numeric:tabular-nums; }
+label.fld { display:block; margin-bottom:10px; }
+label.fld span { display:block; font-size:12px; font-weight:700; color:var(--ink2); margin-bottom:5px; }
+
+/* ---------- pills ---------- */
+.pill {
+  display:inline-block; font-size:11px; font-weight:800; letter-spacing:.03em;
+  padding:4px 9px; border-radius:99px; text-transform:uppercase;
+}
+.p-pending { background:var(--amber-bg); color:var(--amber); }
+.p-preparing { background:var(--blue-bg); color:var(--blue); }
+.p-ready { background:var(--green-bg); color:var(--green); }
+.p-served { background:#f1ece5; color:var(--ink2); }
+.p-cancelled { background:var(--danger-bg); color:var(--danger); }
+
+/* ---------- table / order grid ---------- */
+.grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:10px; }
+.tile-btn {
+  text-align:left; font:inherit; cursor:pointer;
+  background:var(--card); border:1px solid var(--line); border-radius:var(--r);
+  padding:13px; box-shadow:var(--shadow); min-height:88px;
+  display:flex; flex-direction:column; gap:4px;
+}
+.tile-btn:active { border-color:var(--red); }
+.tile-btn.busy { border-color:#f0c2a8; background:#fff8f3; }
+.tile-btn .nm { font-weight:800; font-size:15.5px; }
+.tile-btn .sub { font-size:12px; color:var(--ink2); }
+.tile-btn .amt { font-weight:800; font-size:15px; color:var(--red-deep); margin-top:auto; }
+
+/* ---------- line items ---------- */
+.line {
+  display:flex; align-items:center; gap:10px;
+  padding:11px 0; border-bottom:1px solid var(--line);
+}
+.line:last-child { border-bottom:0; }
+.line .nm { font-weight:700; }
+.line .note { font-size:12px; color:var(--amber); }
+.line .qty { font-weight:800; font-variant-numeric:tabular-nums; min-width:30px; }
+
+/* stepper for picking quantities */
+.step { display:flex; align-items:center; gap:8px; }
+.step button {
+  width:40px; height:40px; border-radius:12px; font-size:20px; font-weight:700;
+  background:var(--card); border:1px solid var(--line); color:var(--ink); cursor:pointer;
+}
+.step button:active { background:var(--line); }
+.step b { min-width:26px; text-align:center; font-variant-numeric:tabular-nums; }
+
+/* ---------- sticky action bar ---------- */
+.bar {
+  position:sticky; bottom:0; z-index:18;
+  background:rgba(250,246,240,.96); backdrop-filter:blur(8px);
+  border-top:1px solid var(--line);
+  padding:11px 12px calc(var(--safe-b) + 11px);
+  display:flex; gap:10px; align-items:center;
+}
+.bar .tot { font-weight:800; font-size:17px; font-variant-numeric:tabular-nums; }
+.bar button { flex:1; }
+
+/* ---------- login ---------- */
+#login { max-width:340px; margin:11vh auto 0; padding:0 16px; text-align:center; }
+#login .tile {
+  width:76px; height:76px; margin:0 auto 14px; border-radius:24px; font-size:38px;
+  background:linear-gradient(160deg,#d4450f,#a93307); color:#fff; display:grid; place-items:center;
+  box-shadow:0 8px 24px rgba(166,50,7,.28);
+}
+#login h1 { font-size:22px; letter-spacing:-.5px; margin-bottom:2px; }
+#login p.sub { color:var(--ink2); font-size:13.5px; margin-bottom:18px; }
+#login .card { padding:20px; }
+#login input {
+  font-size:27px; letter-spacing:.45em; text-align:center; padding-left:.45em;
+  margin-bottom:12px; min-height:56px;
+}
+.err { color:var(--danger); font-size:13px; min-height:19px; margin-bottom:8px; }
+
+/* ---------- toast ---------- */
+#toasts {
+  position:fixed; left:12px; right:12px; bottom:calc(var(--safe-b) + 16px);
+  z-index:60; display:flex; flex-direction:column; gap:8px; align-items:center;
+  pointer-events:none;
+}
+.toast {
+  background:var(--ink); color:#fff; font-size:14px; font-weight:600;
+  padding:11px 16px; border-radius:13px; box-shadow:0 8px 24px rgba(0,0,0,.22);
+  max-width:100%;
+}
+.toast.ok { background:var(--green); }
+.toast.bad { background:var(--danger); }
+
+.empty { text-align:center; color:var(--ink3); padding:34px 12px; font-size:14px; }
+
+/* ---------- invoice card (cashier bill = the phone app's bill screen) ----------
+   Same four columns the app prints: Item | Qty | Rate | Amount, identical
+   dishes merged across KOTs. */
+.inv-hd { display:flex; align-items:center; padding-bottom:7px; }
+.inv-hd span, .sechd {
+  font-size:10px; letter-spacing:.08em; font-weight:800;
+  color:var(--ink3); text-transform:uppercase;
+}
+.inv-hd .nm, .inv-ln .nm { flex:1; min-width:0; }
+.inv-ln { display:flex; align-items:center; padding:5px 0; }
+.inv-ln .nm { font-size:14.5px; font-weight:700; }
+.inv-c { width:52px; padding-left:6px; text-align:right; font-size:13.5px; font-variant-numeric:tabular-nums; }
+.inv-c.qty { width:44px; }
+.inv-c.amt { width:78px; font-weight:800; }
+.sep { border:0; border-top:1px solid var(--line); margin:11px 0; }
+.tot-l { font-size:16px; font-weight:800; }
+.tot-r { font-size:22px; font-weight:800; font-variant-numeric:tabular-nums; }
+.amber { color:var(--amber); }
+.green { color:var(--green); }
+.lnk {
+  font:inherit; font-size:12.5px; font-weight:800; color:var(--red);
+  background:none; border:0; padding:5px 0; cursor:pointer;
+}
+
+/* pay chips — all cash / all online, one tap each */
+.chips { display:flex; gap:9px; margin-top:9px; }
+.chips button {
+  flex:1; font:inherit; font-weight:800; font-size:13px; cursor:pointer;
+  min-height:44px; padding:10px 8px; border-radius:12px;
+  background:var(--card); color:var(--ink); border:1px solid var(--line);
+}
+.chips button.on { background:#fff4ee; color:var(--red-deep); border-color:var(--red); }
+
+/* ---------- closed-bill history row ---------- */
+.billrow {
+  display:flex; align-items:center; gap:10px; width:100%;
+  text-align:left; font:inherit; cursor:pointer;
+  background:var(--card); border:1px solid var(--line); border-radius:var(--r);
+  padding:12px 14px; margin-bottom:8px; box-shadow:var(--shadow);
+}
+.billrow:active { border-color:var(--red); }
+.billrow .grow { flex:1; min-width:0; }
+.billrow .no { font-size:12.5px; font-weight:800; color:var(--ink3); }
+.billrow .who { font-size:15px; font-weight:800; }
+.billrow .sub { font-size:11.5px; color:var(--ink2); }
+.billrow .pay { font-size:12px; font-weight:700; }
+.billrow .amt { font-size:18px; font-weight:800; font-variant-numeric:tabular-nums; }
+.datenav { display:flex; align-items:center; justify-content:center; gap:6px; margin-bottom:10px; }
+.datenav button {
+  font:inherit; font-weight:800; font-size:14px; cursor:pointer; color:var(--ink);
+  background:var(--card); border:1px solid var(--line); border-radius:11px;
+  min-height:40px; padding:8px 13px;
+}
+.datenav b { font-size:15px; padding:0 4px; font-variant-numeric:tabular-nums; }
+
+/* ---------- dialog (discount, confirm close, blockers) ---------- */
+.modal {
+  position:fixed; inset:0; z-index:70; background:rgba(40,22,10,.45);
+  display:flex; align-items:flex-end; justify-content:center;
+}
+.modal .box {
+  width:100%; max-width:460px; background:var(--card);
+  border-radius:20px 20px 0 0; padding:18px 16px calc(var(--safe-b) + 16px);
+  box-shadow:0 -10px 30px rgba(0,0,0,.22);
+}
+.modal h3 { font-size:17px; margin-bottom:12px; }
+@media (min-width:520px) { .modal { align-items:center; } .modal .box { border-radius:20px; } }
+
+/* two stacked actions (print above close), like the app's bottom bar */
+.bar.stack { flex-direction:column; align-items:stretch; }
+.bar.stack button { flex:0 0 auto; width:100%; }

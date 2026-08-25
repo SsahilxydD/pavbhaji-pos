@@ -137,8 +137,15 @@ func buildServer(port int, dataDir string) (*Server, *http.ServeMux, error) {
 	mux := http.NewServeMux()
 
 	// Public
+	// "/{$}" is the root exactly; "/" stays the catch-all, so the old LAN
+	// status page still answers /anything-else while the shop's one public
+	// link now opens the PIN gate.
+	mux.HandleFunc("GET /{$}", s.handleWebLogin)
 	mux.HandleFunc("GET /", s.handleStatus)
 	mux.HandleFunc("GET /admin", s.handleWebAdmin)
+	mux.HandleFunc("GET /manager", s.handleWebManager)
+	mux.HandleFunc("GET /cashier", s.handleWebCashier)
+	mux.HandleFunc("GET /pos.css", s.handleWebCSS)
 	mux.HandleFunc("GET /qr.png", s.handleQR)
 	mux.HandleFunc("GET /api/ping", s.handlePing)
 	mux.HandleFunc("POST /api/login", s.handleLogin)

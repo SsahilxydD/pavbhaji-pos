@@ -1,0 +1,444 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#a93307">
+<title>PavBhaji POS — Cashier</title>
+<link rel="stylesheet" href="/pos.css">
+</head>
+<body>
+
+<div class="top">
+  <div class="tile" id="tile">🧾</div>
+  <div class="ttl"><b id="ttlT">Cashier</b><small id="ttlS"></small></div>
+  <button id="logoutBtn">logout</button>
+</div>
+
+<div class="tabs" id="tabs"></div>
+<div class="wrap" id="view"></div>
+<div id="bar"></div>
+<div id="toasts"></div>
+
+<script>
+'use strict';
+var TOK = 'pbpos.token', WHO = 'pbpos.staff';
+var token = localStorage.getItem(TOK) || '';
+var me = null;
+try { me = JSON.parse(localStorage.getItem(WHO) || 'null'); } catch (e) { me = null; }
+if (!token || !me || (me.role !== 'cashier' && me.role !== 'admin')) location.replace('/');
+
+var $ = function (id) { return document.getElementById(id); };
+var esc = function (s) {
+  return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+    return { '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c];
+  });
+};
+var rupees = function (p) { return p % 100 === 0 ? '₹' + (p / 100) : '₹' + (p / 100).toFixed(2); };
+var clock = function (ms) { return new Date(ms).toTimeString().slice(0, 5); };
+var toPaise = function (s) {
+  var v = parseFloat(String(s).replace('₹', '').trim());
+  return isNaN(v) || v < 0 ? null : Math.round(v * 100);
+};
+var plural = function (n, w) { return n + ' ' + w + (n === 1 ? '' : 's'); };
+
+function toast(msg, kind) {
+  var el = document.createElement('div');
+  el.className = 'toast' + (kind ? ' ' + kind : '');
+  el.textContent = msg;
+  $('toasts').appendChild(el);
+  setTimeout(function () { el.style.opacity = '0'; el.style.transition = 'opacity .3s'; }, 3200);
+  setTimeout(function () { el.remove(); }, 3600);
+}
+
+function signOut(silent) {
+  if (token && !silent) fetch('/api/logout', { method:'POST', headers:{ 'Authorization':'Bearer ' + token } });
+  localStorage.removeItem(TOK); localStorage.removeItem(WHO);
+  location.replace('/');
+}
+$('logoutBtn').onclick = function () { signOut(false); };
+
+async function api(method, path, body) {
+  var r = await fetch(path, {
+    method: method,
+    headers: { 'Content-Type':'application/json', 'Authorization':'Bearer ' + token },
+    body: body === undefined ? undefined : JSON.stringify(body)
+  });
+  if (r.status === 401) { signOut(true); throw new Error('session expired'); }
+  var d = await r.json().catch(function () { return {}; });
+  if (!r.ok) { var e = new Error(d.error || ('server error ' + r.status)); e.blockers = d.blockers; throw e; }
+  return d;
+}
+
+// The printable bill is a plain GET the browser navigates to, and a navigation
+// can't carry an Authorization header — the server also accepts ?token= for
+// exactly this case.
+function printBill(orderId) { window.open('/bill/' + orderId + '?token=' + encodeURIComponent(token), '_blank'); }
+
+// ---------------------------------------------------------------- shell state
+var tab = 'open';      // lit tab in the strip
+var timer = null;      // the one poll that is allowed to be running
+var cur = null;        // { id, readOnly, sub, order, bill, split } while a bill is open
+var modalUp = false;
+var billsDate = null;  // null = today
+
+function stopPoll() { clearInterval(timer); timer = null; }
+
+function setTop(icon, title, sub, onIcon) {
+  $('tile').textContent = icon;
+  $('tile').onclick = onIcon || null;
+  $('tile').style.cursor = onIcon ? 'pointer' : '';
+  $('ttlT').textContent = title;
+  $('ttlS').textContent = sub || '';
+}
+
+var TABS = { open:['🍽','Open orders'], bills:['🧾','Bills'] };
+function paintTabs() {
+  $('tabs').innerHTML = Object.keys(TABS).map(function (k) {
+    return '<button class="' + (k === tab ? 'on' : '') + '" data-tab="' + k + '">' +
+           TABS[k][0] + ' ' + TABS[k][1] + '</button>';
+  }).join('');
+}
+$('tabs').addEventListener('click', function (e) {
+  var b = e.target.closest('button[data-tab]');
+  if (b) show(b.dataset.tab);
+});
+
+function show(t) {
+  tab = t; cur = null; stopPoll();
+  $('tabs').hidden = false;
+  $('bar').className = ''; $('bar').innerHTML = '';
+  setTop('🧾', 'Cashier', me.name, null);
+  paintTabs();
+  ({ open:openOrders, bills:billsList })[t]();
+}
+
+// ---------------------------------------------------------------- open orders
+async function openOrders() {
+  var paint = async function () {
+    var d = await api('GET', '/api/tables');
+    if (tab !== 'open' || cur) return;
+    var busy = (d.tables || []).filter(function (t) { return t.order; });
+    if (!busy.length) { $('view').innerHTML = '<div class="empty">Koi order open nahi hai.</div>'; return; }
+    $('view').innerHTML = '<h2>' + busy.length + ' order open</h2><div class="grid">' + busy.map(function (t) {
+      var o = t.order;
+      return '<button class="tile-btn busy" data-order="' + o.orderId + '">' +
+        '<span class="nm">' + (t.kind === 'parcel' ? '🥡 ' : '') + esc(t.name) + '</span>' +
+        '<span class="sub">#' + o.orderNo + ' · ' + clock(o.openedAt) + '</span>' +
+        (o.customerName ? '<span class="sub">' + esc(o.customerName) + '</span>' : '') +
+        '<span class="sub">' + o.itemCount + ' plate' +
+          (o.pendingCount ? ' · ⏳ ' + o.pendingCount : '') + '</span>' +
+        '<span class="amt">' + rupees(o.total) + '</span></button>';
+    }).join('') + '</div>';
+  };
+  await paint().catch(function (e) { toast(e.message, 'bad'); });
+  timer = setInterval(function () { paint().catch(function () {}); }, 10000);
+}
+
+$('view').addEventListener('click', function (e) {
+  var b = e.target.closest('button[data-order]');
+  if (b) { openOrder(Number(b.dataset.order), false, ''); return; }
+  var h = e.target.closest('button[data-bill]');
+  if (h) openOrder(Number(h.dataset.bill), true, h.dataset.sub || '');
+});
+
+// ---------------------------------------------------------------- the bill
+// One printed-bill row: identical dishes merged across KOTs, cancelled lines
+// dropped — what the customer pays for, nothing else.
+function billLines(o) {
+  var map = {}, out = [];
+  (o.tickets || []).forEach(function (tk) {
+    (tk.items || []).forEach(function (it) {
+      if (it.status === 'cancelled') return;
+      var k = it.name + '|' + it.price, e = map[k];
+      if (!e) { e = map[k] = { name:it.name, rate:it.price, qty:0, amt:0 }; out.push(e); }
+      e.qty += it.qty; e.amt += it.qty * it.price;
+    });
+  });
+  return out;
+}
+
+// POST is idempotent: it re-totals the running bill from the live items (a KOT
+// punched mid-billing can't sneak past) and hands back the frozen one once the
+// order is closed. Only a cashier may generate — an admin reads instead.
+async function genBill(id) {
+  try { return await api('POST', '/api/orders/' + id + '/bill'); }
+  catch (e) {
+    try { return await api('GET', '/api/orders/' + id + '/bill'); }
+    catch (e2) { return null; }
+  }
+}
+
+async function openOrder(id, readOnly, sub) {
+  stopPoll();
+  cur = { id:id, readOnly:!!readOnly, sub:sub || '', order:null, bill:null, split:'' };
+  $('tabs').hidden = true;
+  $('bar').className = ''; $('bar').innerHTML = '';
+  $('view').innerHTML = '<div class="empty">Bill khul raha hai…</div>';
+  await loadBill(true).catch(function (e) { toast(e.message, 'bad'); });
+  if (!cur.readOnly) timer = setInterval(function () { loadBill(false).catch(function () {}); }, 15000);
+}
+
+async function loadBill(hard) {
+  var id = cur.id;
+  // A background poll must never yank a half-typed amount or an open dialog
+  // off the screen — it just skips that round.
+  if (!hard && (modalUp || (document.activeElement && document.activeElement.tagName === 'INPUT'))) return;
+  var o = await api('GET', '/api/orders/' + id);
+  if (!cur || cur.id !== id) return;
+  var b = await genBill(id);
+  if (!cur || cur.id !== id) return;
+  cur.order = o; cur.bill = b;
+  paintBill();
+}
+
+function paintBill() {
+  var o = cur.order, b = cur.bill;
+  var lines = billLines(o);
+  var itemQty = lines.reduce(function (s, l) { return s + l.qty; }, 0);
+  var total = b ? b.total : o.total;
+  var paid = b ? b.paidCash + b.paidOnline : 0;
+  // Settled = the money is fully assigned AND the bill still matches the live
+  // items; a KOT punched after billing re-opens both halves of that test.
+  var settled = !!b && paid === total && b.subtotal === o.total;
+  var pending = 0, ready = 0;
+  (o.tickets || []).forEach(function (tk) {
+    (tk.items || []).forEach(function (it) {
+      if (it.status === 'pending' || it.status === 'preparing') pending += it.qty;
+      else if (it.status === 'ready') ready += it.qty;
+    });
+  });
+
+  setTop('‹', 'Bill · ' + o.tableName,
+    cur.readOnly ? cur.sub : 'order #' + o.orderNo + ' · ' + clock(o.openedAt) + ' · ' + o.openedByName,
+    function () { show(cur.readOnly ? 'bills' : 'open'); });
+
+  var h = '<div class="card">';
+  h += '<div style="font-size:18px;font-weight:800">' + esc(o.customerName || o.tableName) + '</div>';
+  if (o.customerName) {
+    var sub = (o.customerPhone ? [o.customerPhone] : []).concat([o.tableName]).join(' · ');
+    h += '<div class="mut" style="font-size:12px">' + esc(sub) + '</div>';
+  }
+  h += '<hr class="sep">';
+
+  h += '<div class="inv-hd"><span class="nm">Item</span><span class="inv-c qty">Qty</span>' +
+       '<span class="inv-c">Rate</span><span class="inv-c amt">Amount</span></div>';
+  h += lines.map(function (l) {
+    return '<div class="inv-ln"><span class="nm">' + esc(l.name) + '</span>' +
+      '<span class="inv-c qty">' + l.qty + '</span>' +
+      '<span class="inv-c">' + rupees(l.rate) + '</span>' +
+      '<span class="inv-c amt">' + rupees(l.amt) + '</span></div>';
+  }).join('');
+  h += '<hr class="sep">';
+
+  if (b && b.discount > 0) {
+    h += '<div class="row" style="font-size:13px"><span class="grow">Subtotal</span>' +
+         '<span class="tnum">' + rupees(b.subtotal) + '</span></div>';
+    h += '<div class="row amber" style="font-size:13px;margin-top:3px">' +
+         '<span class="grow">Discount' + (b.discountNote ? ' · ' + esc(b.discountNote) : '') + '</span>' +
+         '<b class="tnum">− ' + rupees(b.discount) + '</b>' +
+         (cur.readOnly ? '' : '<button class="lnk" id="discBtn" style="padding:0 4px">✎</button>') + '</div>';
+  }
+  h += '<div class="row" style="margin-top:4px"><span class="tot-l grow">TOTAL</span>' +
+       '<span class="tot-r">' + rupees(total) + '</span></div>';
+  h += '<div class="row">' +
+       (b && !b.discount && !cur.readOnly ? '<button class="lnk" id="discBtn">＋ discount</button>' : '') +
+       '<span class="mut right" style="font-size:12px">' + plural(itemQty, 'item') + '</span></div>';
+
+  if (pending > 0 || ready > 0) {
+    h += '<div class="amber" style="font-size:12.5px;font-weight:600;margin-top:6px">' +
+         pending + ' cooking · ' + ready + ' ready to serve</div>' +
+         '<div class="mut" style="font-size:12px">running bill — order is still open, it can grow</div>';
+  }
+
+  h += '<hr class="sep">';
+  h += '<div class="row"><span class="sechd grow">Payment</span>' +
+       (b ? (settled
+              ? '<span class="green" style="font-size:12px;font-weight:800">PAID ✓</span>'
+              : '<span class="amber" style="font-size:12px;font-weight:800">' +
+                rupees(Math.max(0, total - paid)) + ' not assigned yet</span>') : '') + '</div>';
+  if (b) {
+    h += '<div class="row" style="margin-top:6px;font-size:13.5px"><span class="grow">💵 Cash</span>' +
+         '<b class="tnum">' + rupees(b.paidCash) + '</b></div>';
+    h += '<div class="row" style="margin-top:2px;font-size:13.5px"><span class="grow">📲 Online / UPI</span>' +
+         '<b class="tnum">' + rupees(b.paidOnline) + '</b></div>';
+    if (!cur.readOnly) {
+      h += '<div class="chips">' +
+        '<button id="allCash"' + (total > 0 && b.paidCash === total ? ' class="on"' : '') + '>💵 all cash</button>' +
+        '<button id="allOnline"' + (total > 0 && b.paidOnline === total ? ' class="on"' : '') + '>📲 all online</button>' +
+        '</div>';
+      h += '<div class="row" style="margin-top:9px">' +
+        '<input id="splitAmt" class="num grow" inputmode="decimal" placeholder="Online amount (₹)" value="' + esc(cur.split) + '">' +
+        '<button class="primary" id="splitBtn" style="flex:0 0 auto;font-size:13px;padding:12px 12px">✓ split, rest cash</button></div>';
+    }
+  }
+  h += '</div>';
+  $('view').innerHTML = h;
+
+  $('bar').className = 'bar stack';
+  $('bar').innerHTML =
+    '<button class="ghost" id="printBtn">🖨  Print bill</button>' +
+    (cur.readOnly ? '' :
+      '<button class="okbtn" id="closeBtn"' + (settled ? '' : ' disabled') + '>Close · ' + rupees(total) + '</button>');
+
+  $('printBtn').onclick = function () { printBill(cur.id); };
+  if ($('closeBtn')) $('closeBtn').onclick = confirmClose;
+  if ($('discBtn')) $('discBtn').onclick = askDiscount;
+  if ($('allCash')) $('allCash').onclick = function () { setPayment(total, 0); };
+  if ($('allOnline')) $('allOnline').onclick = function () { setPayment(0, total); };
+  if ($('splitAmt')) $('splitAmt').oninput = function () { cur.split = this.value; };
+  if ($('splitBtn')) $('splitBtn').onclick = function () {
+    var p = toPaise(cur.split);
+    if (p === null || p > total) { toast('Online amount ' + rupees(total) + ' se zyada nahi ho sakta', 'bad'); return; }
+    cur.split = '';
+    setPayment(total - p, p);
+  };
+}
+
+async function patchBill(patch) {
+  try {
+    cur.bill = await api('PATCH', '/api/orders/' + cur.id + '/bill', patch);
+    paintBill();
+  } catch (e) { toast(e.message, 'bad'); }
+}
+function setPayment(cash, online) { patchBill({ paidCash:cash, paidOnline:online }); }
+
+// ---------------------------------------------------------------- dialogs
+function showModal(title, body, buttons) {
+  hideModal();
+  modalUp = true;
+  var m = document.createElement('div');
+  m.className = 'modal';
+  m.innerHTML = '<div class="box"><h3>' + esc(title) + '</h3>' + body +
+    '<div class="btnrow" style="margin-top:14px">' + buttons.map(function (b, i) {
+      return '<button class="' + b.cls + '" data-i="' + i + '">' + esc(b.label) + '</button>';
+    }).join('') + '</div></div>';
+  m.addEventListener('click', function (e) {
+    if (e.target === m) { hideModal(); return; }
+    var b = e.target.closest('button[data-i]');
+    if (!b) return;
+    var a = buttons[Number(b.dataset.i)];
+    if (a.act) a.act(); else hideModal();
+  });
+  document.body.appendChild(m);
+  return m;
+}
+function hideModal() {
+  modalUp = false;
+  var m = document.querySelector('.modal');
+  if (m) m.remove();
+}
+
+function askDiscount() {
+  var b = cur.bill; if (!b) return;
+  var amt = b.discount > 0 ? (b.discount / 100) : '';
+  showModal('Discount',
+    '<label class="fld"><span>Discount (₹)</span>' +
+      '<input id="mDisc" class="num" inputmode="decimal" value="' + amt + '"></label>' +
+    '<label class="fld"><span>Reason (optional)</span>' +
+      '<input id="mNote" maxlength="120" value="' + esc(b.discountNote) + '"></label>',
+    [{ label:'Back', cls:'ghost' },
+     { label:'Save', cls:'primary', act: function () {
+        var raw = $('mDisc').value.trim();
+        var d = raw === '' ? 0 : toPaise(raw);
+        if (d === null) { toast('Amount theek se likho', 'bad'); return; }
+        var patch = { discount:d, discountNote: $('mNote').value.trim() };
+        // Money already recorded can outgrow the discounted total — the server
+        // rejects that. Shrink the recorded split to the new total (online kept
+        // first, the rest cash); it never grows, so no collection is invented.
+        var newTotal = b.subtotal - d;
+        if (b.paidCash + b.paidOnline > newTotal) {
+          patch.paidOnline = Math.min(b.paidOnline, Math.max(0, newTotal));
+          patch.paidCash = Math.min(b.paidCash, Math.max(0, newTotal - patch.paidOnline));
+        }
+        hideModal();
+        patchBill(patch);
+     } }]);
+  $('mDisc').focus();
+}
+
+function confirmClose() {
+  var total = cur.bill ? cur.bill.total : cur.order.total;
+  showModal('Close ' + cur.order.tableName + '?',
+    '<div class="mut">Total: ' + rupees(total) + '<br>Collect payment before closing.</div>',
+    [{ label:'Back', cls:'ghost' },
+     { label:'Close table', cls:'okbtn', act: function () { hideModal(); closeOrder(); } }]);
+}
+
+async function closeOrder() {
+  var btn = $('closeBtn'); if (btn) btn.disabled = true;
+  try {
+    await api('POST', '/api/orders/' + cur.id + '/close');
+    toast('Order close ✓', 'ok');
+    show('open');
+  } catch (e) {
+    if (e.blockers && e.blockers.length) {
+      showModal("Can't close yet",
+        '<div style="font-size:14px">' + e.blockers.map(function (x) { return '• ' + esc(x); }).join('<br>') + '</div>' +
+        '<div class="hint">Serve mark sirf waiter karta hai (phone app se), ek-ek plate. Uska wait karo — ya reason ' +
+        'ke saath item cancel karao.</div>',
+        [{ label:'Back', cls:'ghost' }]);
+    } else toast(e.message, 'bad');
+    if (btn) btn.disabled = false;
+  }
+}
+
+// ---------------------------------------------------------------- bills (day's collection)
+function shiftDate(date, days) {
+  var p = String(date).split('-');
+  var dt = new Date(Number(p[0]), Number(p[1]) - 1, Number(p[2]));
+  if (isNaN(dt.getTime())) return date;
+  dt.setDate(dt.getDate() + days);
+  var pad = function (n) { return (n < 10 ? '0' : '') + n; };
+  return dt.getFullYear() + '-' + pad(dt.getMonth() + 1) + '-' + pad(dt.getDate());
+}
+
+async function billsList() {
+  var d = await api('GET', '/api/bills' + (billsDate ? '?date=' + encodeURIComponent(billsDate) : ''))
+    .catch(function (e) { toast(e.message, 'bad'); return null; });
+  if (!d || tab !== 'bills' || cur) return;
+  var bs = d.bills || [];
+  var sum = bs.reduce(function (s, b) { return s + b.total; }, 0);
+  var cash = bs.reduce(function (s, b) { return s + b.paidCash; }, 0);
+  var online = bs.reduce(function (s, b) { return s + b.paidOnline; }, 0);
+
+  var h = '<div class="datenav">' +
+    '<button data-day="-1">◀</button><b>' + esc(d.date) + '</b>' +
+    '<button data-day="1">▶</button><button data-day="0">today</button></div>';
+  h += '<div class="card"><div class="row"><b class="grow">' + plural(bs.length, 'bill') + '</b>' +
+    '<b class="tnum" style="font-size:19px;color:var(--red-deep)">' + rupees(sum) + '</b></div>' +
+    '<div class="mut tnum" style="margin-top:5px">💵 cash ' + rupees(cash) + ' · 📱 online ' + rupees(online) + '</div></div>';
+
+  h += bs.length ? bs.map(function (b) {
+    var money = [];
+    if (b.paidCash > 0) money.push('💵 ' + rupees(b.paidCash));
+    if (b.paidOnline > 0) money.push('📲 ' + rupees(b.paidOnline));
+    if (b.discount > 0) money.push('· Discount −' + rupees(b.discount));
+    var closed = 'closed ' + clock(b.closedAt) + (b.closedByName ? ' · ' + esc(b.closedByName) : '');
+    return '<button class="billrow" data-bill="' + b.orderId + '" data-sub="' + esc(closed) + '">' +
+      '<span class="grow">' +
+        '<span class="row"><span class="no">#' + b.orderNo + '</span>' +
+        '<span class="who">' + esc(b.customerName || b.tableName) + '</span>' +
+        (b.customerName ? '<span class="mut" style="font-size:12px">· ' + esc(b.tableName) + '</span>' : '') + '</span>' +
+        '<span class="sub" style="display:block">' + closed + ' · ' + plural(b.itemCount, 'item') + '</span>' +
+        (money.length ? '<span class="pay ' + (b.discount > 0 ? 'amber' : 'green') + '" style="display:block">' +
+          money.join('  ') + '</span>' : '') +
+      '</span><b class="amt">' + rupees(b.total) + '</b></button>';
+  }).join('') : '<div class="empty">Is din ka koi bill nahi.</div>';
+
+  $('view').innerHTML = h;
+  $('view').querySelectorAll('button[data-day]').forEach(function (btn) {
+    btn.onclick = function () {
+      var n = Number(btn.dataset.day);
+      billsDate = n === 0 ? null : shiftDate(d.date, n);
+      billsList();
+    };
+  });
+}
+
+show('open');
+</script>
+</body>
+</html>

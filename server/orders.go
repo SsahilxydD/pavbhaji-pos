@@ -786,20 +786,26 @@ func (s *Server) handleItemStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// Extra pav and its kind wait at the counter. The app greys the row out, but
-	// a stale phone must not be able to hand one over while this table still has
-	// bhaji on the tawa — otherwise the pav lands cold, minutes before the food.
+	// a stale phone must not be able to hand one over before ANY bhaji has left
+	// the tawa — otherwise the pav lands cold, minutes before the food. The
+	// first ready plate opens the gate; the rest of the table's bhajis don't
+	// have to wait for each other.
 	if req.To == "served" && from == "pending" && station == "counter" {
 		var withFood bool
-		var cooking int64
+		var cooking, arrived int64
 		s.db.QueryRow(`SELECT ti.serve_with_food,
 			(SELECT COALESCE(SUM(k.qty),0) FROM ticket_items k
 			   JOIN tickets ktk ON ktk.id=k.ticket_id
 			  WHERE ktk.order_id=? AND k.station='kitchen'
-			    AND k.status IN ('pending','preparing'))
-			FROM ticket_items ti WHERE ti.id=?`, orderID, itemID).Scan(&withFood, &cooking)
-		if withFood && cooking > 0 {
-			fail(w, http.StatusConflict, fmt.Sprintf("%s goes out with the bhaji — %d still cooking for %s",
-				name, cooking, tableName))
+			    AND k.status IN ('pending','preparing')),
+			(SELECT COUNT(*) FROM ticket_items a
+			   JOIN tickets atk ON atk.id=a.ticket_id
+			  WHERE atk.order_id=? AND a.station='kitchen'
+			    AND a.status IN ('ready','served'))
+			FROM ticket_items ti WHERE ti.id=?`, orderID, orderID, itemID).Scan(&withFood, &cooking, &arrived)
+		if withFood && cooking > 0 && arrived == 0 {
+			fail(w, http.StatusConflict, fmt.Sprintf("%s goes out with the bhaji — nothing ready yet for %s (%d cooking)",
+				name, tableName, cooking))
 			return
 		}
 	}
@@ -1384,7 +1390,11 @@ func (s *Server) handlePickup(w http.ResponseWriter, r *http.Request) {
 		       (SELECT COALESCE(SUM(k.qty),0) FROM ticket_items k
 		          JOIN tickets ktk ON ktk.id=k.ticket_id
 		         WHERE ktk.order_id=o.id AND k.station='kitchen'
-		           AND k.status IN ('pending','preparing'))
+		           AND k.status IN ('pending','preparing')),
+		       (SELECT COUNT(*) FROM ticket_items a
+		          JOIN tickets atk ON atk.id=a.ticket_id
+		         WHERE atk.order_id=o.id AND a.station='kitchen'
+		           AND a.status IN ('ready','served'))
 		FROM ticket_items ti
 		JOIN tickets tk ON tk.id=ti.ticket_id
 		JOIN orders o ON o.id=tk.order_id AND o.status='open'
@@ -1396,12 +1406,14 @@ func (s *Server) handlePickup(w http.ResponseWriter, r *http.Request) {
 		for rows.Next() {
 			var l PickupLine
 			var withFood bool
-			var cooking int64
+			var cooking, arrived int64
 			rows.Scan(&l.ItemID, &l.Name, &l.Qty, &l.Note, &l.SinceMs, &l.TableName, &l.Colour, &l.Station,
-				&withFood, &cooking)
+				&withFood, &cooking, &arrived)
 			// Extra pav stays on the list so nobody forgets it, but it is not
-			// handable until the last bhaji for this table leaves the tawa.
-			if withFood && l.Station == "counter" && cooking > 0 {
+			// handable until the table's FIRST bhaji leaves the tawa. Once one
+			// plate has gone out the pav can ride along with it — waiting for
+			// the last of three bhajis would leave the table eating dry.
+			if withFood && l.Station == "counter" && cooking > 0 && arrived == 0 {
 				l.Waiting = true
 				l.WaitingOn = cooking
 			}

@@ -39,7 +39,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.pavbhaji.pos.Deps
@@ -68,6 +70,10 @@ fun parseRupees(s: String): Long? {
         if (whole < 0 || parts.size > 2) null else whole * 100 + frac
     } catch (e: Exception) { null }
 }
+
+// Prices get the number pad with a decimal point; caps and minutes plain digits.
+private val PriceKeys = KeyboardOptions(keyboardType = KeyboardType.Decimal)
+private val CountKeys = KeyboardOptions(keyboardType = KeyboardType.Number)
 
 // A dish's colour on every screen; blank falls back the same way dishColour does.
 private fun colourOf(mi: MenuItemDto): String =
@@ -195,10 +201,14 @@ fun MenuAdmin(onBack: () -> Unit) {
             title = { Text(mi.name) },
             text = {
                 Column {
-                    OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text(S.name) })
+                    OutlinedTextField(
+                        value = name, onValueChange = { name = it }, label = { Text(S.name) },
+                        singleLine = true, keyboardOptions = NameKeys
+                    )
                     OutlinedTextField(
                         value = price, onValueChange = { price = it },
-                        label = { Text(S.priceRs) }, modifier = Modifier.padding(top = 8.dp)
+                        label = { Text(S.priceRs) }, modifier = Modifier.padding(top = 8.dp),
+                        singleLine = true, keyboardOptions = PriceKeys
                     )
                     StationPicker(station) { station = it }
                     if (station == "kitchen") {
@@ -210,12 +220,14 @@ fun MenuAdmin(onBack: () -> Unit) {
                                 value = cap,
                                 onValueChange = { cap = it.filter { c -> c.isDigit() }.take(2) },
                                 label = { Text(S.tawaCap) }, placeholder = { Text("15") },
+                                singleLine = true, keyboardOptions = CountKeys,
                                 modifier = Modifier.weight(1f).padding(end = 6.dp)
                             )
                             OutlinedTextField(
                                 value = ageMin,
                                 onValueChange = { ageMin = it.filter { c -> c.isDigit() }.take(3) },
                                 label = { Text(S.sealAfter) }, placeholder = { Text("10") },
+                                singleLine = true, keyboardOptions = CountKeys,
                                 modifier = Modifier.weight(1f)
                             )
                         }
@@ -271,10 +283,14 @@ fun MenuAdmin(onBack: () -> Unit) {
             title = { Text(S.newItemIn(cat.name)) },
             text = {
                 Column {
-                    OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text(S.name) })
+                    OutlinedTextField(
+                        value = name, onValueChange = { name = it }, label = { Text(S.name) },
+                        singleLine = true, keyboardOptions = NameKeys
+                    )
                     OutlinedTextField(
                         value = price, onValueChange = { price = it },
-                        label = { Text(S.priceRs) }, modifier = Modifier.padding(top = 8.dp)
+                        label = { Text(S.priceRs) }, modifier = Modifier.padding(top = 8.dp),
+                        singleLine = true, keyboardOptions = PriceKeys
                     )
                     StationPicker(station) { station = it }
                     if (station == "counter") WithFoodToggle(withFood) { withFood = it }
@@ -317,7 +333,10 @@ fun MenuAdmin(onBack: () -> Unit) {
             title = { Text(S.newCategory) },
             text = {
                 Column {
-                    OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text(S.name) })
+                    OutlinedTextField(
+                        value = name, onValueChange = { name = it }, label = { Text(S.name) },
+                        singleLine = true, keyboardOptions = NameKeys
+                    )
                     dErr?.let { Text(it, color = MaterialTheme.colorScheme.error, fontSize = 13.sp, modifier = Modifier.padding(top = 6.dp)) }
                 }
             },

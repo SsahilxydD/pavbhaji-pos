@@ -432,6 +432,8 @@ object S {
     val deactivated get() = t("deactivated", "बंद", "બંધ")
     val newStaff get() = t("New staff member", "नया स्टाफ़", "નવો સ્ટાફ")
     val pin4 get() = t("PIN (4 digits)", "PIN (4 अंक)", "PIN (4 આંકડા)")
+    val showPin get() = t("show", "दिखाओ", "બતાવો")
+    val hidePin get() = t("hide", "छुपाओ", "છુપાવો")
     val namePinNeeded get() = t("name + 4-digit PIN needed", "नाम + 4 अंकों का PIN चाहिए", "નામ + 4 આંકડાનો PIN જોઈએ")
     val min4digits get() = t("at least 4 digits", "कम से कम 4 अंक", "ઓછામાં ઓછા 4 આંકડા")
     val setPin get() = t("Set PIN", "PIN सेट करो", "PIN સેટ કરો")

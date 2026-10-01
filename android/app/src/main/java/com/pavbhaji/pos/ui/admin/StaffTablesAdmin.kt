@@ -25,7 +25,12 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.pavbhaji.pos.Deps
@@ -34,6 +39,27 @@ import com.pavbhaji.pos.data.ApiResult
 import com.pavbhaji.pos.data.StaffDto
 import com.pavbhaji.pos.ui.S
 import kotlinx.coroutines.launch
+
+// Names start with a capital on the phone keyboard.
+internal val NameKeys = KeyboardOptions(capitalization = KeyboardCapitalization.Words)
+
+// A PIN typed on the admin's phone: the number pad, dots instead of digits
+// (the phone may be in a waiter's view), and "show" to check what was typed.
+@Composable
+private fun PinField(pin: String, onChange: (String) -> Unit, modifier: Modifier = Modifier) {
+    var show by remember { mutableStateOf(false) }
+    OutlinedTextField(
+        value = pin, onValueChange = { onChange(it.filter { c -> c.isDigit() }.take(4)) },
+        label = { Text(S.pin4) },
+        singleLine = true,
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+        visualTransformation = if (show) VisualTransformation.None else PasswordVisualTransformation(),
+        trailingIcon = {
+            TextButton(onClick = { show = !show }) { Text(if (show) S.hidePin else S.showPin, fontSize = 12.sp) }
+        },
+        modifier = modifier
+    )
+}
 
 @Composable
 fun StaffAdmin(onBack: () -> Unit) {
@@ -127,11 +153,11 @@ fun StaffAdmin(onBack: () -> Unit) {
             title = { Text(S.newStaff) },
             text = {
                 Column {
-                    OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text(S.name) })
                     OutlinedTextField(
-                        value = pin, onValueChange = { pin = it.filter { c -> c.isDigit() }.take(4) },
-                        label = { Text(S.pin4) }, modifier = Modifier.padding(top = 8.dp)
+                        value = name, onValueChange = { name = it }, label = { Text(S.name) },
+                        singleLine = true, keyboardOptions = NameKeys
                     )
+                    PinField(pin, { pin = it }, Modifier.padding(top = 8.dp))
                     Column(Modifier.padding(top = 4.dp)) {
                         listOf("waiter", "manager", "chef", "cashier", "parcel", "admin").chunked(3).forEach { rowRoles ->
                             Row(Modifier.padding(top = 6.dp)) {
@@ -169,10 +195,7 @@ fun StaffAdmin(onBack: () -> Unit) {
             title = { Text(S.newPinFor(s.name)) },
             text = {
                 Column {
-                    OutlinedTextField(
-                        value = pin, onValueChange = { pin = it.filter { c -> c.isDigit() }.take(4) },
-                        label = { Text(S.pin4) }
-                    )
+                    PinField(pin, { pin = it })
                     dErr?.let { Text(it, color = MaterialTheme.colorScheme.error, fontSize = 13.sp) }
                 }
             },

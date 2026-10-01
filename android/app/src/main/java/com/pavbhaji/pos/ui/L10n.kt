@@ -468,6 +468,9 @@ object S {
     )
     val paidTick get() = t("PAID ✓", "पेड ✓", "પેડ ✓")
     fun payLeft(amt: String) = t("$amt still to collect", "$amt अभी लेने बाकी", "$amt હજી લેવાના બાકી")
+    val cashReceived get() = t("Cash received (₹)", "मिला कैश (₹)", "મળેલું કેશ (₹)")
+    fun giveBack(amt: String) = t("Give back $amt", "$amt वापस दो", "$amt પાછા આપો")
+    fun cashShort(amt: String) = t("$amt short", "$amt कम", "$amt ઓછા")
     val pickPayFirst get() = t(
         "Tap 💵 all cash or 📲 all online first",
         "पहले 💵 पूरा कैश या 📲 पूरा ऑनलाइन दबाओ",

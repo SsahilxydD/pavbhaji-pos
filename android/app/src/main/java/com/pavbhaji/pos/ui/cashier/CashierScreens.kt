@@ -444,6 +444,11 @@ fun BillScreen(tableId: Long, tableName: String, onBack: () -> Unit) {
                                         )
                                     }
                                 }
+                                // Whatever part is cash (all of it until the
+                                // cashier says otherwise): what came in → change.
+                                if (mode != "online") {
+                                    CashChange(cashDue = if (b.paidCash > 0) b.paidCash else total - b.paidOnline)
+                                }
                             }
                         }
                     }
@@ -809,6 +814,35 @@ fun BillHistoryDetail(summary: BillSummaryDto, onBack: () -> Unit) {
                     fontSize = 16
                 )
             }
+        }
+    }
+}
+
+// Optional helper at the counter: the note the customer handed over → the
+// change to give back (or what is still short). Nothing is stored; it only
+// saves the sum in the cashier's head on a busy night.
+@Composable
+private fun CashChange(cashDue: Long) {
+    var got by remember { mutableStateOf("") }
+    Row(Modifier.padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+        OutlinedTextField(
+            value = got,
+            onValueChange = { got = it.filter { c -> c.isDigit() || c == '.' }.take(9) },
+            label = { Text(S.cashReceived, fontSize = 12.sp) },
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+            modifier = Modifier.weight(1f)
+        )
+        val p = toPaise(got)
+        if (p != null && p > 0 && cashDue > 0) {
+            val diff = p - cashDue
+            Text(
+                if (diff >= 0) S.giveBack(rupees(diff)) else S.cashShort(rupees(-diff)),
+                fontSize = 15.sp, fontWeight = FontWeight.ExtraBold,
+                color = if (diff >= 0) GoodGreen else WarnAmber,
+                textAlign = TextAlign.End,
+                modifier = Modifier.padding(start = 10.dp).weight(0.8f)
+            )
         }
     }
 }

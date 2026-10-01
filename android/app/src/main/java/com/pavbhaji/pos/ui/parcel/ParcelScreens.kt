@@ -250,7 +250,7 @@ private fun ParcelCard(t: TableStateDto, onClick: () -> Unit, modifier: Modifier
                     when {
                         cooking -> Pill(S.inKitchen, Color(0xFFF0D060), Color(0xFF5D4000))
                         allReady -> Pill(S.allReadyPill, Pb.successDeep, Color.White)
-                        else -> Pill(S.collectAmt(rupees(o.total)), Pb.infoDeep, Color.White)
+                        else -> Pill(S.amountDue(rupees(o.total)), Pb.infoDeep, Color.White)
                     }
                 }
             }

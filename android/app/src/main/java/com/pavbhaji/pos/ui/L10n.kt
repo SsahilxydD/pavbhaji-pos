@@ -249,7 +249,6 @@ object S {
     val inKitchen get() = t("in kitchen", "किचन में", "રસોડામાં")
     fun readyPickup(n: Long) = t("$n READY", "$n तैयार", "$n તૈયાર")
     val collect get() = t("COLLECT", "पैसे लो", "પૈસા લો")
-    fun collectAmt(amt: String) = t("COLLECT $amt", "$amt लो", "$amt લો")
     // The cashier's two states on the tables grid.
     val settlePill get() = t("SETTLE", "हिसाब करो", "હિસાબ કરો")
     val runningPill get() = t("running", "चालू", "ચાલુ")
@@ -540,7 +539,10 @@ object S {
         "હમણાં કોઈ પાર્સલ નથી.\nનીચેના બટનથી શરૂ કરો."
     )
     fun openParcels(n: Int) = t("$n open", "$n खुले", "$n ખુલ્લા")
-    val allReadyPill get() = t("ALL READY — hand over", "सब तैयार — दे दो", "બધું તૈયાર — આપી દો")
+    // Parcel card pills say the parcel's STATE: tapping a card opens its
+    // order, not a hand-over or payment step, so the pill must not promise one.
+    val allReadyPill get() = t("ALL READY ✓", "सब तैयार ✓", "બધું તૈયાર ✓")
+    fun amountDue(amt: String) = t("$amt due", "$amt बाकी", "$amt બાકી")
     val sendParcel get() = t("Send parcel to kitchen 🍳", "पार्सल किचन में भेजो 🍳", "પાર્સલ રસોડામાં મોકલો 🍳")
 
     // ---- report / audit ----

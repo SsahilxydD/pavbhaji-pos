@@ -695,9 +695,10 @@ fun BillsHistoryScreen(onLogout: (() -> Unit)?, onBack: (() -> Unit)?) {
             val disc = resp.bills.sumOf { it.discount }
             Text(
                 listOfNotNull(
-                    "${S.reportCash} ${rupees(cash)}",
-                    "${S.reportOnline} ${rupees(online)}",
-                    if (disc > 0) "${S.reportDiscounts} −${rupees(disc)}" else null
+                    // non-breaking: a label never wraps away from its amount
+                    "${S.reportCash} ${rupees(cash)}",
+                    "${S.reportOnline} ${rupees(online)}",
+                    if (disc > 0) "${S.reportDiscounts} −${rupees(disc)}" else null
                 ).joinToString("  ·  "),
                 fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,

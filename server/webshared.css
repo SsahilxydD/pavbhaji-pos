@@ -345,11 +345,33 @@ label.fld span { display:block; font-size:12px; font-weight:700; color:var(--ink
 #login h1 { font-size:22px; letter-spacing:-.5px; margin-bottom:2px; }
 #login p.sub { color:var(--ink2); font-size:13.5px; margin-bottom:18px; }
 #login .card { padding:20px; }
-#login input {
-  font-size:27px; letter-spacing:.45em; text-align:center; padding-left:.45em;
-  margin-bottom:12px; min-height:56px;
-}
 .err { color:var(--danger); font-size:13px; min-height:19px; margin-bottom:8px; }
+/* the app's PinPad: 4 dots, then a 3×4 pad of big keys (≥60px) */
+#login .dots { display:flex; justify-content:center; gap:14px; margin:4px 0 10px; }
+#login .dots i {
+  /* empty dot: 3.2:1 ring, enough to count them (non-text contrast) */
+  width:16px; height:16px; border-radius:99px; background:#f4e9de; border:1.5px solid #9a8674;
+  transition:transform .12s, background .12s;
+}
+#login .dots i.on { background:var(--red); border-color:var(--red); transform:scale(1.15); }
+#login .dots.shake { animation:pinshake .32s; }
+@keyframes pinshake { 0%,100% { transform:none; } 20% { transform:translateX(16px); } 45% { transform:translateX(-13px); } 70% { transform:translateX(8px); } 88% { transform:translateX(-4px); } }
+#login .err { min-height:38px; font-weight:600; }
+#login .pad { display:grid; grid-template-columns:repeat(3, 1fr); gap:10px; }
+#login .pad button {
+  min-height:62px; border-radius:16px; font:inherit; font-size:24px; font-weight:700; cursor:pointer;
+  background:var(--card); color:var(--ink); border:1px solid var(--line); box-shadow:var(--shadow);
+  font-variant-numeric:tabular-nums;
+}
+#login .pad button:active { background:#f6efe6; transform:scale(.96); }
+#login .pad button.del { color:var(--ink2); }
+#login .pad.busy button { opacity:.6; }
+@media (max-height:700px) {
+  #login { margin-top:3vh; }
+  #login .tile { width:58px; height:58px; font-size:29px; margin-bottom:8px; border-radius:18px; }
+  #login p.sub { margin-bottom:10px; }
+  #login .pad button { min-height:58px; }
+}
 
 /* ---------- toast ---------- */
 #toasts {

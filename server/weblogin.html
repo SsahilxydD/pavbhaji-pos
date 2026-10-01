@@ -18,11 +18,15 @@
   <div class="tile">🍽</div>
   <h1>PavBhaji POS</h1>
   <p class="sub" id="subT">Enter your PIN</p>
-  <div class="card">
-    <input id="pin" type="password" inputmode="numeric" autocomplete="one-time-code"
-           maxlength="8" autofocus placeholder="••••">
-    <div class="err" id="err"></div>
-    <button class="primary" id="go" style="width:100%">Log in</button>
+  <!-- The app's PinPad: 4 dots and a big 3×4 pad, no OS keyboard, and it
+       logs in by itself on the 4th digit. A laptop can just type it. -->
+  <div class="dots" id="dots" role="status" aria-live="polite"><i></i><i></i><i></i><i></i></div>
+  <div class="err" id="err"></div>
+  <div class="pad" id="pad">
+    <button data-k="1">1</button><button data-k="2">2</button><button data-k="3">3</button>
+    <button data-k="4">4</button><button data-k="5">5</button><button data-k="6">6</button>
+    <button data-k="7">7</button><button data-k="8">8</button><button data-k="9">9</button>
+    <span></span><button data-k="0">0</button><button data-k="del" class="del" id="delKey">⌫</button>
   </div>
   <p class="hint" id="hintT"></p>
 </div>
@@ -50,11 +54,12 @@ function strings() {
   document.documentElement.lang = lang;
   S = {
     enterPin: t('Enter your PIN', 'अपना PIN डालो', 'તમારો PIN નાખો'),
-    login: t('Log in', 'लॉग इन', 'લૉગ ઇન'),
     hint: t('The same PIN as in the phone app. The PIN decides which screen opens.',
             'वही PIN जो फ़ोन ऐप में डालते हो। PIN से ही तय होता है कौन-सी स्क्रीन खुलेगी।',
             'એ જ PIN જે ફોન એપમાં નાખો છો. PIN થી જ નક્કી થાય છે કઈ સ્ક્રીન ખુલશે.'),
     pin4: t('The PIN is 4 digits', 'PIN 4 अंकों का है', 'PIN 4 આંકડાનો છે'),
+    del: t('Delete', 'मिटाओ', 'ભૂંસો'),
+    dotsLabel: function (n) { return t(n + ' of 4 digits', '4 में से ' + n + ' अंक', '4 માંથી ' + n + ' આંકડા'); },
     noNet: t('No network — try again', 'नेटवर्क नहीं है — फिर कोशिश करो', 'નેટવર્ક નથી — ફરી પ્રયત્ન કરો'),
     noServer: t('The server is not answering — try again', 'सर्वर से जवाब नहीं आया — फिर कोशिश करो', 'સર્વરનો જવાબ ન આવ્યો — ફરી પ્રયત્ન કરો'),
     wrongPin: t('Wrong PIN', 'गलत PIN', 'ખોટો PIN'),
@@ -86,8 +91,9 @@ function paintText() {
   $('langSel').value = lang;
   $('langMark').textContent = LANG_MARK[lang];
   $('subT').textContent = S.enterPin;
-  $('go').textContent = S.login;
   $('hintT').textContent = S.hint;
+  $('delKey').setAttribute('aria-label', S.del);
+  paintDots();
 }
 $('langSel').onchange = function () {
   lang = this.value;
@@ -95,7 +101,6 @@ $('langSel').onchange = function () {
   strings(); paintText();
   $('err').textContent = '';
 };
-paintText();
 
 function toast(msg, kind) {
   var el = document.createElement('div');
@@ -115,11 +120,50 @@ function toast(msg, kind) {
   } catch (e) { /* corrupt storage is not worth a crash — just show the PIN box */ }
 })();
 
-async function login() {
-  var pin = $('pin').value.trim();
+// ---------------------------------------------------------------- PIN pad
+// PINs are exactly 4 digits (the server only issues those), so the 4th
+// digit logs in — no OS keyboard to raise first (iOS ignores autofocus),
+// no "Log in" button to find.
+var pin = '', busy = false;
+
+function paintDots() {
+  var dots = $('dots').children;
+  for (var i = 0; i < dots.length; i++) dots[i].className = i < pin.length ? 'on' : '';
+  $('dots').setAttribute('aria-label', S.dotsLabel(pin.length));
+}
+
+function press(k) {
+  if (busy) return;
+  if (k === 'del') { pin = pin.slice(0, -1); paintDots(); return; }
+  if (pin.length >= 4) return;
+  pin += k;
   $('err').textContent = '';
-  if (pin.length < 4) { $('err').textContent = S.pin4; return; }
-  $('go').disabled = true;
+  paintDots();
+  if (pin.length === 4) login();
+}
+
+$('pad').addEventListener('click', function (e) {
+  var b = e.target.closest('button[data-k]');
+  if (b) press(b.dataset.k);
+});
+// a laptop types it: digits, Backspace (Enter isn't needed)
+document.addEventListener('keydown', function (e) {
+  if (e.ctrlKey || e.metaKey || e.altKey || e.target.tagName === 'SELECT') return;
+  if (/^[0-9]$/.test(e.key)) { e.preventDefault(); press(e.key); }
+  else if (e.key === 'Backspace') { e.preventDefault(); press('del'); }
+});
+
+// Wrong PIN: the dots shake and clear, the reason stays under them.
+function reject(msg) {
+  $('err').textContent = msg;
+  pin = ''; paintDots();
+  var d = $('dots');
+  d.classList.remove('shake'); void d.offsetWidth; d.classList.add('shake');
+}
+
+async function login() {
+  busy = true;
+  $('pad').classList.add('busy');
   try {
     var r = await fetch('/api/login', {
       method: 'POST',
@@ -138,24 +182,21 @@ async function login() {
       // waiter / chef / parcel have no browser screen — the phone app is their
       // tool. Hand the session straight back rather than leaving it dangling.
       fetch('/api/logout', { method: 'POST', headers: { 'Authorization': 'Bearer ' + d.token } });
-      $('err').textContent = S.appOnly(S.role(d.staff.role));
-      $('pin').value = '';
+      reject(S.appOnly(S.role(d.staff.role)));
       return;
     }
     localStorage.setItem(TOK, d.token);
     localStorage.setItem(WHO, JSON.stringify(d.staff));
     location.replace(dest);
   } catch (e) {
-    $('err').textContent = e.message;
-    $('pin').value = '';
-    $('pin').focus();
+    reject(e.message);
   } finally {
-    $('go').disabled = false;
+    busy = false;
+    $('pad').classList.remove('busy');
   }
 }
 
-$('go').onclick = login;
-$('pin').addEventListener('keydown', function (e) { if (e.key === 'Enter') login(); });
+paintText();
 </script>
 </body>
 </html>

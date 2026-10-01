@@ -12,7 +12,7 @@
 <body>
 
 <div class="top">
-  <div class="tile" id="tile">🧾</div>
+  <button class="tile" id="tile" disabled>🧾</button>
   <div class="ttl"><b id="ttlT">Cashier</b><small id="ttlS"></small></div>
   <label class="lang"><span id="langMark">EN</span><select id="langSel" aria-label="Language">
     <option value="en">English</option><option value="hi">हिंदी</option><option value="gu">ગુજરાતી</option></select></label>
@@ -192,6 +192,7 @@ function paintNet(on) {
       '<button id="netRetry">' + esc(S.retryShort) + '</button>';
     $('netRetry').onclick = probeNet;
   }
+  syncTop();
 }
 function netFail() {
   net.fails++;
@@ -263,13 +264,26 @@ function stopPoll() { clearInterval(timer); timer = null; repaint = null; }
 // finishes after the cashier has moved on must not paint or start a poll.
 var nav = 0;
 
+// The tile is a real <button>: on a bill it is the way back, reachable by
+// Tab and Enter (it used to be a <div> only a mouse could use).
 function setTop(icon, title, sub, onIcon) {
-  $('tile').textContent = icon;
-  $('tile').onclick = onIcon || null;
-  $('tile').style.cursor = onIcon ? 'pointer' : '';
+  var tile = $('tile');
+  tile.textContent = icon;
+  tile.className = 'tile' + (onIcon ? ' back' : '');
+  tile.disabled = !onIcon;
+  tile.onclick = onIcon || null;
+  tile.setAttribute('aria-label', onIcon ? S.back : S.title);
   $('ttlT').textContent = title;
   $('ttlS').textContent = sub || '';
+  syncTop();
 }
+
+// The tab strip and other sticky bits sit under the header, whose height
+// changes with the offline strip and the phone's notch.
+function syncTop() {
+  document.documentElement.style.setProperty('--top-h', document.querySelector('.top').offsetHeight + 'px');
+}
+window.addEventListener('resize', syncTop);
 
 var TABS = { open:'🍽', bills:'🧾' };
 function paintTabs() {

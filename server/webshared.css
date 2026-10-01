@@ -39,9 +39,13 @@ body {
   box-shadow:0 2px 10px rgba(60,35,20,.12);
 }
 .top .tile {
-  width:36px; height:36px; border-radius:12px; background:rgba(255,255,255,.16);
-  display:grid; place-items:center; font-size:19px; flex:0 0 36px;
+  width:42px; height:42px; border-radius:12px; background:rgba(255,255,255,.16);
+  display:grid; place-items:center; font-size:19px; flex:0 0 42px;
+  /* a <button>: on an inner screen it is the way back (Esc / Tab reach it) */
+  font-family:inherit; color:#fff; border:0; padding:0; min-height:0; cursor:pointer;
 }
+.top .tile.back { font-size:26px; font-weight:700; }
+.top .tile:disabled { opacity:1; cursor:default; }
 .top .ttl { flex:1; min-width:0; }
 .top .ttl b, .top .ttl small { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .top .ttl b { display:block; font-size:15.5px; letter-spacing:-.2px; }
@@ -89,8 +93,11 @@ body {
 }
 
 /* ---------- tab strip ---------- */
+/* Sticks just UNDER the header (whose height changes with the offline strip
+   and the phone's notch — syncTop() keeps --top-h right). At top:0 it slid
+   under the header and the tabs vanished on scroll. */
 .tabs {
-  position:sticky; top:0; z-index:15;
+  position:sticky; top:var(--top-h, 64px); z-index:15;
   display:flex; gap:6px; padding:9px 12px;
   background:var(--bg); border-bottom:1px solid var(--line);
   overflow-x:auto; -webkit-overflow-scrolling:touch;

@@ -12,7 +12,7 @@
 <body>
 
 <div class="top">
-  <div class="tile">🍽</div>
+  <button class="tile" id="tile" disabled>🍽</button>
   <div class="ttl"><b id="ttlT">Manager</b><small id="who"></small></div>
   <label class="lang"><span id="langMark">EN</span><select id="langSel" aria-label="Language">
     <option value="en">English</option><option value="hi">हिंदी</option><option value="gu">ગુજરાતી</option></select></label>
@@ -104,7 +104,7 @@ function strings() {
     cooking: function (n) { return t(n + ' cooking', n + ' बन रहे', n + ' બની રહ્યા'); },
     readyN: function (n) { return t(n + ' ready', n + ' तैयार', n + ' તૈયાર'); },
     free: t('free', 'खाली', 'ખાલી'),
-    backTables: t('‹ Tables', '‹ टेबल', '‹ ટેબલ'),
+    newOrder: t('new order', 'नया ऑर्डर', 'નવો ઓર્ડર'),
     noOrder: t('No order on this table yet.', 'इस टेबल पर अभी कोई ऑर्डर नहीं।', 'આ ટેબલ પર હજી કોઈ ઓર્ડર નથી.'),
     orderNo: function (n) { return t('Order #' + n, 'ऑर्डर #' + n, 'ઓર્ડર #' + n); },
     status: function (raw) {
@@ -115,6 +115,7 @@ function strings() {
     cancel: t('cancel', 'रद्द', 'રદ'),
     total: t('Total', 'कुल', 'કુલ'),
     addItems: t('+ Add items', '+ आइटम जोड़ो', '+ વસ્તુઓ ઉમેરો'),
+    pickSub: t('add items', 'आइटम जोड़ो', 'વસ્તુઓ ઉમેરો'),
     cancelPrompt: function (n) {
       return t('Cancel "' + n + '" — why? (at least 2 letters)', '"' + n + '" रद्द — क्यों? (कम से कम 2 अक्षर)', '"' + n + '" રદ — કેમ? (ઓછામાં ઓછા 2 અક્ષર)');
     },
@@ -180,7 +181,21 @@ function signOut(silent) {
   location.replace('/');
 }
 $('logoutBtn').onclick = function () { confirmLeave(function () { signOut(false); }); };
-$('who').textContent = me.name;
+
+// The header is the screen's title bar, like the app's AppHeader: on a
+// table or the picker its tile turns into ‹ and is the way back — it never
+// scrolls away, where the old in-page "‹ Back" did.
+function setTop(icon, title, sub, onBack) {
+  var tile = $('tile');
+  tile.textContent = icon;
+  tile.className = 'tile' + (onBack ? ' back' : '');
+  tile.disabled = !onBack;
+  tile.onclick = onBack || null;
+  tile.setAttribute('aria-label', onBack ? S.back : S.title);
+  $('ttlT').textContent = title;
+  $('who').textContent = sub || '';
+  syncTop();
+}
 
 // The language chip. Redraws whatever is on screen in the new language —
 // the cart, the search box and the scroll position stay as they are.
@@ -188,7 +203,6 @@ function paintChrome() {
   $('langSel').value = lang;
   $('langMark').textContent = LANG_MARK[lang];
   $('logoutBtn').textContent = S.logout;
-  if (!pane) $('ttlT').textContent = S.title;
 }
 $('langSel').onchange = function () {
   lang = this.value;
@@ -341,6 +355,7 @@ function redraw() {
   paintTabs();
   if (pane === 'picker') { paintPickerText(); return; }
   if (pane === 'table') { paintTable(); return; }
+  setTop('🍽', S.title, me.name, null);
   if (tab === 'parcel') {
     var nm = $('pcName') ? $('pcName').value : '', ph = $('pcPhone') ? $('pcPhone').value : '';
     parcel();
@@ -358,6 +373,8 @@ function show(t) {
   tab = t; clearInterval(timer); repaint = null; nav++; pane = '';
   openTable = null; newCart(); parcelMode = (t === 'parcel');
   $('bar').className = ''; $('bar').innerHTML = '';
+  $('tabs').hidden = false;
+  setTop('🍽', S.title, me.name, null);
   paintTabs();
   ({ tables:tables, parcel:parcel, kitchen:kitchen })[t]();
 }
@@ -449,10 +466,11 @@ async function refreshTable() {
 function paintTable() {
   pane = 'table'; clearInterval(timer);   // the picker's menu poll, if we came from there
   var o = openTable.order;
-  var html = '<div class="row" style="margin-bottom:12px">' +
-    '<button class="ghost" id="backBtn" style="min-height:42px;padding:9px 14px">' + esc(S.backTables) + '</button>' +
-    '<b class="grow" style="font-size:17px;text-align:center">' + esc(openTable.name) + '</b>' +
-    '<span style="width:86px"></span></div>';
+  $('tabs').hidden = true;
+  setTop('‹', openTable.name,
+    o ? S.orderNo(o.orderNo) + ' · ' + rupees(o.total) + ' · ' + o.openedByName : S.newOrder,
+    function () { show('tables'); });
+  var html = '';
 
   if (!o) {
     html += '<div class="empty">' + esc(S.noOrder) + '</div>';
@@ -482,8 +500,7 @@ function paintTable() {
 
   html += '<button class="primary" id="addBtn" style="width:100%">' + esc(S.addItems) + '</button>';
   $('view').innerHTML = html;
-  $('bar').innerHTML = '';
-  $('backBtn').onclick = function () { show('tables'); };
+  $('bar').className = ''; $('bar').innerHTML = '';
   $('addBtn').onclick = function () { picker(openTable.name, sendTicket); };
 
   $('view').querySelectorAll('button[data-cancel]').forEach(function (b) {
@@ -500,6 +517,19 @@ function paintTable() {
 }
 
 // ---------------------------------------------------------------- picker
+var pickTitle = '';
+function pickerTop() {
+  setTop('‹', pickTitle, S.pickSub, pickerBack);
+}
+function pickerBack() {
+  confirmLeave(function () {
+    newCart(); paintCartBar();
+    if (parcelMode) { show('parcel'); return; }
+    paintTable();     // the copy we have, at once — even with no network
+    refreshTable();
+  });
+}
+
 async function picker(title, send) {
   clearInterval(timer);
   onSend = send;
@@ -507,14 +537,13 @@ async function picker(title, send) {
   try { await loadMenu(); } catch (e) { toast(e.message, 'bad'); return; }
   if (my !== nav) return;
   pane = 'picker';
-  var html = '<div class="row" style="margin-bottom:12px">' +
-    '<button class="ghost" id="pBack" style="min-height:42px;padding:9px 14px">‹ ' + esc(S.back) + '</button>' +
-    '<b class="grow" style="font-size:17px;text-align:center">' + esc(title) + '</b>' +
-    '<span style="width:86px"></span></div>';
+  pickTitle = title;
+  $('tabs').hidden = true;   // no tab to fat-finger away from a cart
+  pickerTop();
   // Finding a dish: a search box and one chip per category, stuck under the
   // header so they're there at any scroll depth.
   var cats = menu.filter(function (c) { return (c.items || []).length; });
-  html += '<div class="pk-tools" id="pkTools">' +
+  var html = '<div class="pk-tools" id="pkTools">' +
     '<input id="pkQ" type="search" enterkeyhint="search" autocomplete="off" placeholder="' + esc(S.search) + '">' +
     '<button id="pkClear" hidden aria-label="clear">✕</button>' +
     '<div class="pk-chips" id="pkChips">' + cats.map(function (c) {
@@ -552,14 +581,6 @@ async function picker(title, send) {
     if (b) jumpTo(b.dataset.cat);
   });
   timer = setInterval(menuPoll, 30000);
-  $('pBack').onclick = function () {
-    confirmLeave(function () {
-      newCart(); paintCartBar();
-      if (parcelMode) { show('parcel'); return; }
-      paintTable();     // the copy we have, at once — even with no network
-      refreshTable();
-    });
-  };
   // − takes one off; + or a tap anywhere else on the row adds one (the app's
   // MenuRow does the same), so a fat-fingered tap still lands on that dish.
   $('pkList').addEventListener('click', function (e) {
@@ -689,7 +710,7 @@ function applyStock() {
 // Language switched mid-punch: re-word the picker in place (rows, counts,
 // search text and scroll stay put).
 function paintPickerText() {
-  $('pBack').textContent = '‹ ' + S.back;
+  pickerTop();
   $('pkQ').placeholder = S.search;
   $('pkNone').textContent = S.noMatch;
   applyStock();

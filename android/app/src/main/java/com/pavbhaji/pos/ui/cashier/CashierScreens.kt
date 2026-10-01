@@ -578,6 +578,27 @@ private fun shiftDate(date: String, days: Int): String = try {
     )
 } catch (e: Exception) { date }
 
+// "2026-09-30" → "Yesterday · Tue, 30 Sep" in the reader's language (the
+// year only when it isn't this one). Falls back to the raw date.
+private fun prettyDay(iso: String, today: String?): String {
+    val p = iso.split("-").mapNotNull { it.toIntOrNull() }
+    if (p.size != 3) return iso
+    val cal = java.util.Calendar.getInstance().apply { set(p[0], p[1] - 1, p[2]) }
+    val loc = when (com.pavbhaji.pos.ui.L10n.lang) {
+        "hi" -> java.util.Locale("hi", "IN"); "gu" -> java.util.Locale("gu", "IN"); else -> java.util.Locale("en", "IN")
+    }
+    val thisYear = today?.take(4) ?: java.util.Calendar.getInstance().get(java.util.Calendar.YEAR).toString()
+    val pattern = if (iso.take(4) == thisYear) "EEE, d MMM" else "EEE, d MMM yyyy"
+    val d = java.text.SimpleDateFormat(pattern, loc).format(cal.time)
+    val rel = when {
+        today == null -> null
+        iso == today -> S.todayWord
+        iso == shiftDate(today, -1) -> S.yesterdayWord
+        else -> null
+    }
+    return if (rel != null) "$rel · $d" else d
+}
+
 // The settled-bill history: one business day's closed bills, newest first.
 // Tap a bill for the full read-back (items, discount, payment) + reprint.
 // Shared by the cashier's Bills tab and the admin's Bills door.
@@ -586,11 +607,15 @@ fun BillsHistoryScreen(onLogout: (() -> Unit)?, onBack: (() -> Unit)?) {
     var date by remember { mutableStateOf<String?>(null) } // null = today
     var resp by remember { mutableStateOf(com.pavbhaji.pos.data.BillsResp()) }
     var openBill by remember { mutableStateOf<BillSummaryDto?>(null) }
+    // The shop's business day, as the server counts it (its answer for
+    // "today"): ▶ stops there instead of walking into the future.
+    var today by remember { mutableStateOf<String?>(null) }
 
     var loadError by remember { mutableStateOf<String?>(null) }
     suspend fun refresh() {
-        when (val r = Deps.api.bills(date)) {
-            is ApiResult.Ok -> { resp = r.value; loadError = null }
+        val asked = date
+        when (val r = Deps.api.bills(asked)) {
+            is ApiResult.Ok -> { resp = r.value; loadError = null; if (asked == null) today = r.value.date }
             is ApiResult.Err -> loadError = r.message
         }
     }
@@ -614,15 +639,37 @@ fun BillsHistoryScreen(onLogout: (() -> Unit)?, onBack: (() -> Unit)?) {
             actions = { if (onBack == null && onLogout != null) com.pavbhaji.pos.ui.LogoutAction(onLogout) }
         )
         ErrorBanner(loadError)
+        val onToday = today == null || resp.date == today
         Row(
             Modifier.fillMaxWidth().padding(horizontal = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.Center
         ) {
             TextButton(onClick = { date = shiftDate(resp.date, -1) }) { Text("◀") }
-            Text(resp.date, fontSize = 15.sp, fontWeight = FontWeight.Bold)
-            TextButton(onClick = { date = shiftDate(resp.date, +1) }) { Text("▶") }
-            TextButton(onClick = { date = null }) { Text(S.todayBtn, fontSize = 12.sp) }
+            Text(
+                prettyDay(resp.date, today), fontSize = 15.sp, fontWeight = FontWeight.Bold,
+                textAlign = TextAlign.Center, modifier = Modifier.weight(1f, fill = false)
+            )
+            TextButton(onClick = { date = shiftDate(resp.date, +1) }, enabled = !onToday) { Text("▶") }
+            if (!onToday) TextButton(onClick = { date = null }) { Text(S.todayBtn, fontSize = 12.sp) }
+        }
+        // The drawer view the web cashier already has: how the day's
+        // closed bills were paid.
+        if (resp.bills.isNotEmpty()) {
+            val cash = resp.bills.sumOf { it.paidCash }
+            val online = resp.bills.sumOf { it.paidOnline }
+            val disc = resp.bills.sumOf { it.discount }
+            Text(
+                listOfNotNull(
+                    "${S.reportCash} ${rupees(cash)}",
+                    "${S.reportOnline} ${rupees(online)}",
+                    if (disc > 0) "${S.reportDiscounts} −${rupees(disc)}" else null
+                ).joinToString("  ·  "),
+                fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp)
+            )
         }
         if (resp.bills.isEmpty()) {
             com.pavbhaji.pos.ui.EmptyHint(S.noBillsDay)

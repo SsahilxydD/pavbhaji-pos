@@ -540,6 +540,8 @@ object S {
     // ---- report / audit ----
     val logBtn get() = t("log", "लॉग", "લોગ")
     val todayBtn get() = t("today", "आज", "આજે")
+    val todayWord get() = t("Today", "आज", "આજે")
+    val yesterdayWord get() = t("Yesterday", "कल", "ગઈકાલે")
     val salesServed get() = t("sales (served)", "बिक्री (परोसा)", "વેચાણ (પીરસેલું)")
     val ordersCard get() = t("orders", "ऑर्डर", "ઓર્ડર")
     val cancelledCard get() = t("cancelled", "रद्द", "રદ")

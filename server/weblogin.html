@@ -64,12 +64,14 @@ function strings() {
     dotsLabel: function (n) { return t('4 me se ' + n + ' digit', '4 में से ' + n + ' अंक', '4 માંથી ' + n + ' આંકડા'); },
     noNet: t('Network nahi hai — dobara try karo', 'नेटवर्क नहीं है — फिर कोशिश करो', 'નેટવર્ક નથી — ફરી પ્રયત્ન કરો'),
     noServer: t('Server se jawab nahi aaya — dobara try karo', 'सर्वर से जवाब नहीं आया — फिर कोशिश करो', 'સર્વરનો જવાબ ન આવ્યો — ફરી પ્રયત્ન કરો'),
-    wrongPin: t('wrong PIN', 'गलत PIN', 'ખોટો PIN'),
-    wait: function (s) { return t('too many wrong PINs — wait ' + s + 's', 'बहुत बार गलत PIN — ' + s + ' सेकंड रुको', 'ઘણી વાર ખોટો PIN — ' + s + ' સેકન્ડ રાહ જુઓ'); },
+    wrongPin: t('PIN galat hai', 'गलत PIN', 'ખોટો PIN'),
+    wait: function (s) { return t('Bahut baar galat PIN — ' + s + ' second ruko', 'बहुत बार गलत PIN — ' + s + ' सेकंड रुको', 'ઘણી વાર ખોટો PIN — ' + s + ' સેકન્ડ રાહ જુઓ'); },
+    // Waiter / chef / parcel have no browser screen, only the Android app —
+    // so an iPhone can't "just use the app": say who sorts it out.
     appOnly: function (role) {
-      return t('PIN sahi hai (' + role + '), par ye role phone app me chalta hai.',
-               'PIN सही है (' + role + '), पर यह रोल फ़ोन ऐप में चलता है।',
-               'PIN સાચો છે (' + role + '), પણ આ રોલ ફોન એપમાં ચાલે છે.');
+      return t('PIN sahi hai, par ' + role + ' ki screen sirf Android app me hai — manager se baat karo.',
+               'PIN सही है, पर ' + role + ' की स्क्रीन सिर्फ़ Android ऐप में है — मैनेजर से बात करो।',
+               'PIN સાચો છે, પણ ' + role + ' ની સ્ક્રીન ફક્ત Android એપમાં છે — મેનેજર સાથે વાત કરો.');
     },
     role: function (raw) {
       return ({ waiter: t('waiter', 'वेटर', 'વેઈટર'), chef: t('chef', 'शेफ़', 'શેફ'),
@@ -79,11 +81,10 @@ function strings() {
 }
 strings();
 
-// The server says these in English (Hinglish shows them as they come, as it
-// always did); हिं / ગુ put them in the staff's words.
+// The server says these in English; every language — Hinglish too — puts
+// them in the staff's words ("wrong PIN" was the one English line here).
 function loginError(msg) {
   msg = String(msg || '');
-  if (lang === 'hg') return msg;
   if (msg === 'wrong PIN') return S.wrongPin;
   var m = /^too many wrong PINs — wait (\d+)s/.exec(msg);
   if (m) return S.wait(m[1]);

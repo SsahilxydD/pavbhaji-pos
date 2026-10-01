@@ -104,6 +104,13 @@ function strings() {
     cooking: function (n) { return t(n + ' cooking', n + ' बन रहे', n + ' બની રહ્યા'); },
     readyN: function (n) { return t(n + ' ready', n + ' तैयार', n + ' તૈયાર'); },
     free: t('free', 'खाली', 'ખાલી'),
+    now: t('now', 'अभी', 'હમણાં'),
+    occupied: function (busy, total) {
+      return t(busy + ' of ' + total + ' occupied', total + ' में से ' + busy + ' भरे', total + ' માંથી ' + busy + ' ભરેલા');
+    },
+    inKitchen: t('in kitchen', 'किचन में', 'રસોડામાં'),
+    readyPickup: function (n) { return t(n + ' READY — pick up', n + ' तैयार — ले जाओ', n + ' તૈયાર — લઈ જાઓ'); },
+    collectAmt: function (a) { return t('COLLECT ' + a, a + ' लो', a + ' લો'); },
     newOrder: t('new order', 'नया ऑर्डर', 'નવો ઓર્ડર'),
     noOrder: t('No order on this table yet.', 'इस टेबल पर अभी कोई ऑर्डर नहीं।', 'આ ટેબલ પર હજી કોઈ ઓર્ડર નથી.'),
     orderNo: function (n) { return t('Order #' + n, 'ऑर्डर #' + n, 'ઓર્ડર #' + n); },
@@ -409,9 +416,16 @@ async function tables() {
     if (tab !== 'tables' || openTable) return;
     var list = (d.tables || []).filter(function (t) { return t.kind !== 'parcel'; });
     var parcels = (d.tables || []).filter(function (t) { return t.kind === 'parcel' && t.order; });
+    // The room at a glance, in the header (the app's "9 of 24 occupied").
+    var busy = list.filter(function (t) { return t.order; }).length;
+    var ready = (d.tables || []).reduce(function (s, t) { return s + (t.order ? t.order.readyCount : 0); }, 0);
+    // (the counts first: on a narrow phone the name is what gets cut)
+    $('who').textContent = S.occupied(busy, list.length) + (ready ? ' · ' + S.readyN(ready) : '') + ' · ' + me.name;
+    // Running parcels are few and time-critical: they go on top, not after
+    // all 24 tables.
     $('view').innerHTML =
-      '<h2>' + esc(S.tabTables) + '</h2><div class="grid">' + list.map(tableTile).join('') + '</div>' +
-      (parcels.length ? '<h2>' + esc(S.runningParcels) + '</h2><div class="grid">' + parcels.map(tableTile).join('') + '</div>' : '');
+      (parcels.length ? '<h2>🥡 ' + esc(S.runningParcels) + '</h2><div class="grid">' + parcels.map(tableTile).join('') + '</div>' : '') +
+      '<h2>' + esc(S.tabTables) + '</h2><div class="grid">' + list.map(tableTile).join('') + '</div>';
   };
   var my = nav;
   repaint = paint;
@@ -421,16 +435,30 @@ async function tables() {
   if (my === nav) timer = setInterval(function () { paint().catch(function () {}); }, 10000);
 }
 
+// "now", "6m", "1h20m" since the order opened — the app's ageMinutes.
+function age(ms) {
+  var m = Math.max(0, Math.floor((Date.now() - ms) / 60000));
+  return m < 1 ? S.now : m < 60 ? m + 'm' : Math.floor(m / 60) + 'h' + (m % 60) + 'm';
+}
+
+// One table, coloured by what to do next (the app's TableCard): free,
+// in the kitchen, plates ready to pick up, or all served — collect.
 function tableTile(t) {
   var o = t.order;
-  return '<button class="tile-btn' + (o ? ' busy' : '') + '" data-table="' + t.id + '" data-name="' + esc(t.name) + '">' +
-    '<span class="nm">' + (t.kind === 'parcel' ? '🥡 ' : '') + esc(t.name) + '</span>' +
-    (o
-      ? '<span class="sub">#' + o.orderNo + ' · ' + clock(o.openedAt) + ' · ' + esc(S.items(o.itemCount)) + '</span>' +
-        (o.pendingCount ? '<span class="sub">⏳ ' + esc(S.cooking(o.pendingCount)) + '</span>' : '') +
-        (o.readyCount ? '<span class="sub">✅ ' + esc(S.readyN(o.readyCount)) + '</span>' : '') +
-        '<span class="amt">' + rupees(o.total) + '</span>'
-      : '<span class="sub">' + esc(S.free) + '</span><span class="amt" style="color:var(--ink3)">—</span>') +
+  var attrs = ' data-table="' + t.id + '" data-name="' + esc(t.name) + '" data-free="' + (o ? '' : '1') + '"';
+  if (!o) {
+    return '<button class="tile-btn free"' + attrs + '><span class="nm">' + esc(t.name) + '</span>' +
+      '<span class="sub">' + esc(S.free) + '</span></button>';
+  }
+  var state = o.readyCount > 0 ? 'ready' : o.pendingCount > 0 ? 'cook' : 'collect';
+  var pill = state === 'ready' ? S.readyPickup(o.readyCount)
+           : state === 'cook' ? S.inKitchen : S.collectAmt(rupees(o.total));
+  return '<button class="tile-btn ' + state + '"' + attrs + '>' +
+    '<span class="hd"><span class="nm">' + (t.kind === 'parcel' ? '🥡 ' : '') + esc(t.name) + '</span>' +
+      '<span class="no">#' + o.orderNo + '</span></span>' +
+    '<span class="money">' + rupees(o.total) + ' · ' + esc(S.items(o.itemCount)) + '</span>' +
+    '<span class="meta"><span class="who">' + esc(age(o.openedAt) + ' · ' + (o.customerName || o.openedByName)) + '</span>' +
+      '<span class="spill ' + state + '">' + esc(pill) + '</span></span>' +
     '</button>';
 }
 
@@ -449,6 +477,14 @@ async function openTableView(id, name) {
   clearInterval(timer); repaint = null;
   openTable = { id: id, name: name, order: d.order };
   newCart();
+  // A free table has nothing to look at yet: the most common tap of the
+  // night goes straight to the menu (Back from there returns to the grid).
+  if (!d.order) {
+    // (if even the menu can't load, put the live grid back rather than
+    // leave a stale one with its poll stopped)
+    if (!(await picker(name, sendTicket)) && my === nav) show('tables');
+    return;
+  }
   paintTable();
 }
 
@@ -525,6 +561,8 @@ function pickerBack() {
   confirmLeave(function () {
     newCart(); paintCartBar();
     if (parcelMode) { show('parcel'); return; }
+    // came straight from a free tile: back to the grid, not an empty table
+    if (!openTable.order) { show('tables'); return; }
     paintTable();     // the copy we have, at once — even with no network
     refreshTable();
   });
@@ -534,8 +572,8 @@ async function picker(title, send) {
   clearInterval(timer);
   onSend = send;
   var my = nav;
-  try { await loadMenu(); } catch (e) { toast(e.message, 'bad'); return; }
-  if (my !== nav) return;
+  try { await loadMenu(); } catch (e) { toast(e.message, 'bad'); return false; }
+  if (my !== nav) return true;
   pane = 'picker';
   pickTitle = title;
   $('tabs').hidden = true;   // no tab to fat-finger away from a cart
@@ -590,6 +628,7 @@ async function picker(title, send) {
     else bump(Number(row.dataset.item), 1);
   });
   paintCartBar();
+  return true;
 }
 
 // "Sp. Pulav" -> "sp pulav", so "sp pul" or "pulav sp" both find it.

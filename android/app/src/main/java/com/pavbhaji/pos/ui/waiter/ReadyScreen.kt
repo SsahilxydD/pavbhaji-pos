@@ -31,7 +31,6 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
@@ -76,7 +75,6 @@ import kotlinx.coroutines.launch
 // card tinted amber: nothing was cooked, a waiter just carries them.
 @Composable
 fun ReadyScreen(onLogout: () -> Unit, showLogout: Boolean, onBack: (() -> Unit)? = null) {
-    val connected by Deps.live.connected.collectAsState()
     var lines by remember { mutableStateOf<List<PickupLineDto>>(emptyList()) }
     var loaded by remember { mutableStateOf(false) }
     var loadError by remember { mutableStateOf<String?>(null) }
@@ -102,6 +100,7 @@ fun ReadyScreen(onLogout: () -> Unit, showLogout: Boolean, onBack: (() -> Unit)?
         AppHeader(
             title = S.readyTitle,
             subtitle = when {
+                !loaded -> if (loadError != null) S.offlineShort else S.loading
                 lines.isEmpty() -> S.nothingToCarry
                 groups.size == 1 -> S.toCarryOneTable(lines.size)
                 else -> S.toCarryTables(lines.size, groups.size)
@@ -223,7 +222,6 @@ private fun carryOrder(lines: List<PickupLineDto>): List<PickupLineDto> =
 @Composable
 fun ServeScreen(onLogout: () -> Unit) {
     val scope = rememberCoroutineScope()
-    val connected by Deps.live.connected.collectAsState()
     var lines by remember { mutableStateOf<List<PickupLineDto>>(emptyList()) }
     var served by remember { mutableStateOf<List<PickupLineDto>>(emptyList()) }
     var loaded by remember { mutableStateOf(false) }
@@ -269,7 +267,13 @@ fun ServeScreen(onLogout: () -> Unit) {
     Column(Modifier.fillMaxSize()) {
         AppHeader(
             title = S.serveTitle,
-            subtitle = if (lines.isEmpty()) S.nothingToCarry else S.toCarry(lines.size),
+            // Never "nothing to carry" before the list has actually loaded:
+            // offline, that would send a waiter away from food at the pass.
+            subtitle = when {
+                !loaded -> if (loadError != null) S.offlineShort else S.loading
+                lines.isEmpty() -> S.nothingToCarry
+                else -> S.toCarry(lines.size)
+            },
             actions = { LogoutAction(onLogout) }
         )
         ErrorBanner(loadError)

@@ -134,10 +134,17 @@ fun ageMinutes(sinceMs: Long): String {
     }
 }
 
+// "7:42 pm" — the way the shop reads a clock, and the way the printed bill
+// and the web screens write it. Latin digits and am/pm in every language,
+// same as the web (built by hand: String.format could pick up a phone
+// locale's own digits).
 fun clockTime(ms: Long): String {
     val cal = java.util.Calendar.getInstance()
     cal.timeInMillis = ms
-    return "%02d:%02d".format(cal.get(java.util.Calendar.HOUR_OF_DAY), cal.get(java.util.Calendar.MINUTE))
+    val h = cal.get(java.util.Calendar.HOUR_OF_DAY)
+    val m = cal.get(java.util.Calendar.MINUTE)
+    val h12 = if (h % 12 == 0) 12 else h % 12
+    return "$h12:${m.toString().padStart(2, '0')} ${if (h < 12) "am" else "pm"}"
 }
 
 // While `active`, the silent self-update waits for the next time the phone

@@ -175,6 +175,11 @@ label.fld span { display:block; font-size:12px; font-weight:700; color:var(--ink
 .pk-row:active { background:#f6efe6; }
 .pk-row.in { background:#fff4ee; }
 .pk-row.in .step b { color:var(--red-deep); font-size:17px; }
+/* out of stock: greyed, + disabled, KHATAM pill; − stays live so a dish
+   that ran out while it sat in the cart can still be taken out */
+.pk-row.off, .pk-row.off.in { background:#f4efe9; cursor:default; }
+.pk-row.off .nm { color:var(--ink2); }
+.p-off { background:var(--danger-bg); color:var(--danger); vertical-align:1px; margin-left:4px; }
 
 /* ---------- sticky action bar ---------- */
 .bar {

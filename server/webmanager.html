@@ -52,7 +52,15 @@ var S = {
   leaveBody: 'Ho sakta hai ye KOT kitchen pahunch gaya ho. Chhod ke dobara punch kiya to ' +
              'kitchen do baar bana dega — pehle table pe check karo.',
   stay: 'Ruko',
-  leave: 'Chhod do'
+  leave: 'Chhod do',
+  khatam: 'khatam',
+  isKhatam: function (n) { return n + ' khatam hai'; },
+  wentKhatam: function (n) { return n + ' abhi khatam ho gaya — cart me hai'; },
+  khatamTitle: 'Ye khatam ho gaya',
+  khatamHint: 'Customer ko bata do. Inke saath poora KOT ruk jayega — inhe hata ke baaki bhejo.',
+  khatamHintAll: 'Customer ko bata do. Cart me aur kuch nahi hai.',
+  dropAndSend: 'Hata ke bhejo',
+  drop: 'Hata do'
 };
 
 var $ = function (id) { return document.getElementById(id); };
@@ -237,13 +245,26 @@ function show(t) {
   ({ tables:tables, parcel:parcel, kitchen:kitchen })[t]();
 }
 
+// The menu is re-read every time the picker opens (and every 30s while it is
+// open), because "khatam" changes mid-service and one khatam dish in a KOT
+// makes the server refuse the whole KOT. Offline, the last copy is used.
+// A dish that vanished from the menu is kept as unavailable, so a cart line
+// that still points at it can be shown and taken out.
 var menuById = {};
 async function loadMenu() {
-  if (menu.length) return menu;
-  var d = await api('GET', '/api/menu');
-  menu = d.menu || [];
-  menuById = {};
-  menu.forEach(function (c) { (c.items || []).forEach(function (it) { menuById[it.id] = it; }); });
+  try {
+    var d = await api('GET', '/api/menu');
+    menu = d.menu || [];
+  } catch (e) {
+    if (!menu.length) throw e;
+    return menu;
+  }
+  var fresh = {};
+  menu.forEach(function (c) { (c.items || []).forEach(function (it) { fresh[it.id] = it; }); });
+  Object.keys(menuById).forEach(function (k) {
+    if (!fresh[k]) fresh[k] = Object.assign({}, menuById[k], { available: false });
+  });
+  menuById = fresh;
   return menu;
 }
 
@@ -309,7 +330,7 @@ async function refreshTable() {
 }
 
 function paintTable() {
-  pane = 'table';
+  pane = 'table'; clearInterval(timer);   // the picker's menu poll, if we came from there
   var o = openTable.order;
   var html = '<div class="row" style="margin-bottom:12px">' +
     '<button class="ghost" id="backBtn" style="min-height:42px;padding:9px 14px">‹ Tables</button>' +
@@ -375,21 +396,27 @@ async function picker(title, send) {
     '<span style="width:86px"></span></div>';
   html += '<div id="pkList">';
   menu.forEach(function (c) {
+    var items = c.items || [];
+    if (!items.length) return;
+    // khatam dishes sink to the bottom of their category (order kept otherwise)
+    items = items.filter(function (it) { return it.available; })
+      .concat(items.filter(function (it) { return !it.available; }));
     html += '<h2>' + esc(c.name) + '</h2><div class="card pk-card">';
-    (c.items || []).forEach(function (it) {
-      html += '<div class="line pk-row" data-item="' + it.id + '">' +
+    items.forEach(function (it) {
+      html += '<div class="line pk-row' + (it.available ? '' : ' off') + '" data-item="' + it.id + '">' +
         '<span class="grow"><span class="nm">' + esc(it.name) + '</span>' +
-        '<div class="mut tnum">' + rupees(it.price) + (it.available ? '' : ' · khatam') + '</div></span>' +
+        '<div class="mut tnum pk-sub">' + rowSub(it) + '</div></span>' +
         '<span class="step">' +
           '<button data-dec="' + it.id + '" disabled>−</button>' +
           '<b id="q' + it.id + '">0</b>' +
-          '<button data-inc="' + it.id + '">+</button>' +
+          '<button data-inc="' + it.id + '"' + (it.available ? '' : ' disabled') + '>+</button>' +
         '</span></div>';
     });
     html += '</div>';
   });
   html += '</div>';
   $('view').innerHTML = html;
+  timer = setInterval(menuPoll, 30000);
   $('pBack').onclick = function () {
     confirmLeave(function () {
       newCart(); paintCartBar();
@@ -413,6 +440,7 @@ function bump(id, delta) {
   if (sending) { toast(S.wait); return; }
   if (cartLocked) { toast(S.locked, 'bad'); return; }
   var it = menuById[id];
+  if (delta > 0 && it && !it.available) { toast(S.isKhatam(it.name), 'bad'); return; }
   var line = cart.filter(function (l) { return l.menuItemId === id; })[0];
   if (!line) {
     if (delta < 0 || !it) return;
@@ -423,6 +451,59 @@ function bump(id, delta) {
   if (line.qty <= 0) cart = cart.filter(function (l) { return l.menuItemId !== id; });
   paintRow(id);
   paintCartBar();
+}
+
+// The line under a dish name: price, and a KHATAM pill when out of stock.
+function rowSub(it) {
+  return rupees(it.price) + (it.available ? '' : ' <span class="pill p-off">' + esc(S.khatam) + '</span>');
+}
+
+// Stock changed under an open picker: grey out / bring back rows in place.
+// No re-sort here — a row jumping away under a thumb is worse than an
+// out-of-order one.
+function applyStock() {
+  document.querySelectorAll('.pk-row').forEach(function (row) {
+    var it = menuById[Number(row.dataset.item)];
+    if (!it) return;
+    row.classList.toggle('off', !it.available);
+    row.querySelector('button[data-inc]').disabled = !it.available;
+    row.querySelector('.pk-sub').innerHTML = rowSub(it);
+  });
+}
+
+function menuPoll() {
+  var a = document.activeElement;
+  if (pane !== 'picker' || modalUp || sending || (a && a.tagName === 'INPUT')) return;
+  var before = menuById;
+  loadMenu().then(function () {
+    if (pane !== 'picker') return;
+    applyStock();
+    cart.forEach(function (l) {
+      var was = before[l.menuItemId], now = menuById[l.menuItemId];
+      if (was && was.available && now && !now.available) toast(S.wentKhatam(l.name), 'bad');
+    });
+  }).catch(function () {});
+}
+
+// Cart lines the menu now says are out of stock. The server refuses the
+// WHOLE KOT for any one of them, so offer to take them out and send the rest.
+function offerDropKhatam() {
+  var bad = cart.filter(function (l) { var it = menuById[l.menuItemId]; return !it || !it.available; });
+  if (!bad.length) return false;
+  var left = cart.length > bad.length;
+  showModal(S.khatamTitle,
+    '<div style="font-size:15px;font-weight:700">• ' +
+      bad.map(function (l) { return esc(l.qty + '× ' + l.name); }).join('<br>• ') + '</div>' +
+    '<div class="hint">' + esc(left ? S.khatamHint : S.khatamHintAll) + '</div>',
+    [{ label: 'Back', cls: 'ghost' },
+     { label: left ? S.dropAndSend : S.drop, cls: 'primary', act: function () {
+        hideModal();
+        cart = cart.filter(function (l) { return bad.indexOf(l) < 0; });
+        bad.forEach(function (l) { paintRow(l.menuItemId); });
+        paintCartBar();
+        if (cart.length && onSend) onSend();
+     } }]);
+  return true;
 }
 
 // One menu row's count, highlight and − state, from the cart.
@@ -463,6 +544,9 @@ function paintCartBar() {
 // id stays valid, because the server never stored it.
 async function sendCart(post, done) {
   if (sending || !cart.length) return;
+  // A khatam dish we already know about: ask now, don't let the KOT bounce.
+  // (Not for a locked cart — that one must go out exactly as first sent.)
+  if (!cartLocked && offerDropKhatam()) return;
   sending = true; paintCartBar();
   var id = cartId;
   var items = cart.map(function (l) { return { menuItemId: l.menuItemId, qty: l.qty, note: l.note }; });
@@ -479,7 +563,15 @@ async function sendCart(post, done) {
       sending = false; cartLocked = unsure;
       paintCartBar();
       // Locked: the bar itself explains, and a toast would sit on its button.
-      if (!unsure) toast(e.message, 'bad');
+      if (unsure) return;
+      // 409 is how the server says "X is marked out of stock" (it went khatam
+      // after the picker loaded): re-read the menu and offer to drop it.
+      if (e.status === 409) {
+        await loadMenu().catch(function () {});
+        applyStock();
+        if (offerDropKhatam()) return;
+      }
+      toast(e.message, 'bad');
       return;
     }
   }

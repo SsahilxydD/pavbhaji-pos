@@ -8,11 +8,13 @@
   /* Self-contained on purpose: the shop laptop is often offline, so no
      web fonts, no CDNs — the look comes from spacing, colour and motion. */
   :root {
+    /* Same AA-passing tokens as pos.css (webshared.css): ink3, green, amber
+       and danger were 3–4:1 on their backgrounds before. */
     --red:#c63c0a; --red-deep:#a93307; --red-dark:#7a2e0e;
-    --ink:#221a12; --ink2:#6e6055; --ink3:#9c8d80;
+    --ink:#221a12; --ink2:#6e6055; --ink3:#75665a;
     --line:#efe6da; --bg:#faf6f0; --card:#ffffff;
-    --green:#1e8f53; --green-bg:#e4f6ea; --amber:#b26a00; --amber-bg:#fff3e2;
-    --danger:#d23b2e; --danger-bg:#fdecea;
+    --green:#17703f; --green-bg:#e4f6ea; --amber:#8f5400; --amber-bg:#fff3e2;
+    --danger:#b8321f; --danger-bg:#fdecea;
     --shadow:0 1px 2px rgba(60,35,20,.06), 0 4px 16px rgba(60,35,20,.05);
     --shadow-lift:0 2px 4px rgba(60,35,20,.08), 0 10px 28px rgba(60,35,20,.09);
     --r:16px;
@@ -40,11 +42,11 @@
     display:grid; place-items:center; font-size:22px;
   }
   .brand b { font-size:16px; letter-spacing:-.2px; display:block; }
-  .brand small { opacity:.75; font-size:11.5px; }
+  .brand small { font-size:11.5px; }
   aside nav { display:flex; flex-direction:column; gap:3px; flex:1; }
   aside nav button {
     display:flex; align-items:center; gap:10px; width:100%;
-    background:transparent; border:0; color:rgba(255,255,255,.85);
+    background:transparent; border:0; color:#fff;
     font:inherit; font-weight:600; font-size:13.5px;
     padding:9px 11px; border-radius:11px; cursor:pointer; text-align:left;
     transition:background .15s, color .15s, transform .06s;
@@ -54,7 +56,7 @@
   aside nav button.on { background:rgba(255,255,255,.92); color:var(--red-dark); box-shadow:var(--shadow); }
   aside nav button .ic { font-size:16px; width:22px; text-align:center; }
   .side-foot { display:flex; flex-direction:column; gap:6px; padding-top:10px; }
-  .side-foot .who { font-size:12px; opacity:.8; padding:0 8px; }
+  .side-foot .who { font-size:12px; padding:0 8px; }
   .side-foot button {
     font:inherit; font-weight:600; font-size:13px; cursor:pointer;
     background:rgba(255,255,255,.12); color:#fff;

@@ -4,13 +4,17 @@
    that iOS zooms the page on focus and the layout jumps. No CDNs, no web
    fonts: the shop's link is a cheap VPS and the page must paint instantly. */
 :root {
+  /* Every text colour below clears WCAG AA (4.5:1) on the backgrounds it is
+     used on — small grey labels in bright shop light were 2.98:1 before.
+     ink3 5.13:1 on bg · green 5.45:1 on green-bg, 6.13:1 white-on ·
+     amber 5.58:1 on amber-bg · danger 5.23:1 on danger-bg. */
   --red:#c63c0a; --red-deep:#a93307; --red-dark:#7a2e0e;
-  --ink:#221a12; --ink2:#6e6055; --ink3:#9c8d80;
+  --ink:#221a12; --ink2:#6e6055; --ink3:#75665a;
   --line:#efe6da; --bg:#faf6f0; --card:#ffffff;
-  --green:#1e8f53; --green-bg:#e4f6ea;
-  --amber:#b26a00; --amber-bg:#fff3e2;
+  --green:#17703f; --green-bg:#e4f6ea;
+  --amber:#8f5400; --amber-bg:#fff3e2;
   --blue:#1f5fa8; --blue-bg:#e8f0fa;
-  --danger:#d23b2e; --danger-bg:#fdecea;
+  --danger:#b8321f; --danger-bg:#fdecea;
   --shadow:0 1px 2px rgba(60,35,20,.06), 0 4px 16px rgba(60,35,20,.05);
   --r:16px;
   --safe-b:env(safe-area-inset-bottom, 0px);
@@ -40,7 +44,7 @@ body {
 }
 .top .ttl { flex:1; min-width:0; }
 .top .ttl b { display:block; font-size:15.5px; letter-spacing:-.2px; }
-.top .ttl small { display:block; opacity:.78; font-size:11.5px; }
+.top .ttl small { display:block; font-size:12px; font-weight:600; }   /* full white: 4.5:1 even on the light end of the red */
 .top button {
   font:inherit; font-weight:700; font-size:13px; cursor:pointer;
   background:rgba(255,255,255,.14); color:#fff;

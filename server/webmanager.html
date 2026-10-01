@@ -150,6 +150,9 @@ function strings() {
                   'पार्सल लगने के बाद वो टेबल स्क्रीन पर "चल रहे पार्सल" में दिखेगा।',
                   'પાર્સલ લાગ્યા પછી તે ટેબલ સ્ક્રીન પર "ચાલુ પાર્સલ"માં દેખાશે.'),
     nameNeeded: t('Customer name is required', 'ग्राहक का नाम ज़रूरी है', 'ગ્રાહકનું નામ જરૂરી છે'),
+    nameLong: t('That is as long as a name can be — 60 English letters, about 20 in Hindi or Gujarati.',
+                'नाम इससे लंबा नहीं हो सकता — अंग्रेज़ी में 60 अक्षर, हिंदी या गुजराती में लगभग 20।',
+                'નામ આનાથી લાંબું ન થઈ શકે — અંગ્રેજીમાં 60 અક્ષર, ગુજરાતી કે હિન્દીમાં લગભગ 20.'),
     kitchenEmpty: t('No buckets — nothing to cook 👨‍🍳', 'कोई बकेट नहीं — कुछ नहीं पकाना 👨‍🍳', 'કોઈ બકેટ નથી — કંઈ રાંધવાનું નથી 👨‍🍳'),
     kitchenHd: t('On the tawa / in the queue', 'तवे पर / कतार में', 'તવા પર / કતારમાં'),
     overCap: function (q, c) { return t(q + ' (cap ' + c + ')', q + ' (कैप ' + c + ')', q + ' (કેપ ' + c + ')'); },
@@ -1056,17 +1059,45 @@ async function sendTicket() {
 }
 
 // ---------------------------------------------------------------- parcel
+// The server refuses a parcel whose name is over 60 BYTES (phone over 20),
+// and that refusal bounced the whole parcel at "send". A Hindi or Gujarati
+// letter is 3 bytes, so 60 is about 20 letters there — the browser's
+// maxlength counts letters and let 60 of them through. These boxes stop at
+// the byte limit instead, and say so.
+var NAME_MAX = 60, PHONE_MAX = 20;
+function fitBytes(s, max) {
+  if (noteBytes(s) <= max) return s;
+  var out = '';
+  Array.from(s).some(function (ch) {
+    if (noteBytes(out + ch) > max) return true;
+    out += ch; return false;
+  });
+  return out;
+}
+function capBytes(el, max, warn) {
+  var check = function (e) {
+    if (e && e.isComposing) return;   // mid-word on an Indic keyboard: wait
+    var v = fitBytes(el.value, max);
+    if (v !== el.value) { el.value = v; if (warn) warn.hidden = false; }
+  };
+  el.addEventListener('input', check);
+  el.addEventListener('compositionend', check);
+}
+
 function parcel() {
   $('view').innerHTML =
     '<h2>' + esc(S.newParcel) + '</h2><div class="card">' +
-    '<label class="fld"><span>' + esc(S.custName) + '</span><input id="pcName" maxlength="60" placeholder="' + esc(S.namePh) + '"></label>' +
-    '<label class="fld"><span>' + esc(S.custPhone) + '</span><input id="pcPhone" inputmode="tel" maxlength="20" placeholder="98xxxxxxxx"></label>' +
+    '<label class="fld"><span>' + esc(S.custName) + '</span><input id="pcName" autocomplete="off" placeholder="' + esc(S.namePh) + '">' +
+      '<span class="note" id="pcLong" hidden style="display:block;margin-top:5px;font-size:12.5px;color:var(--amber)">' + esc(S.nameLong) + '</span></label>' +
+    '<label class="fld"><span>' + esc(S.custPhone) + '</span><input id="pcPhone" inputmode="tel" autocomplete="off" placeholder="98xxxxxxxx"></label>' +
     '<button class="primary" id="pcNext" style="width:100%">' + esc(S.chooseItems) + '</button></div>' +
     '<p class="hint">' + esc(S.parcelHint) + '</p>';
+  capBytes($('pcName'), NAME_MAX, $('pcLong'));
+  capBytes($('pcPhone'), PHONE_MAX, null);
   $('pcNext').onclick = function () {
-    var nm = $('pcName').value.trim();
+    var nm = fitBytes($('pcName').value.trim(), NAME_MAX).trim();
     if (!nm) { toast(S.nameNeeded, 'bad'); return; }
-    openTable = { parcelName: nm, parcelPhone: $('pcPhone').value.trim() };
+    openTable = { parcelName: nm, parcelPhone: fitBytes($('pcPhone').value.trim(), PHONE_MAX).trim() };
     newCart();
     picker('🥡 ' + nm, sendParcel);
   };

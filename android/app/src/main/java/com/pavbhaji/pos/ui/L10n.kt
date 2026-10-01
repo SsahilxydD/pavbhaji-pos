@@ -249,6 +249,7 @@ object S {
     val sentToKitchen get() = t("SENT TO KITCHEN", "किचन में भेजा हुआ", "રસોડામાં મોકલેલું")
     val newKot get() = t("NEW KOT — NOT SENT YET", "नया KOT — अभी भेजा नहीं", "નવો KOT — હજી મોકલ્યો નથી")
     val noteBtn get() = t("note", "नोट", "નોંધ")
+    val oneLess get() = t("One less", "एक कम", "એક ઓછું")
     val addItems get() = t("ADD ITEMS", "आइटम जोड़ो", "વસ્તુઓ ઉમેરો")
     val sending get() = t("Sending…", "भेज रहे हैं…", "મોકલી રહ્યાં છીએ…")
     fun tryAgain(items: String) = t("Try again — $items", "फिर कोशिश करो — $items", "ફરી પ્રયત્ન કરો — $items")

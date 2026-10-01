@@ -56,6 +56,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
@@ -73,6 +76,7 @@ import com.pavbhaji.pos.ui.CardLine
 import com.pavbhaji.pos.ui.ConfirmDialog
 import com.pavbhaji.pos.ui.ErrorBanner
 import com.pavbhaji.pos.ui.HoldUpdates
+import com.pavbhaji.pos.ui.InkDark
 import com.pavbhaji.pos.ui.ListSkeleton
 import com.pavbhaji.pos.ui.Pb
 import com.pavbhaji.pos.ui.QtyStepper
@@ -295,7 +299,8 @@ fun TableOrderScreen(tableId: Long, tableName: String, onBack: () -> Unit) {
                                 colour = dishColour(m.colour, m.id),
                                 counter = m.station == "counter",
                                 inCart = cartQty[m.id] ?: 0,
-                                onClick = { if (m.available) addToCart(m.id, m.name, m.price) }
+                                onClick = { if (m.available) addToCart(m.id, m.name, m.price) },
+                                onMinus = { cartRemoveOne(cart, m.id) }
                             )
                         }
                     }
@@ -426,7 +431,8 @@ fun TableOrderScreen(tableId: Long, tableName: String, onBack: () -> Unit) {
 fun MenuRow(
     name: String, price: Long, available: Boolean,
     colour: Color, counter: Boolean, inCart: Long,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    onMinus: (() -> Unit)? = null
 ) {
     val view = LocalView.current
     val interaction = remember { MutableInteractionSource() }
@@ -435,9 +441,14 @@ fun MenuRow(
         if (pressed && available) 0.975f else 1f,
         spring(dampingRatio = 0.7f, stiffness = 1100f), label = "menuRow"
     )
+    // Last time this row added a plate. The "−" appears under the finger on
+    // the first add, so a tap on it right after an add (a fast double or
+    // triple tap on the row) still means "one more", not "one less".
+    var lastAddAt by remember { mutableLongStateOf(0L) }
     Surface(
         onClick = {
             if (available) view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+            lastAddAt = SystemClock.uptimeMillis()
             onClick()
         },
         enabled = available,
@@ -478,6 +489,29 @@ fun MenuRow(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(end = 8.dp)
             )
+            // A mis-tap is undone right on the row — no hunting in the cart.
+            if (inCart > 0 && onMinus != null) {
+                Surface(
+                    onClick = {
+                        view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                        if (SystemClock.uptimeMillis() - lastAddAt < 350) {
+                            lastAddAt = SystemClock.uptimeMillis(); onClick()
+                        } else onMinus()
+                    },
+                    shape = CircleShape,
+                    color = Color.White,
+                    border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)),
+                    modifier = Modifier.padding(end = 8.dp).size(34.dp)
+                        .semantics { contentDescription = S.oneLess }
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Text(
+                            "−", fontSize = 19.sp, fontWeight = FontWeight.Bold, color = InkDark,
+                            modifier = Modifier.clearAndSetSemantics {}
+                        )
+                    }
+                }
+            }
             if (inCart > 0) {
                 Surface(color = MaterialTheme.colorScheme.primary, shape = CircleShape, modifier = Modifier.size(26.dp)) {
                     Box(contentAlignment = Alignment.Center) {

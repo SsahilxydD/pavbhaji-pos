@@ -65,6 +65,7 @@ import com.pavbhaji.pos.ui.swallowTapsAfter
 import com.pavbhaji.pos.ui.waiter.CartLine
 import com.pavbhaji.pos.ui.waiter.CartSaver
 import com.pavbhaji.pos.ui.waiter.cartAddOne
+import com.pavbhaji.pos.ui.waiter.cartRemoveOne
 import com.pavbhaji.pos.ui.waiter.CartStrip
 import com.pavbhaji.pos.ui.waiter.MenuRow
 import com.pavbhaji.pos.ui.waiter.TableOrderScreen
@@ -359,7 +360,8 @@ fun AddParcelScreen(onDone: (Long) -> Unit, onBack: () -> Unit) {
                             colour = dishColour(m.colour, m.id),
                             counter = m.station == "counter",
                             inCart = cartQty[m.id] ?: 0,
-                            onClick = { if (m.available) addToCart(m.id, m.name, m.price) }
+                            onClick = { if (m.available) addToCart(m.id, m.name, m.price) },
+                            onMinus = { cartRemoveOne(cart, m.id) }
                         )
                     }
                 }

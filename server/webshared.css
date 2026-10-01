@@ -175,6 +175,11 @@ label.fld span { display:block; font-size:12px; font-weight:700; color:var(--ink
 }
 .bar .tot { font-weight:800; font-size:17px; font-variant-numeric:tabular-nums; }
 .bar button { flex:1; }
+/* a KOT that was sent but never answered — see sendCart in webmanager.html */
+.bar .unsure {
+  font-size:13px; font-weight:700; color:#7a4300; background:#fff3e2;
+  border:1px solid #f0c48a; border-radius:12px; padding:9px 12px;
+}
 
 /* ---------- login ---------- */
 #login { max-width:340px; margin:11vh auto 0; padding:0 16px; text-align:center; }

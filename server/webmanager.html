@@ -41,7 +41,18 @@ var S = {
   noServer: 'Server se jawab nahi aaya — dobara try karo',
   netDown: '⚠ Net nahi hai · last update ',
   retry: '↻ Dobara try karo',
-  retryShort: '↻ Dobara'
+  retryShort: '↻ Dobara',
+  sending: 'Bhej rahe…',
+  wait: 'Bhej rahe hain — ek second',
+  resend: '↻ Dobara bhejo',
+  unsureBar: '⚠ Jawab nahi aaya — ho sakta hai KOT kitchen pahunch gaya ho. ' +
+             '"Dobara bhejo" dabao: double KOT nahi banega.',
+  locked: 'Pehle ye KOT bhejo — net aate hi "Dobara bhejo" dabao',
+  leaveTitle: 'KOT ka jawab nahi aaya',
+  leaveBody: 'Ho sakta hai ye KOT kitchen pahunch gaya ho. Chhod ke dobara punch kiya to ' +
+             'kitchen do baar bana dega — pehle table pe check karo.',
+  stay: 'Ruko',
+  leave: 'Chhod do'
 };
 
 var $ = function (id) { return document.getElementById(id); };
@@ -74,7 +85,7 @@ function signOut(silent) {
   localStorage.removeItem(TOK); localStorage.removeItem(WHO);
   location.replace('/');
 }
-$('logoutBtn').onclick = function () { signOut(false); };
+$('logoutBtn').onclick = function () { confirmLeave(function () { signOut(false); }); };
 $('who').textContent = me.name;
 
 // ---------------------------------------------------------------- network
@@ -151,8 +162,55 @@ function failView(e, again) {
   $('againBtn').onclick = again;
 }
 
+// ---------------------------------------------------------------- dialogs
+var modalUp = false;
+function showModal(title, body, buttons) {
+  hideModal();
+  modalUp = true;
+  var m = document.createElement('div');
+  m.className = 'modal';
+  m.innerHTML = '<div class="box"><h3>' + esc(title) + '</h3>' + body +
+    '<div class="btnrow" style="margin-top:14px">' + buttons.map(function (b, i) {
+      return '<button class="' + b.cls + '" data-i="' + i + '">' + esc(b.label) + '</button>';
+    }).join('') + '</div></div>';
+  m.addEventListener('click', function (e) {
+    if (e.target === m) { hideModal(); return; }
+    var b = e.target.closest('button[data-i]');
+    if (!b) return;
+    var a = buttons[Number(b.dataset.i)];
+    if (a.act) a.act(); else hideModal();
+  });
+  document.body.appendChild(m);
+  return m;
+}
+function hideModal() {
+  modalUp = false;
+  var m = document.querySelector('.modal');
+  if (m) m.remove();
+}
+
 // ---------------------------------------------------------------- state
-var tab = 'tables', timer = null, menu = [], cart = [], openTable = null, parcelMode = false;
+var tab = 'tables', timer = null, menu = [], openTable = null, parcelMode = false;
+// The cart and its idempotency key — the app's contract (data/Api.kt
+// sendTicket): cartId is minted with the cart and sent on every retry, the
+// server answers a repeated id with the order it already saved, and a new
+// id only comes with a new cart. So a lost reply can never punch twice.
+// cartLocked = we sent it and never heard back; until a retry gets an
+// answer, the cart can't change (a changed cart under the same id would
+// lose the change, a new id could cook it twice).
+var cart = [], cartId = '', cartLocked = false, sending = false, onSend = null;
+function newCart() { cart = []; cartId = uid(); cartLocked = false; }
+var sleep = function (ms) { return new Promise(function (r) { setTimeout(r, ms); }); };
+
+// Leaving a cart whose KOT may already be in the kitchen is how a table gets
+// cooked twice, so that one case asks first.
+function confirmLeave(go) {
+  if (sending) { toast(S.wait); return; }
+  if (!cartLocked) { go(); return; }
+  showModal(S.leaveTitle, '<div class="mut" style="font-size:14px">' + esc(S.leaveBody) + '</div>',
+    [{ label: S.stay, cls: 'ghost' },
+     { label: S.leave, cls: 'danger', act: function () { hideModal(); newCart(); go(); } }]);
+}
 var pane = '';   // 'table' | 'picker' — a late refresh must not yank the picker away
 // Bumped on every tab switch. A slow load (up to NET_TIMEOUT offline) that
 // finishes after the user has moved on must not start its poll on top of
@@ -168,13 +226,13 @@ function paintTabs() {
 }
 $('tabs').addEventListener('click', function (e) {
   var b = e.target.closest('button[data-tab]');
-  if (b) show(b.dataset.tab);
+  if (b) confirmLeave(function () { show(b.dataset.tab); });
 });
 
 function show(t) {
   tab = t; clearInterval(timer); repaint = null; nav++; pane = '';
-  openTable = null; cart = []; parcelMode = (t === 'parcel');
-  $('bar').innerHTML = '';
+  openTable = null; newCart(); parcelMode = (t === 'parcel');
+  $('bar').className = ''; $('bar').innerHTML = '';
   paintTabs();
   ({ tables:tables, parcel:parcel, kitchen:kitchen })[t]();
 }
@@ -232,7 +290,7 @@ async function openTableView(id, name) {
   if (my !== nav) return;   // they switched tabs while it loaded
   clearInterval(timer); repaint = null;
   openTable = { id: id, name: name, order: d.order };
-  cart = [];
+  newCart();
   paintTable();
 }
 
@@ -301,8 +359,9 @@ function paintTable() {
 }
 
 // ---------------------------------------------------------------- picker
-async function picker(title, onSend) {
+async function picker(title, send) {
   clearInterval(timer);
+  onSend = send;
   var my = nav;
   try { await loadMenu(); } catch (e) { toast(e.message, 'bad'); return; }
   if (my !== nav) return;
@@ -327,21 +386,25 @@ async function picker(title, onSend) {
   });
   $('view').innerHTML = html;
   $('pBack').onclick = function () {
-    cart = [];
-    if (parcelMode) { show('parcel'); return; }
-    paintTable();     // the copy we have, at once — even with no network
-    refreshTable();
+    confirmLeave(function () {
+      newCart(); paintCartBar();
+      if (parcelMode) { show('parcel'); return; }
+      paintTable();     // the copy we have, at once — even with no network
+      refreshTable();
+    });
   };
   $('view').querySelectorAll('button[data-inc]').forEach(function (b) {
-    b.onclick = function () { bump(Number(b.dataset.inc), 1, b.dataset.nm, Number(b.dataset.pr), onSend); };
+    b.onclick = function () { bump(Number(b.dataset.inc), 1, b.dataset.nm, Number(b.dataset.pr)); };
   });
   $('view').querySelectorAll('button[data-dec]').forEach(function (b) {
-    b.onclick = function () { bump(Number(b.dataset.dec), -1, '', 0, onSend); };
+    b.onclick = function () { bump(Number(b.dataset.dec), -1, '', 0); };
   });
-  paintCartBar(onSend);
+  paintCartBar();
 }
 
-function bump(id, delta, name, price, onSend) {
+function bump(id, delta, name, price) {
+  if (sending) { toast(S.wait); return; }
+  if (cartLocked) { toast(S.locked, 'bad'); return; }
   var line = cart.filter(function (l) { return l.menuItemId === id; })[0];
   if (!line) {
     if (delta < 0) return;
@@ -352,38 +415,69 @@ function bump(id, delta, name, price, onSend) {
   if (line.qty <= 0) cart = cart.filter(function (l) { return l.menuItemId !== id; });
   var q = $('q' + id);
   if (q) q.textContent = String(line.qty > 0 ? line.qty : 0);
-  paintCartBar(onSend);
+  paintCartBar();
 }
 
 function cartTotal() {
   return cart.reduce(function (s, l) { return s + l.qty * l.price; }, 0);
 }
 
-function paintCartBar(onSend) {
-  if (!cart.length) { $('bar').innerHTML = ''; return; }
+function paintCartBar() {
+  var bar = $('bar');
+  if (!cart.length) { bar.className = ''; bar.innerHTML = ''; return; }
   var n = cart.reduce(function (s, l) { return s + l.qty; }, 0);
-  $('bar').className = 'bar';
-  $('bar').innerHTML =
-    '<span class="tot">' + n + ' plate · ' + rupees(cartTotal()) + '</span>' +
-    '<button class="primary" id="sendBtn">Kitchen bhejo</button>';
-  $('sendBtn').onclick = function () { onSend(); };
+  var btn = '<button class="primary" id="sendBtn"' + (sending ? ' disabled' : '') + '>';
+  if (cartLocked) {
+    bar.className = 'bar stack';
+    bar.innerHTML = '<div class="unsure">' + esc(S.unsureBar) + '</div>' +
+      btn + esc(sending ? S.sending : S.resend + ' · ' + n + ' plate') + '</button>';
+  } else {
+    bar.className = 'bar';
+    bar.innerHTML = '<span class="tot">' + n + ' plate · ' + rupees(cartTotal()) + '</span>' +
+      btn + (sending ? esc(S.sending) : 'Kitchen bhejo') + '</button>';
+  }
+  $('sendBtn').onclick = function () { if (onSend) onSend(); };
+}
+
+// Sends the cart under its cartId. No answer, or a 5xx, means the server may
+// have saved it: the same id is always safe to send again, so it retries by
+// itself twice, then locks the cart and asks for "Dobara bhejo". A 4xx is a
+// real "no" (nothing was saved), so the cart stays editable — and the same
+// id stays valid, because the server never stored it.
+async function sendCart(post, done) {
+  if (sending || !cart.length) return;
+  sending = true; paintCartBar();
+  var id = cartId;
+  var items = cart.map(function (l) { return { menuItemId: l.menuItemId, qty: l.qty, note: l.note }; });
+  var t0 = Date.now();
+  for (var attempt = 1; ; attempt++) {
+    try {
+      var d = await post(id, items);
+      sending = false; newCart(); paintCartBar();
+      done(d);
+      return;
+    } catch (e) {
+      var unsure = !!e.network || e.status >= 500;
+      if (unsure && attempt < 3 && Date.now() - t0 < 8000) { await sleep(1000 * attempt); continue; }
+      sending = false; cartLocked = unsure;
+      paintCartBar();
+      // Locked: the bar itself explains, and a toast would sit on its button.
+      if (!unsure) toast(e.message, 'bad');
+      return;
+    }
+  }
 }
 
 async function sendTicket() {
-  var btn = $('sendBtn'); if (btn) btn.disabled = true;
-  try {
-    await api('POST', '/api/dining-tables/' + openTable.id + '/tickets', {
-      clientTicketId: uid(),
-      items: cart.map(function (l) { return { menuItemId: l.menuItemId, qty: l.qty, note: l.note }; })
-    });
-    cart = [];
-    $('bar').innerHTML = '';
+  var t = openTable;
+  await sendCart(function (id, items) {
+    return api('POST', '/api/dining-tables/' + t.id + '/tickets', { clientTicketId: id, items: items });
+  }, function (d) {
     toast('Kitchen ko bhej diya ✓', 'ok');
-    await refreshTable();
-  } catch (e) {
-    toast(e.message, 'bad');
-    if (btn) btn.disabled = false;
-  }
+    if (openTable !== t) return;
+    if (d && d.tickets) { t.order = d; paintTable(); }   // the reply is the saved order
+    else { paintTable(); refreshTable(); }
+  });
 }
 
 // ---------------------------------------------------------------- parcel
@@ -398,27 +492,21 @@ function parcel() {
     var nm = $('pcName').value.trim();
     if (!nm) { toast('Customer ka naam chahiye', 'bad'); return; }
     openTable = { parcelName: nm, parcelPhone: $('pcPhone').value.trim() };
-    cart = [];
+    newCart();
     picker('🥡 ' + nm, sendParcel);
   };
 }
 
 async function sendParcel() {
-  var btn = $('sendBtn'); if (btn) btn.disabled = true;
-  try {
-    await api('POST', '/api/parcels', {
-      customerName: openTable.parcelName,
-      customerPhone: openTable.parcelPhone,
-      clientTicketId: uid(),
-      items: cart.map(function (l) { return { menuItemId: l.menuItemId, qty: l.qty, note: l.note }; })
+  var t = openTable;
+  await sendCart(function (id, items) {
+    return api('POST', '/api/parcels', {
+      customerName: t.parcelName, customerPhone: t.parcelPhone, clientTicketId: id, items: items
     });
-    cart = [];
+  }, function () {
     toast('Parcel ban gaya ✓', 'ok');
     show('tables');
-  } catch (e) {
-    toast(e.message, 'bad');
-    if (btn) btn.disabled = false;
-  }
+  });
 }
 
 // ---------------------------------------------------------------- kitchen

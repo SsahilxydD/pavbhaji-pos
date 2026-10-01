@@ -293,7 +293,6 @@ object S {
     val discardBtn get() = t("Discard", "हटा दो", "કાઢી નાખો")
     fun closeQ(table: String) = t("Close $table?", "$table बंद करें?", "$table બંધ કરવું?")
     fun totalLine(amt: String) = t("Total: $amt", "कुल: $amt", "કુલ: $amt")
-    val collectFirst get() = t("Collect payment before closing.", "बंद करने से पहले पैसे ले लो।", "બંધ કરતાં પહેલાં પૈસા લઈ લો.")
     val notServedYet get() = t("Not served yet:", "अभी तक परोसा नहीं गया:", "હજી પીરસાયું નથી:")
     val closeAnyway get() = t("Close anyway", "फिर भी बंद करो", "તોય બંધ કરો")
     val closeAnywayHint get() = t(
@@ -474,6 +473,18 @@ object S {
         "बिल देखने के लिए भरा टेबल दबाओ",
         "બિલ જોવા માટે ભરેલું ટેબલ દબાવો"
     )
+    val noOpenOrder get() = t(
+        "No open order on this table.",
+        "इस टेबल पर कोई खुला ऑर्डर नहीं।",
+        "આ ટેબલ પર કોઈ ખુલ્લો ઓર્ડર નથી."
+    )
+    fun paidHow(how: String) = t("Paid ✓ $how", "पेड ✓ $how", "પેડ ✓ $how")
+    val billLoadFailed get() = t(
+        "Couldn't load this bill's items.",
+        "इस बिल के आइटम नहीं खुले।",
+        "આ બિલની આઈટમ ન ખૂલી."
+    )
+    val retryBtn get() = t("Try again", "फिर कोशिश करो", "ફરી પ્રયત્ન કરો")
     val subtotalRow get() = t("Subtotal", "सबटोटल", "સબટોટલ")
     val discountRow get() = t("Discount", "छूट", "છૂટ")
     val addDiscount get() = t("＋ discount", "＋ छूट", "＋ છૂટ")

@@ -51,7 +51,8 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -75,7 +76,7 @@ import com.pavbhaji.pos.ui.Kc
 import com.pavbhaji.pos.ui.S
 import com.pavbhaji.pos.ui.dishColour
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.channels.Channel
 
 // The chef's screen is a queue of colour buckets, oldest first.
 // Tap a bucket to open its lines; "Take" locks it to this chef; tapping a
@@ -83,7 +84,6 @@ import kotlinx.coroutines.launch
 // "Leave bucket" hands the bucket back with the rest still cooking.
 @Composable
 fun KitchenScreen(onLogout: () -> Unit, embedded: Boolean = false, onBack: (() -> Unit)? = null) {
-    val scope = rememberCoroutineScope()
     val connected by Deps.live.connected.collectAsState()
     var data by remember { mutableStateOf(KitchenDto()) }
     var loaded by remember { mutableStateOf(false) }
@@ -106,8 +106,35 @@ fun KitchenScreen(onLogout: () -> Unit, embedded: Boolean = false, onBack: (() -
     val seenBuckets = remember { mutableSetOf<Long>() }
     var firstLoad by remember { mutableStateOf(true) }
 
-    suspend fun refresh() {
-        when (val r = Deps.api.kitchen()) {
+    // Every chef action reaches the server through ONE queue, one request at
+    // a time, in tap order. Nothing is dropped because an earlier request is
+    // still on the wire — a chef flicks plates off the tawa faster than a
+    // phone on 4G answers — and a "Leave" tapped after two plates lands
+    // after them.
+    val actions = remember { Channel<suspend () -> Unit>(Channel.UNLIMITED) }
+    var queued by remember { mutableIntStateOf(0) }
+    fun enqueue(action: suspend () -> Unit) { queued++; actions.trySend(action) }
+    LaunchedEffect(actions) {
+        for (action in actions) {
+            try { action() } finally { queued-- }
+        }
+    }
+    // Plates tapped but not yet confirmed, per plateKey: they show ticked the
+    // moment the finger lands, and stop counting in the same step the
+    // server's copy starts showing them.
+    val ticking = remember { mutableStateMapOf<String, Int>() }
+    val fetches = remember { FetchOrder() }
+
+    suspend fun refresh(fromQueue: Boolean = false) {
+        val seq = ++fetches.started
+        val r = Deps.api.kitchen()
+        // An answer older than one already shown would undo a tick on screen.
+        if (seq < fetches.applied) return
+        // While taps wait in the queue only the queue's own fetches land, so
+        // a plate is never counted both as ticking and as already done.
+        if (!fromQueue && queued > 0) return
+        fetches.applied = seq
+        when (r) {
             is ApiResult.Ok -> {
                 val fresh = r.value.buckets.map { it.id }.filter { it !in seenBuckets }
                 if (fresh.isNotEmpty() && !firstLoad && !embedded) {
@@ -142,6 +169,30 @@ fun KitchenScreen(onLogout: () -> Unit, embedded: Boolean = false, onBack: (() -
         while (true) { delay(15_000); refresh() }
     }
     toast?.let { LaunchedEffect(it) { delay(3000); toast = null } }
+
+    // Take / finish / leave a whole bucket: one at a time (a double tap must
+    // not take twice), queued behind any plate ticks already tapped.
+    fun bucketAction(call: suspend () -> Unit) {
+        if (busy) return
+        busy = true
+        enqueue { call(); refresh(fromQueue = true); busy = false }
+    }
+
+    // Sends one plate of `key` to the pass. Plates of a line share its id only
+    // until the server splits it (the done plate keeps the id, the rest move
+    // to a new row), so the line is looked up in the freshest copy for every
+    // tap. If that copy turns out stale (server sent 0 plates), re-read, retry.
+    suspend fun sendPlate(batchId: Long, key: String) {
+        repeat(2) {
+            val b = data.buckets.firstOrNull { it.id == batchId }
+            val line = b?.lines?.firstOrNull { !it.done && it.id != 0L && plateKey(b, it) == key }
+            if (line == null) { refresh(fromQueue = true); return@repeat }
+            when (val r = Deps.api.readyPlate(batchId, line.id)) {
+                is ApiResult.Ok -> { refresh(fromQueue = true); if (r.value.plates > 0) return }
+                is ApiResult.Err -> { toast = r.message; refresh(fromQueue = true); return }
+            }
+        }
+    }
 
     if (onBack != null) BackHandler(onBack = onBack)
 
@@ -206,28 +257,21 @@ fun KitchenScreen(onLogout: () -> Unit, embedded: Boolean = false, onBack: (() -
                         modifier = Modifier.animateItem(),
                         b = b, cap = if (b.cap > 0) b.cap else data.cap, myId = myId, myBusy = myBusy,
                         expanded = expandedId == b.id,
+                        ticking = ticking,
                         onTap = { expandedId = if (expandedId == b.id) null else b.id },
                         onTake = {
-                            if (!busy) {
-                                busy = true
-                                scope.launch {
-                                    when (val r = Deps.api.takeBatch(b.id)) {
-                                        is ApiResult.Ok -> expandedId = b.id
-                                        is ApiResult.Err -> toast = r.message
-                                    }
-                                    refresh(); busy = false
+                            bucketAction {
+                                when (val r = Deps.api.takeBatch(b.id)) {
+                                    is ApiResult.Ok -> expandedId = b.id
+                                    is ApiResult.Err -> toast = r.message
                                 }
                             }
                         },
                         onReady = {
-                            if (!busy) {
-                                busy = true
-                                scope.launch {
-                                    when (val r = Deps.api.readyBatch(b.id)) {
-                                        is ApiResult.Ok -> if (expandedId == b.id) expandedId = null
-                                        is ApiResult.Err -> toast = r.message
-                                    }
-                                    refresh(); busy = false
+                            bucketAction {
+                                when (val r = Deps.api.readyBatch(b.id)) {
+                                    is ApiResult.Ok -> if (expandedId == b.id) expandedId = null
+                                    is ApiResult.Err -> toast = r.message
                                 }
                             }
                         },
@@ -235,45 +279,36 @@ fun KitchenScreen(onLogout: () -> Unit, embedded: Boolean = false, onBack: (() -
                             // One tap = that bhaji is done. It goes straight to
                             // the pass; whatever is still on the tawa stays in
                             // the bucket, cooking.
-                            if (!busy) {
-                                busy = true
-                                scope.launch {
-                                    when (val r = Deps.api.readyBatch(b.id, menuItemId)) {
-                                        is ApiResult.Ok -> {}
-                                        is ApiResult.Err -> toast = r.message
-                                    }
-                                    refresh(); busy = false
+                            bucketAction {
+                                when (val r = Deps.api.readyBatch(b.id, menuItemId)) {
+                                    is ApiResult.Ok -> {}
+                                    is ApiResult.Err -> toast = r.message
                                 }
                             }
                         },
-                        onReadyPlate = { lineId ->
+                        onReadyPlate = { key ->
                             // One tap = ONE plate. Four of the same bhaji for
                             // one table are four rows and four taps: the one
                             // that is done leaves for the pass, the other three
-                            // stay on the tawa.
-                            if (!busy) {
-                                busy = true
-                                scope.launch {
-                                    when (val r = Deps.api.readyPlate(b.id, lineId)) {
-                                        is ApiResult.Ok -> {}
-                                        is ApiResult.Err -> toast = r.message
-                                    }
-                                    refresh(); busy = false
-                                }
+                            // stay on the tawa. The row ticks now; the queue
+                            // sends it as soon as the taps before it are in.
+                            ticking[key] = (ticking[key] ?: 0) + 1
+                            enqueue {
+                                sendPlate(b.id, key)
+                                // Same step as sendPlate's last fetch: from here
+                                // the server's copy says whether it went out.
+                                val left = (ticking[key] ?: 1) - 1
+                                if (left > 0) ticking[key] = left else ticking.remove(key)
                             }
                         },
                         onLeave = {
                             // Step away without finishing: the bucket unlocks
                             // with its plates still inside, so this chef can
                             // start another colour and come back to it.
-                            if (!busy) {
-                                busy = true
-                                scope.launch {
-                                    when (val r = Deps.api.releaseBatch(b.id)) {
-                                        is ApiResult.Ok -> if (expandedId == b.id) expandedId = null
-                                        is ApiResult.Err -> toast = r.message
-                                    }
-                                    refresh(); busy = false
+                            bucketAction {
+                                when (val r = Deps.api.releaseBatch(b.id)) {
+                                    is ApiResult.Ok -> if (expandedId == b.id) expandedId = null
+                                    is ApiResult.Err -> toast = r.message
                                 }
                             }
                         }
@@ -321,9 +356,9 @@ private fun StateChip(text: String, bg: Color, fg: Color, dashed: Boolean = fals
 @Composable
 private fun BucketCard(
     b: BucketDto, cap: Long, myId: Long, myBusy: Boolean,
-    expanded: Boolean,
+    expanded: Boolean, ticking: Map<String, Int>,
     onTap: () -> Unit, onTake: () -> Unit, onReady: () -> Unit,
-    onReadyVariety: (Long) -> Unit, onReadyPlate: (Long) -> Unit, onLeave: () -> Unit,
+    onReadyVariety: (Long) -> Unit, onReadyPlate: (String) -> Unit, onLeave: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val colour = dishColour(b.colour, b.menuItemId)
@@ -437,7 +472,7 @@ private fun BucketCard(
                         val perVariety = mine && !perPlate && b.lines.all { it.menuItemId != 0L }
                         if (perPlate) {
                             Text(S.tickHint, color = Kc.ink2, fontSize = 11.sp)
-                            platesOf(b).groupBy { it.variety }.forEach { (variety, plates) ->
+                            platesOf(b, ticking).groupBy { it.variety }.forEach { (variety, plates) ->
                                 PlateGroupHeader(
                                     name = variety,
                                     left = plates.count { !it.done }.toLong(),
@@ -448,7 +483,7 @@ private fun BucketCard(
                                 // variety, so the next one to cook is always the
                                 // top row — same spot on the screen, every tap.
                                 plates.sortedBy { it.done }.forEach { p ->
-                                    PlateTickRow(p) { onReadyPlate(p.lineId) }
+                                    PlateTickRow(p) { onReadyPlate(p.key) }
                                 }
                             }
                             // No bucket-wide ready button: a bucket is finished
@@ -520,16 +555,32 @@ private fun BucketCard(
 // any of them sends exactly one plate to the pass.
 private data class Plate(
     val lineId: Long, val table: String, val variety: String,
-    val note: String, val done: Boolean
+    val note: String, val done: Boolean, val key: String
 )
 
-private fun platesOf(b: BucketDto): List<Plate> =
-    b.lines.flatMap { l ->
+// Plates that look the same to the chef (same bucket, table, dish and note)
+// are interchangeable: a tap means "one of these is done", and the queue
+// picks whichever line still holds one when it is that tap's turn.
+private fun plateKey(b: BucketDto, l: BucketLineDto): String =
+    "${b.id}|${l.tableName}|${l.menuItemId}|${l.name.ifEmpty { b.name }}|${l.note}"
+
+// `ticking` = taps still on their way to the server; that many cooking
+// plates of each key already show as done.
+private fun platesOf(b: BucketDto, ticking: Map<String, Int>): List<Plate> {
+    val owed = HashMap(ticking)
+    return b.lines.flatMap { l ->
         val variety = l.name.ifEmpty { b.name }
+        val key = plateKey(b, l)
         List(l.qty.toInt().coerceAtLeast(1)) {
-            Plate(l.id, l.tableName, variety, l.note, l.done)
+            val tickedNow = !l.done && (owed[key] ?: 0) > 0
+            if (tickedNow) owed[key] = owed.getValue(key) - 1
+            Plate(l.id, l.tableName, variety, l.note, l.done || tickedNow, key)
         }
     }
+}
+
+// Which fetch of the kitchen started last / is on screen (see refresh()).
+private class FetchOrder { var started = 0; var applied = 0 }
 
 // The heading over a variety's plates — not a button, just the count that tells
 // the chef how much of this bhaji is still on the pan.
@@ -555,7 +606,9 @@ private fun PlateGroupHeader(name: String, left: Long, total: Long, colour: Colo
 
 // One plate, one row, one tap. The WHOLE row is the button; a ticked plate stays
 // on screen struck through with a solid green ✓ so the chef can see their tap
-// landed, and the bucket closes itself when the last one goes out.
+// landed, and the bucket closes itself when the last one goes out. The buzz is
+// honest: a row only takes a tap while it is still cooking, and every such
+// tap is queued for the server — none is dropped behind a busy flag.
 @Composable
 private fun PlateTickRow(p: Plate, onTick: () -> Unit) {
     val view = LocalView.current

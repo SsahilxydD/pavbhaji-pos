@@ -19,7 +19,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -42,6 +42,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -381,10 +384,13 @@ private fun ServeRow(l: PickupLineDto, onServe: () -> Unit, modifier: Modifier =
                     RoundedCornerShape(4.dp)
                 )
             )
+            // The dish is what the waiter picks up, so it gets the whole middle
+            // of the row and wraps to a second line before it ever truncates
+            // (big system font, Hindi, Gujarati). Age and notes sit under it.
             Column(Modifier.weight(1f).padding(start = 9.dp)) {
                 Text(
                     "${l.qty}× ${l.name}", fontSize = 15.sp, fontWeight = FontWeight.Bold,
-                    maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    maxLines = 2, overflow = TextOverflow.Ellipsis,
                     color = if (held) Pb.ink3 else Color.Unspecified
                 )
                 val sub = listOfNotNull(
@@ -395,13 +401,19 @@ private fun ServeRow(l: PickupLineDto, onServe: () -> Unit, modifier: Modifier =
                         else -> null
                     }
                 ).joinToString(" · ")
-                if (sub.isNotEmpty()) Text(
-                    sub, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
-                    color = if (l.note.isNotEmpty()) MaterialTheme.colorScheme.error
-                    else Pb.ink2
-                )
+                if (!held || sub.isNotEmpty()) Row(
+                    Modifier.padding(top = 2.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    if (!held) ReadyAge(l.sinceMs)
+                    if (sub.isNotEmpty()) Text(
+                        sub, fontSize = 11.sp, maxLines = 2, overflow = TextOverflow.Ellipsis,
+                        color = if (l.note.isNotEmpty()) MaterialTheme.colorScheme.error
+                        else Pb.ink2
+                    )
+                }
             }
-            if (!held) ReadyAge(l.sinceMs)
             // The table number is what a waiter scans the list for — loudest thing in the row.
             Text(
                 l.tableName, fontSize = 20.sp, fontWeight = FontWeight.ExtraBold,
@@ -419,14 +431,16 @@ private fun ServeRow(l: PickupLineDto, onServe: () -> Unit, modifier: Modifier =
 @Composable
 private fun HeldPill() {
     Surface(color = Pb.skeleton, shape = RoundedCornerShape(12.dp)) {
-        Box(Modifier.heightIn(min = 40.dp).padding(horizontal = 13.dp), contentAlignment = Alignment.Center) {
-            Text("⏳", fontSize = 15.sp, maxLines = 1)
+        Box(Modifier.defaultMinSize(minWidth = 56.dp, minHeight = 48.dp), contentAlignment = Alignment.Center) {
+            Text("⏳", fontSize = 17.sp, maxLines = 1)
         }
     }
 }
 
 // The one button a waiter presses all day: green (amber for counter items),
-// springs under the thumb, clicks like a key.
+// springs under the thumb, clicks like a key. A fat ✓ instead of the words —
+// "Served ✓" ate the dish name at big font sizes; the words still go to
+// TalkBack.
 @Composable
 private fun ServeButton(counter: Boolean, onClick: () -> Unit) {
     val view = LocalView.current
@@ -444,10 +458,15 @@ private fun ServeButton(counter: Boolean, onClick: () -> Unit) {
         interactionSource = interaction,
         color = if (counter) WarnAmber else Pb.successDeep,
         shape = RoundedCornerShape(12.dp),
-        modifier = Modifier.graphicsLayer { scaleX = scale; scaleY = scale }
+        modifier = Modifier
+            .graphicsLayer { scaleX = scale; scaleY = scale }
+            .semantics { contentDescription = S.servedBtn }
     ) {
-        Box(Modifier.heightIn(min = 40.dp).padding(horizontal = 13.dp), contentAlignment = Alignment.Center) {
-            Text(S.servedBtn, color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.ExtraBold, maxLines = 1)
+        Box(Modifier.defaultMinSize(minWidth = 56.dp, minHeight = 48.dp), contentAlignment = Alignment.Center) {
+            Text(
+                "✓", color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.ExtraBold, maxLines = 1,
+                modifier = Modifier.clearAndSetSemantics {}
+            )
         }
     }
 }

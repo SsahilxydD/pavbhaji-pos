@@ -164,6 +164,12 @@ label.fld span { display:block; font-size:12px; font-weight:700; color:var(--ink
 .p-ready { background:var(--green-bg); color:var(--green); }
 .p-served { background:#f1ece5; color:var(--ink2); }
 .p-cancelled { background:var(--danger-bg); color:var(--danger); }
+/* kitchen bucket states: filling (still taking plates) · full (waiting for
+   a chef) · taken (on the tawa) */
+.p-open { background:var(--blue-bg); color:var(--blue); }
+.p-full { background:var(--amber-bg); color:var(--amber); }
+.p-taken { background:var(--green-bg); color:var(--green); }
+.card.bucket { border-left:6px solid var(--line); }
 
 /* ---------- table / order grid ---------- */
 .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:10px; }

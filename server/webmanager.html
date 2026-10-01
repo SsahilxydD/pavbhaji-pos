@@ -152,6 +152,7 @@ function strings() {
     nameNeeded: t('Customer name is required', 'ग्राहक का नाम ज़रूरी है', 'ગ્રાહકનું નામ જરૂરી છે'),
     kitchenEmpty: t('No buckets — nothing to cook 👨‍🍳', 'कोई बकेट नहीं — कुछ नहीं पकाना 👨‍🍳', 'કોઈ બકેટ નથી — કંઈ રાંધવાનું નથી 👨‍🍳'),
     kitchenHd: t('On the tawa / in the queue', 'तवे पर / कतार में', 'તવા પર / કતારમાં'),
+    overCap: function (q, c) { return t(q + ' (cap ' + c + ')', q + ' (कैप ' + c + ')', q + ' (કેપ ' + c + ')'); },
     bucket: function (raw) {
       return ({ open: t('filling', 'भर रहा', 'ભરાય છે'), full: t('full', 'भरा', 'ભરેલું'),
                 taken: t('on the tawa', 'तवे पर', 'તવા પર') })[raw] || raw;
@@ -456,6 +457,15 @@ async function tables() {
     if (my === nav && !openTable) failView(e, function () { show('tables'); });
   });
   if (my === nav) timer = setInterval(function () { paint().catch(function () {}); }, 10000);
+}
+
+// A dish's bucket colour (#RRGGBB set in admin), or the app's stable pick
+// from its palette when none is set (Theme.kt dishColour).
+var DISH_PALETTE = ['#E8483F', '#FFC93D', '#FF8A3D', '#6FCF6F', '#C79BFF', '#5BC8DB'];
+function dishColour(hex, id) {
+  if (/^#[0-9a-fA-F]{6}$/.test(String(hex || '').trim())) return String(hex).trim();
+  var n = DISH_PALETTE.length;
+  return DISH_PALETTE[(((Number(id) || 0) % n) + n) % n];
 }
 
 // "now", "6m", "1h20m" since the order opened — the app's ageMinutes.
@@ -1081,12 +1091,20 @@ async function kitchen() {
     if (tab !== 'kitchen') return;
     var bs = d.buckets || [];
     if (!bs.length) { $('view').innerHTML = '<div class="empty">' + esc(S.kitchenEmpty) + '</div>'; return; }
+    // Each bucket wears its dish colour down the left edge (the kitchen's
+    // identity — the chef cooks by colour), a styled state pill, its age, and
+    // "30 (cap 15)" instead of an over-cap "30/15" that read like an error.
     $('view').innerHTML = '<h2>' + esc(S.kitchenHd) + '</h2>' + bs.map(function (b) {
-      return '<div class="card"><div class="row" style="margin-bottom:6px">' +
-        '<b>' + esc(b.name) + '</b>' +
-        '<span class="pill p-' + b.status + '">' + esc(S.bucket(b.status)) + '</span>' +
-        '<span class="right mut tnum">' + b.qty + '/' + (b.cap || d.cap) + '</span></div>' +
-        (b.takenByName ? '<div class="mut">👨‍🍳 ' + esc(b.takenByName) + '</div>' : '') +
+      var cap = b.cap || d.cap;
+      var fill = b.qty > cap ? '<span class="amber">' + esc(S.overCap(b.qty, cap)) + '</span>' : b.qty + '/' + cap;
+      return '<div class="card bucket" style="border-left-color:' + dishColour(b.colour, b.menuItemId) + '">' +
+        '<div class="row" style="margin-bottom:6px">' +
+        '<b class="grow">' + esc(b.name) + '</b>' +
+        '<span class="pill p-' + esc(b.status) + '">' + esc(S.bucket(b.status)) + '</span></div>' +
+        '<div class="row mut tnum" style="font-size:13px;margin-bottom:2px">' +
+          '<span>⏱ ' + esc(age(b.createdAt)) + '</span><span>🍽 ' + fill + '</span>' +
+          (b.takenByName ? '<span class="grow" style="text-align:right">👨‍🍳 ' + esc(b.takenByName) + '</span>' : '') +
+        '</div>' +
         (b.lines || []).map(function (l) {
           return '<div class="line"><span class="qty">' + l.qty + '×</span>' +
             '<span class="grow"><span class="nm">' + esc(l.tableName) + '</span>' +

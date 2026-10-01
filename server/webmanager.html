@@ -607,11 +607,15 @@ function paintTable() {
       '<b>' + esc(S.orderNo(o.orderNo)) + '</b>' +
       '<span class="right mut">' + clock(o.openedAt) + ' · ' + esc(o.openedByName) + '</span></div>';
     (o.tickets || []).forEach(function (tk) {
-      html += '<div class="mut" style="margin:10px 0 2px;font-weight:700">KOT ' + tk.ticketNo + ' · ' + clock(tk.createdAt) + '</div>';
+      // Each KOT is its own block: its last line has no rule under it, so
+      // the card no longer ends on a double line above the total.
+      html += '<div class="kot"><div class="mut" style="margin:10px 0 2px;font-weight:700">KOT ' + tk.ticketNo + ' · ' + clock(tk.createdAt) + '</div>';
       (tk.items || []).forEach(function (it) {
-        html += '<div class="line">' +
+        // a cancelled line is struck through and greyed — it isn't on the bill
+        html += '<div class="line' + (it.status === 'cancelled' ? ' gone' : '') + '">' +
           '<span class="qty">' + it.qty + '×</span>' +
           '<span class="grow"><span class="nm">' + esc(it.name) + '</span>' +
+          '<div class="mut tnum lamt">' + rupees(it.qty * it.price) + '</div>' +
           (it.note ? '<div class="note">📝 ' + esc(it.note) + '</div>' : '') +
           (it.cancelReason ? '<div class="note">✕ ' + esc(it.cancelReason) + '</div>' : '') +
           '</span>' +
@@ -623,6 +627,7 @@ function paintTable() {
             : '') +
           '</div>';
       });
+      html += '</div>';
     });
     html += '<div class="row" style="margin-top:12px;padding-top:11px;border-top:1px solid var(--line)">' +
       '<b>' + esc(S.total) + '</b><b class="right tnum">' + rupees(o.total) + '</b></div></div>';

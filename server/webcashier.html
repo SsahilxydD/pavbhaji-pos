@@ -87,9 +87,11 @@ function strings() {
     online: t('Online / UPI', 'ऑनलाइन / UPI', 'ઓનલાઈન / UPI'),
     allCash: t('💵 all cash', '💵 पूरा कैश', '💵 આખું કેશ'),
     allOnline: t('📲 all online', '📲 पूरा ऑनलाइन', '📲 આખું ઓનલાઈન'),
-    onlineAmt: t('Online amount (₹)', 'ऑनलाइन रकम (₹)', 'ઓનલાઈન રકમ (₹)'),
-    splitApply: t('✓ split, rest cash', '✓ बाकी कैश', '✓ બાકી કેશ'),
-    onlineTooBig: function (a) { return t('Online amount can\'t be more than ' + a, 'ऑनलाइन रकम ' + a + ' से ज़्यादा नहीं हो सकती', 'ઓનલાઈન રકમ ' + a + ' થી વધારે ન હોઈ શકે'); },
+    splitHd: t('Split · cash + UPI', 'बाँटो · कैश + UPI', 'વહેંચો · કેશ + UPI'),
+    splitSave: t('✓ Save', '✓ सेव', '✓ સેવ'),
+    splitMust: function (a) { return t('Cash + UPI must add up to ' + a, 'कैश + UPI मिलाकर ' + a + ' होना चाहिए', 'કેશ + UPI મળીને ' + a + ' થવા જોઈએ'); },
+    gotCash: t('Cash given:', 'कैश मिला:', 'કેશ મળ્યા:'),
+    giveBack: function (a) { return t('give back ' + a, a + ' वापस दो', a + ' પાછા આપો'); },
     print: t('🖨  Print bill', '🖨  बिल छापो', '🖨  બિલ છાપો'),
     closeAmt: function (a) { return t('Close · ' + a, 'बंद करो · ' + a, 'બંધ કરો · ' + a); },
     payFirst: function (a) { return t('Payment first · ' + a + ' due', 'पहले पेमेंट · ' + a + ' बाकी', 'પહેલાં પેમેન્ટ · ' + a + ' બાકી'); },
@@ -433,7 +435,7 @@ async function openOrder(id, history, sub) {
   stopPoll(); nav++;
   var my = nav;
   cur = { id:id, history:!!history, readOnly:!!history || me.role !== 'cashier', sub:sub || '',
-          order:null, bill:null, split:'' };
+          order:null, bill:null, spCash:'', spUpi:'', tendered:0 };
   $('tabs').hidden = true;
   $('bar').className = ''; $('bar').innerHTML = '';
   // The way back works before the bill has loaded, so a dead network can't
@@ -539,9 +541,22 @@ function paintBill() {
         '<button id="allCash"' + (total > 0 && b.paidCash === total ? ' class="on"' : '') + '>' + esc(S.allCash) + '</button>' +
         '<button id="allOnline"' + (total > 0 && b.paidOnline === total ? ' class="on"' : '') + '>' + esc(S.allOnline) + '</button>' +
         '</div>';
-      h += '<div class="row" style="margin-top:9px">' +
-        '<input id="splitAmt" class="num grow" inputmode="decimal" placeholder="' + esc(S.onlineAmt) + '" value="' + esc(cur.split) + '">' +
-        '<button class="primary" id="splitBtn" style="flex:0 0 auto;font-size:13px;padding:12px 12px">' + esc(S.splitApply) + '</button></div>';
+      // Split the way staff say it — "₹500 cash diya, baaki UPI": two boxes,
+      // and typing either one fills the other with the rest of the total.
+      h += '<div class="sechd" style="margin-top:12px">' + esc(S.splitHd) + '</div>' +
+        '<div class="split">' +
+        '<label><span>💵 ' + esc(S.cash) + '</span><input id="spCash" class="num" inputmode="decimal" autocomplete="off" placeholder="₹" value="' + esc(cur.spCash) + '"></label>' +
+        '<label><span>📲 UPI</span><input id="spUpi" class="num" inputmode="decimal" autocomplete="off" placeholder="₹" value="' + esc(cur.spUpi) + '"></label>' +
+        '<button class="primary" id="splitBtn">' + esc(S.splitSave) + '</button></div>';
+      // Change for a big note: "Cash given ₹800 · ₹1,000 · ₹2,000" → give back.
+      if (b.paidCash > 0) {
+        h += '<div class="change"><span class="mut">' + esc(S.gotCash) + '</span>' +
+          tenders(b.paidCash).map(function (p) {
+            return '<button class="chipbtn' + (cur.tendered === p ? ' on' : '') + '" data-tender="' + p + '">' + rupees(p) + '</button>';
+          }).join('') +
+          (cur.tendered > b.paidCash ? '<b class="green">' + esc(S.giveBack(rupees(cur.tendered - b.paidCash))) + '</b>' : '') +
+          '</div>';
+      }
     }
   }
   if (cur.readOnly && !cur.history) h += '<div class="hint">👁 ' + esc(S.viewOnly) + '</div>';
@@ -570,13 +585,47 @@ function paintBill() {
   if ($('discBtn')) $('discBtn').onclick = askDiscount;
   if ($('allCash')) $('allCash').onclick = function () { setPayment(total, 0); };
   if ($('allOnline')) $('allOnline').onclick = function () { setPayment(0, total); };
-  if ($('splitAmt')) $('splitAmt').oninput = function () { cur.split = this.value; };
-  if ($('splitBtn')) $('splitBtn').onclick = function () {
-    var p = toPaise(cur.split);
-    if (p === null || p > total) { toast(S.onlineTooBig(rupees(total)), 'bad'); return; }
-    cur.split = '';
-    setPayment(total - p, p);
-  };
+  if ($('spCash')) {
+    var link = function (from, to, key, otherKey) {
+      from.oninput = function () {
+        cur[key] = from.value;
+        var p = toPaise(from.value);
+        if (from.value.trim() === '') { to.value = ''; }
+        else if (p !== null && p <= total) { to.value = boxAmt(total - p); }
+        cur[otherKey] = to.value;
+      };
+    };
+    link($('spCash'), $('spUpi'), 'spCash', 'spUpi');
+    link($('spUpi'), $('spCash'), 'spUpi', 'spCash');
+    $('splitBtn').onclick = function () {
+      var c = toPaise($('spCash').value || '0'), u = toPaise($('spUpi').value || '0');
+      if (c === null || u === null || c + u !== total) { toast(S.splitMust(rupees(total)), 'bad'); return; }
+      cur.spCash = ''; cur.spUpi = ''; cur.tendered = 0;
+      setPayment(c, u);
+    };
+  }
+  $('view').querySelectorAll('button[data-tender]').forEach(function (btn) {
+    btn.onclick = function () {
+      var p = Number(btn.dataset.tender);
+      cur.tendered = cur.tendered === p ? 0 : p;
+      paintBill();
+    };
+  });
+}
+
+// An amount as typed into a box: 1366000 → "13660", 4250 → "42.50" (no
+// grouping commas — it has to read back as a number).
+function boxAmt(p) { return p % 100 === 0 ? String(p / 100) : (p / 100).toFixed(2); }
+
+// The notes a customer is likely to hand over for a cash amount: the next
+// ₹100, ₹500, ₹1,000 and ₹2,000 above it, smallest three.
+function tenders(cash) {
+  var out = [];
+  [10000, 50000, 100000, 200000].forEach(function (m) {
+    var p = (Math.floor(cash / m) + 1) * m;
+    if (out.indexOf(p) < 0) out.push(p);
+  });
+  return out.sort(function (a, b) { return a - b; }).slice(0, 3);
 }
 
 async function patchBill(patch) {

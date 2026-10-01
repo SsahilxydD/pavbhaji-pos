@@ -403,6 +403,17 @@ label.fld span { display:block; font-size:12px; font-weight:700; color:var(--ink
 }
 .chips button.on { background:#fff4ee; color:var(--red-deep); border-color:var(--red); }
 
+/* split: Cash ⇄ UPI boxes (each fills the other), then save */
+.split { display:grid; grid-template-columns:1fr 1fr auto; gap:8px; align-items:end; margin-top:6px; }
+.split label span { display:block; font-size:12px; font-weight:700; color:var(--ink2); margin-bottom:4px; }
+.split input { padding:10px 10px; }
+.split button { min-height:46px; padding:10px 14px; font-size:14px; white-space:nowrap; }
+/* change helper: the note handed over → what to give back */
+.change { display:flex; flex-wrap:wrap; align-items:center; gap:6px 8px; margin-top:10px; font-size:13.5px; }
+.change .chipbtn { min-height:44px; padding:6px 12px; background:var(--card); color:var(--ink); border-color:var(--line); }
+.change .chipbtn.on { background:#fff4ee; color:var(--red-deep); border-color:var(--red); }
+.change b { font-size:15px; }
+
 /* ---------- closed-bill history row ---------- */
 .billrow {
   display:flex; align-items:center; gap:10px; width:100%;

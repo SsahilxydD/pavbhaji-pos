@@ -638,10 +638,15 @@ fun PinPad(onSubmit: (String) -> Unit, error: String?, busy: Boolean = false) {
         }
         Box(Modifier.padding(top = 10.dp).heightIn(min = 20.dp), contentAlignment = Alignment.Center) {
             if (busy && error == null) {
-                CircularProgressIndicator(
-                    Modifier.size(18.dp).semantics { contentDescription = S.checking },
-                    strokeWidth = 2.dp, color = MaterialTheme.colorScheme.primary
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    CircularProgressIndicator(
+                        Modifier.size(16.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.primary
+                    )
+                    Text(
+                        S.checking, color = Pb.ink2, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.padding(start = 8.dp)
+                    )
+                }
             } else {
                 Text(
                     error ?: " ",

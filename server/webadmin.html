@@ -46,7 +46,7 @@
   }
   .brand b { font-size:15px; letter-spacing:-.3px; display:block; white-space:nowrap; }
   .brand { gap:8px; }
-  /* EN / हिं / ગુ chip (same as pos.css): an invisible native picker over it */
+  /* Hinglish / हिं / ગુ chip (same as pos.css): an invisible native picker over it */
   .lang {
     position:relative; flex:0 0 auto; display:grid; place-items:center;
     min-width:44px; min-height:36px; padding:0 9px; border-radius:11px; cursor:pointer;
@@ -269,8 +269,8 @@
     <div class="brand">
       <div class="tile">🍛</div>
       <div class="grow" style="min-width:0"><b>PavBhaji POS</b><small id="panelT">admin panel</small></div>
-      <label class="lang"><span id="langMark">EN</span><select id="langSel" aria-label="Language">
-        <option value="en">English</option><option value="hi">हिंदी</option><option value="gu">ગુજરાતી</option></select></label>
+      <label class="lang"><span id="langMark">Hinglish</span><select id="langSel" aria-label="Language / भाषा">
+        <option value="hg">Hinglish</option><option value="hi">हिंदी</option><option value="gu">ગુજરાતી</option></select></label>
     </div>
     <nav id="tabs"></nav>
     <div class="side-foot">
@@ -304,21 +304,23 @@ const toPaise = s => {
 const clock = ms => new Date(ms).toTimeString().slice(0,5);
 
 // ---- language ----
-// EN / हिं / ગુ like the app (ui/L10n.kt) and the other browser screens:
-// the same localStorage choice, the app's own words where it has them. As
-// in the app, dish/table/staff names and the server's messages stay as they
-// are.
-const LANG_KEY = 'pbpos.lang', LANG_MARK = { en:'EN', hi:'हिं', gu:'ગુ' };
-let lang = 'en';
-try { lang = LANG_MARK[localStorage.getItem(LANG_KEY)] ? localStorage.getItem(LANG_KEY) : 'en'; } catch (e) {}
-const t = (en, hi, gu) => lang === 'hi' ? hi : lang === 'gu' ? gu : en;
+// Hinglish (the default) / हिं / ગુ, the same localStorage choice as the
+// other browser screens (a phone that already chose हिं or ગુ keeps it).
+// Hindi and Gujarati are the app's ui/L10n.kt words where it has them. The
+// default keeps this page's original wording; only text added in round 2
+// is in Hinglish. As in the app, dish/table/staff names and the server's
+// messages stay as they are.
+const LANG_KEY = 'pbpos.lang', LANG_MARK = { hg:'Hinglish', hi:'हिं', gu:'ગુ' };
+let lang = 'hg';
+try { lang = LANG_MARK[localStorage.getItem(LANG_KEY)] ? localStorage.getItem(LANG_KEY) : 'hg'; } catch (e) {}
+const t = (hg, hi, gu) => lang === 'hi' ? hi : lang === 'gu' ? gu : hg;
 let S = {};
 function strings() {
-  document.documentElement.lang = lang;
+  document.documentElement.lang = lang === 'hg' ? 'hi-Latn' : lang;
   S = {
     panel: t('admin panel', 'एडमिन पैनल', 'એડમિન પેનલ'),
     backup: t('⬇ backup', '⬇ बैकअप', '⬇ બેકઅપ'),
-    logout: t('Logout', 'बाहर निकलो', 'બહાર નીકળો'),
+    logout: t('logout', 'बाहर निकलो', 'બહાર નીકળો'),
     tabs: {
       dashboard: t('Dashboard', 'डैशबोर्ड', 'ડેશબોર્ડ'), stock: t('Stock', 'स्टॉक', 'સ્ટોક'),
       menu: t('Menu & colours', 'मेनू और रंग', 'મેનૂ અને રંગ'), staff: t('Staff & PINs', 'स्टाफ़ और PIN', 'સ્ટાફ અને PIN'),
@@ -327,42 +329,42 @@ function strings() {
     },
     noNet: t('No network — check the internet and try again', 'नेटवर्क नहीं है — इंटरनेट देखो और फिर कोशिश करो', 'નેટવર્ક નથી — ઇન્ટરનેટ જુઓ અને ફરી પ્રયત્ન કરો'),
     noServer: t('The POS server is not answering — try again', 'POS सर्वर जवाब नहीं दे रहा — फिर कोशिश करो', 'POS સર્વર જવાબ નથી આપતું — ફરી પ્રયત્ન કરો'),
-    expired: t('Session expired — log in again', 'सेशन खत्म — फिर से लॉग इन करो', 'સેશન પૂરું — ફરી લૉગ ઇન કરો'),
-    backupFailed: t('Backup failed', 'बैकअप नहीं हुआ', 'બેકઅપ ન થયો'),
+    expired: t('session expired', 'सेशन खत्म — फिर से लॉग इन करो', 'સેશન પૂરું — ફરી લૉગ ઇન કરો'),
+    backupFailed: t('backup failed', 'बैकअप नहीं हुआ', 'બેકઅપ ન થયો'),
     backupDone: t('Backup downloaded ✓', 'बैकअप डाउनलोड हो गया ✓', 'બેકઅપ ડાઉનલોડ થયો ✓'),
-    printFail: t('Could not load the bill to print', 'छापने के लिए बिल नहीं खुला', 'છાપવા માટે બિલ ન ખૂલ્યું'),
+    printFail: t('Print ke liye bill nahi khula — dobara try karo', 'छापने के लिए बिल नहीं खुला', 'છાપવા માટે બિલ ન ખૂલ્યું'),
     save: t('Save', 'सेव करो', 'સેવ કરો'), saved: t('Saved ✓', 'सेव हो गया ✓', 'સેવ થયું ✓'),
-    saveAll: t('Save all', 'सब सेव करो', 'બધું સેવ કરો'),
-    colour: t('colour', 'रंग', 'રંગ'), name: t('name', 'नाम', 'નામ'), priceRs: t('price ₹', 'दाम ₹', 'ભાવ ₹'),
+    saveAll: t('Sab save karo', 'सब सेव करो', 'બધું સેવ કરો'),
+    colour: t('rang', 'रंग', 'રંગ'), name: t('naam', 'नाम', 'નામ'), priceRs: t('daam ₹', 'दाम ₹', 'ભાવ ₹'),
     station: t('station', 'स्टेशन', 'સ્ટેશન'),
     stationHint: t('kitchen = cooked in buckets, counter = waiter hands over', 'किचन = बकेट में बनता है, काउंटर = वेटर सीधा देता है', 'રસોડું = બકેટમાં બને, કાઉન્ટર = વેઈટર સીધું આપે'),
     kitchen: t('🍳 kitchen', '🍳 किचन', '🍳 રસોડું'), counter: t('✋ counter', '✋ काउंटर', '✋ કાઉન્ટર'),
     tawaCap: t('tawa cap', 'तवा कैप', 'તવા કેપ'), sealMin: t('seal (min)', 'सील (मिनट)', 'સીલ (મિનિટ)'),
     auto: t('auto', 'अपने आप', 'આપોઆપ'),
-    inStock: t('in stock', 'स्टॉक में', 'સ્ટોકમાં'), outOfStock: t('out of stock', 'खत्म', 'ખલાસ'),
-    outCount: n => n ? t(n + ' dish' + (n === 1 ? '' : 'es') + ' out of stock', n + ' डिश खत्म', n + ' ડિશ ખલાસ')
-                     : t('Everything is in stock', 'सब स्टॉक में है', 'બધું સ્ટોકમાં છે'),
-    stockHint: t('Tap a dish to switch it. It saves at once and greys out on every phone.',
+    inStock: t('in stock', 'स्टॉक में', 'સ્ટોકમાં'), outOfStock: t('khatam', 'खत्म', 'ખલાસ'),
+    outCount: n => n ? t(n + ' dish khatam', n + ' डिश खत्म', n + ' ડિશ ખલાસ')
+                     : t('Sab stock me hai', 'सब स्टॉक में है', 'બધું સ્ટોકમાં છે'),
+    stockHint: t('Dish pe tap karo to badal jayegi. Turant save hoti hai aur har phone pe grey ho jati hai.',
                  'डिश दबाओ तो बदलेगी। तुरंत सेव होती है और हर फ़ोन पर ग्रे हो जाती है।',
                  'ડિશ દબાવો એટલે બદલાશે. તરત સેવ થાય છે અને દરેક ફોન પર ગ્રે થઈ જાય છે.'),
-    collectedToday: t('COLLECTED TODAY', 'आज आए पैसे', 'આજે આવેલા પૈસા'),
-    closedBills: n => t(n + ' closed bill' + (n === 1 ? '' : 's'), n + ' बंद बिल', n + ' બંધ બિલ'),
-    served: t('served', 'परोसा', 'પીરસ્યું'), discounts: t('discounts', 'छूट', 'છૂટ'),
-    stillOpen: (a, n) => t(a + ' still open on ' + n + ' table' + (n === 1 ? '' : 's'), a + ' अभी ' + n + ' टेबल पर खुला', a + ' હજી ' + n + ' ટેબલ પર ખુલ્લું'),
+    collectedToday: t('AAJ KA COLLECTION', 'आज आए पैसे', 'આજે આવેલા પૈસા'),
+    closedBills: n => t(n + ' bill close hue', n + ' बंद बिल', n + ' બંધ બિલ'),
+    served: t('serve hua', 'परोसा', 'પીરસ્યું'), discounts: t('discount', 'छूट', 'છૂટ'),
+    stillOpen: (a, n) => t(a + ' abhi ' + n + ' table pe khula', a + ' अभी ' + n + ' टेबल पर खुला', a + ' હજી ' + n + ' ટેબલ પર ખુલ્લું'),
     refreshes: t('refreshes by itself', 'अपने आप ताज़ा होता है', 'આપોઆપ તાજું થાય છે'),
     orders: t('orders', 'ऑर्डर', 'ઓર્ડર'), tablesOpen: t('tables open', 'खुले टेबल', 'ખુલ્લા ટેબલ'),
     platesCooking: t('plates cooking', 'बन रही प्लेट', 'બનતી પ્લેટ'), phonesOnline: t('phones online', 'ऑनलाइन फ़ोन', 'ઓનલાઈન ફોન'),
-    openManager: t('Open the Manager screen', 'मैनेजर स्क्रीन खोलो', 'મેનેજર સ્ક્રીન ખોલો'),
-    managerWhat: t('tables, punching orders, parcels, kitchen', 'टेबल, ऑर्डर पंच, पार्सल, किचन', 'ટેબલ, ઓર્ડર પંચ, પાર્સલ, રસોડું'),
-    openCashier: t('Open the Cashier screen', 'कैशियर स्क्रीन खोलो', 'કેશિયર સ્ક્રીન ખોલો'),
-    cashierWhat: t('open bills (view only for admin) and closed bills', 'खुले बिल (एडमिन के लिए सिर्फ़ देखना) और बंद बिल', 'ખુલ્લા બિલ (એડમિન માટે ફક્ત જોવા) અને બંધ બિલ'),
-    netCollected: t('✅ net collected', '✅ कुल आए पैसे', '✅ કુલ આવેલા પૈસા'),
-    notCollected: a => t(a + ' on open tables not collected yet', a + ' खुले टेबलों पर अभी बाकी', a + ' ખુલ્લા ટેબલ પર હજી બાકી'),
+    openManager: t('Manager screen kholo', 'मैनेजर स्क्रीन खोलो', 'મેનેજર સ્ક્રીન ખોલો'),
+    managerWhat: t('tables, order punch, parcel, kitchen', 'टेबल, ऑर्डर पंच, पार्सल, किचन', 'ટેબલ, ઓર્ડર પંચ, પાર્સલ, રસોડું'),
+    openCashier: t('Cashier screen kholo', 'कैशियर स्क्रीन खोलो', 'કેશિયર સ્ક્રીન ખોલો'),
+    cashierWhat: t('khule bill (admin sirf dekh sakta hai) aur close hue bill', 'खुले बिल (एडमिन के लिए सिर्फ़ देखना) और बंद बिल', 'ખુલ્લા બિલ (એડમિન માટે ફક્ત જોવા) અને બંધ બિલ'),
+    netCollected: t('✅ net collection', '✅ कुल आए पैसे', '✅ કુલ આવેલા પૈસા'),
+    notCollected: a => t(a + ' khule tables pe abhi baaki', a + ' खुले टेबलों पर अभी बाकी', a + ' ખુલ્લા ટેબલ પર હજી બાકી'),
     archive: t('hide everywhere', 'हर जगह छुपाओ', 'બધે છુપાવો'),
     archiveQ: n => t('Hide "' + n + '" everywhere? (it stays in old orders and reports)', '"' + n + '" हर जगह छुपाएँ? (पुराने ऑर्डर और रिपोर्ट में रहेगा)', '"' + n + '" બધે છુપાવવું? (જૂના ઓર્ડર અને રિપોર્ટમાં રહેશે)'),
     namePriceNeeded: t('name and a valid ₹ price are needed', 'नाम और सही ₹ दाम चाहिए', 'નામ અને સાચો ₹ ભાવ જોઈએ'),
-    unsaved: n => t(n + ' dish row' + (n === 1 ? '' : 's') + ' not saved', n + ' डिश लाइन सेव नहीं हुई', n + ' ડિશ લાઈન સેવ નથી થઈ'),
-    leaveUnsaved: n => t(n + ' edited dish row' + (n === 1 ? ' is' : 's are') + ' not saved. Leave and lose the changes?',
+    unsaved: n => t(n + ' dish row save nahi hui', n + ' डिश लाइन सेव नहीं हुई', n + ' ડિશ લાઈન સેવ નથી થઈ'),
+    leaveUnsaved: n => t(n + ' badli hui dish row save nahi hui. Chhod ke badlav khone hain?',
                          n + ' बदली हुई डिश लाइन सेव नहीं हुई। छोड़कर बदलाव खो दें?',
                          n + ' બદલેલી ડિશ લાઈન સેવ નથી થઈ. છોડીને ફેરફાર ગુમાવવા?'),
     newDish: t('new dish name', 'नई डिश का नाम', 'નવી ડિશનું નામ'),
@@ -371,7 +373,7 @@ function strings() {
     addCat: t('+ add category', '+ कैटेगरी जोड़ो', '+ કેટેગરી ઉમેરો'),
     role: r => ({ waiter: t('waiter', 'वेटर', 'વેઈટર'), manager: t('manager', 'मैनेजर', 'મેનેજર'), chef: t('chef', 'शेफ़', 'શેફ'),
                   admin: t('admin', 'एडमिन', 'એડમિન'), cashier: t('cashier', 'कैशियर', 'કેશિયર'),
-                  parcel: t('parcel manager', 'पार्सल मैनेजर', 'પાર્સલ મેનેજર') })[r] || r,
+                  parcel: t('parcel', 'पार्सल मैनेजर', 'પાર્સલ મેનેજર') })[r] || r,
     resetPin: t('reset PIN', 'PIN बदलो', 'PIN બદલો'), active: t('active', 'चालू', 'ચાલુ'),
     pin4: t('PIN (4 digits)', 'PIN (4 अंक)', 'PIN (4 આંકડા)'),
     addStaff: t('+ add staff', '+ स्टाफ़ जोड़ो', '+ સ્ટાફ ઉમેરો'),
@@ -390,18 +392,18 @@ function strings() {
     shopName: t('Shop name', 'दुकान का नाम', 'દુકાનનું નામ'), phone: t('Phone', 'फ़ोन', 'ફોન'),
     phonePh: t('printed under the shop name', 'दुकान के नाम के नीचे छपेगा', 'દુકાનના નામ નીચે છપાશે'),
     footer: t('Footer line', 'नीचे की लाइन', 'નીચેની લાઈન'),
-    billingHint: t('These three lines print on every bill. The cashier prints from the Cashier screen or the app (any printer the phone can see, or save as PDF to share on WhatsApp); 🖨 under Bills reprints any closed bill.',
+    billingHint: t('These three lines print on every bill. The cashier prints bills from their phone (any printer the phone can see, or save-as-PDF to share on WhatsApp); a browser on this laptop can print one too by opening /bill/<order id>.',
                    'ये तीन लाइनें हर बिल पर छपती हैं। कैशियर, कैशियर स्क्रीन या ऐप से छापता है (फ़ोन जो भी प्रिंटर देखे, या PDF बनाकर WhatsApp पर भेजो); बिल में 🖨 से कोई भी बंद बिल दोबारा छापो।',
                    'આ ત્રણ લાઈન દરેક બિલ પર છપાય છે. કેશિયર, કેશિયર સ્ક્રીન કે એપથી છાપે છે (ફોન જે પ્રિન્ટર જુએ, કે PDF બનાવી WhatsApp પર મોકલો); બિલમાં 🖨 થી કોઈ પણ બંધ બિલ ફરી છાપો.'),
-    billingSaved: t('Saved ✓ — the next bill prints with the new header', 'सेव ✓ — अगला बिल नए हेडर के साथ छपेगा', 'સેવ ✓ — આગલું બિલ નવા હેડર સાથે છપાશે'),
+    billingSaved: t('Saved ✓ — next bill prints with the new header', 'सेव ✓ — अगला बिल नए हेडर के साथ छपेगा', 'સેવ ✓ — આગલું બિલ નવા હેડર સાથે છપાશે'),
     today: t('today', 'आज', 'આજે'),
-    billsN: n => t(n + ' bill' + (n === 1 ? '' : 's'), n + ' बिल', n + ' બિલ'),
-    noBills: t('No bills for this day.', 'इस दिन का कोई बिल नहीं।', 'આ દિવસનું કોઈ બિલ નથી.'),
+    billsN: n => t(n + ' bills', n + ' बिल', n + ' બિલ'),
+    noBills: t('no bills for this day', 'इस दिन का कोई बिल नहीं।', 'આ દિવસનું કોઈ બિલ નથી.'),
     billsHint: t('Every closed table\'s bill lives here — items, discount and how it was paid. 🖨 reprints it.',
                  'हर बंद टेबल का बिल यहाँ है — आइटम, छूट और पेमेंट कैसे हुआ। 🖨 से दोबारा छापो।',
                  'દરેક બંધ ટેબલનું બિલ અહીં છે — આઈટમ, છૂટ અને પેમેન્ટ કેવી રીતે થયું. 🖨 થી ફરી છાપો.'),
     forItems: t('click for items', 'आइटम देखने को दबाओ', 'આઈટમ જોવા દબાવો'),
-    reprint: t('Print bill', 'बिल छापो', 'બિલ છાપો'),
+    reprint: t('Bill print karo', 'बिल छापो', 'બિલ છાપો'),
     salesServed: t('sales (served)', 'बिक्री (परोसा)', 'વેચાણ (પીરસેલું)'),
     cancelled: t('cancelled', 'रद्द', 'રદ'),
     cashDrawer: t('💵 cash in drawer', '💵 गल्ले में कैश', '💵 ગલ્લામાં કેશ'),
@@ -409,14 +411,14 @@ function strings() {
     discountsGiven: t('discounts given', 'दी गई छूट', 'આપેલી છૂટ'),
     stillOpenDate: n => t('⚠ ' + n + ' order(s) still open for this date', '⚠ इस दिन के ' + n + ' ऑर्डर अभी खुले हैं', '⚠ આ દિવસના ' + n + ' ઓર્ડર હજી ખુલ્લા છે'),
     soldSection: t('Sold (served items)', 'बिका (परोसे आइटम)', 'વેચાયું (પીરસેલી વસ્તુઓ)'),
-    nothing: t('nothing yet', 'अभी कुछ नहीं', 'હજી કંઈ નથી'),
+    nothing: t('nothing', 'अभी कुछ नहीं', 'હજી કંઈ નથી'),
     total: t('TOTAL', 'कुल', 'કુલ'),
     byWaiter: t('By waiter', 'वेटर के हिसाब से', 'વેઈટર પ્રમાણે'),
-    itemsN: n => t(n + ' item' + (n === 1 ? '' : 's'), n + ' आइटम', n + ' આઈટમ'),
+    itemsN: n => t(n + ' items', n + ' आइटम', n + ' આઈટમ'),
     cancelledSection: t('Cancelled', 'रद्द', 'રદ'),
-    logTypes: { '': t('all', 'सब', 'બધા'), orders: t('orders', 'ऑर्डर', 'ઓર્ડર'), kitchen: t('kitchen', 'किचन', 'રસોડું'),
-                serving: t('serving', 'परोसना', 'પીરસવું'), cancel: t('cancelled', 'रद्द', 'રદ'),
-                billing: t('billing', 'बिलिंग', 'બિલિંગ'), staff: t('staff & logins', 'स्टाफ़ और लॉगिन', 'સ્ટાફ અને લૉગિન') },
+    logTypes: { '': t('All', 'सब', 'બધા'), orders: t('Orders', 'ऑर्डर', 'ઓર્ડર'), kitchen: t('Kitchen', 'किचन', 'રસોડું'),
+                serving: t('Serving', 'परोसना', 'પીરસવું'), cancel: t('Cancelled', 'रद्द', 'રદ'),
+                billing: t('Billing', 'बिलिंग', 'બિલિંગ'), staff: t('Staff & logins', 'स्टाफ़ और लॉगिन', 'સ્ટાફ અને લૉગિન') },
     nothingFilter: t('nothing in this filter', 'इस फ़िल्टर में कुछ नहीं', 'આ ફિલ્ટરમાં કંઈ નથી'),
     loadOlder: t('Load older', 'पुराने देखो', 'જૂના જુઓ'),
     system: t('system', 'सिस्टम', 'સિસ્ટમ'),

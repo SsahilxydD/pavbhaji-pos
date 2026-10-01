@@ -62,7 +62,7 @@ body {
 }
 .top button:active { background:rgba(255,255,255,.26); }
 
-/* EN / हिं / ગુ — the app's LangAction: shows the current language's own
+/* Hinglish / हिं / ગુ — like the app's LangAction: shows the current language's own
    mark; a native picker (an invisible <select> over the chip) lists the
    three full names. 16px on the select or iOS zooms when it opens. */
 .lang {

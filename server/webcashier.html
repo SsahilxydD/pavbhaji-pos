@@ -14,8 +14,8 @@
 <div class="top">
   <button class="tile" id="tile" disabled>🧾</button>
   <div class="ttl"><b id="ttlT">Cashier</b><small id="ttlS"></small></div>
-  <label class="lang"><span id="langMark">EN</span><select id="langSel" aria-label="Language">
-    <option value="en">English</option><option value="hi">हिंदी</option><option value="gu">ગુજરાતી</option></select></label>
+  <label class="lang"><span id="langMark">Hinglish</span><select id="langSel" aria-label="Language / भाषा">
+    <option value="hg">Hinglish</option><option value="hi">हिंदी</option><option value="gu">ગુજરાતી</option></select></label>
   <button id="logoutBtn">logout</button>
   <div class="net" id="net" hidden></div>
 </div>
@@ -34,40 +34,43 @@ try { me = JSON.parse(localStorage.getItem(WHO) || 'null'); } catch (e) { me = n
 if (!token || !me || (me.role !== 'cashier' && me.role !== 'admin')) location.replace('/');
 
 // ---------------------------------------------------------------- language
-// EN / हिं / ગુ — the app's three (ui/L10n.kt), in the app's own words
-// wherever it has them (the bill screen is a port of CashierScreens.kt).
-// Kept in this browser, shared with the other screens; the page redraws in
-// place. Dish/table/staff names are data and stay as typed; the server's
-// bill refusals are put in the cashier's words (billError), as in the app.
-var LANG_KEY = 'pbpos.lang', LANG_MARK = { en:'EN', hi:'हिं', gu:'ગુ' };
-var lang = 'en';
-try { lang = LANG_MARK[localStorage.getItem(LANG_KEY)] ? localStorage.getItem(LANG_KEY) : 'en'; } catch (e) {}
-function t(en, hi, gu) { return lang === 'hi' ? hi : lang === 'gu' ? gu : en; }
+// Hinglish (the default — the words this screen always used) / हिं / ગુ.
+// Hindi and Gujarati are the app's ui/L10n.kt words (the bill screen is a
+// port of CashierScreens.kt). Kept in this browser, shared with the other
+// screens (a phone that already chose हिं or ગુ keeps it); the page redraws
+// in place. Dish/table/staff names are data and stay as typed; in हिं / ગુ
+// the server's bill refusals are put in the cashier's words (billError),
+// as in the app.
+var LANG_KEY = 'pbpos.lang', LANG_MARK = { hg:'Hinglish', hi:'हिं', gu:'ગુ' };
+var lang = 'hg';
+try { lang = LANG_MARK[localStorage.getItem(LANG_KEY)] ? localStorage.getItem(LANG_KEY) : 'hg'; } catch (e) {}
+function t(hg, hi, gu) { return lang === 'hi' ? hi : lang === 'gu' ? gu : hg; }
 
 var S = {};
 function strings() {
-  document.documentElement.lang = lang;
+  document.documentElement.lang = lang === 'hg' ? 'hi-Latn' : lang;
   S = {
     title: t('Cashier', 'कैशियर', 'કેશિયર'),
-    logout: t('Logout', 'बाहर निकलो', 'બહાર નીકળો'),
+    logout: t('logout', 'बाहर निकलो', 'બહાર નીકળો'),
     back: t('Back', 'पीछे', 'પાછળ'),
     save: t('Save', 'सेव करो', 'સેવ કરો'),
-    noNet: t('No network — try again', 'नेटवर्क नहीं है — फिर कोशिश करो', 'નેટવર્ક નથી — ફરી પ્રયત્ન કરો'),
-    slowNet: t('The network is very slow — try again', 'नेटवर्क बहुत धीमा है — फिर कोशिश करो', 'નેટવર્ક બહુ ધીમું છે — ફરી પ્રયત્ન કરો'),
-    noServer: t('The server is not answering — try again', 'सर्वर से जवाब नहीं आया — फिर कोशिश करो', 'સર્વરનો જવાબ ન આવ્યો — ફરી પ્રયત્ન કરો'),
-    expired: t('Session expired — log in again', 'सेशन खत्म — फिर से लॉग इन करो', 'સેશન પૂરું — ફરી લૉગ ઇન કરો'),
-    netDown: t('⚠ No network · last update ', '⚠ नेट नहीं है · आख़िरी अपडेट ', '⚠ નેટ નથી · છેલ્લું અપડેટ '),
-    retry: t('↻ Try again', '↻ फिर कोशिश करो', '↻ ફરી પ્રયત્ન કરો'),
-    retryShort: t('↻ Retry', '↻ फिर से', '↻ ફરી'),
+    noNet: t('Network nahi hai — dobara try karo', 'नेटवर्क नहीं है — फिर कोशिश करो', 'નેટવર્ક નથી — ફરી પ્રયત્ન કરો'),
+    slowNet: t('Network bahut slow hai — dobara try karo', 'नेटवर्क बहुत धीमा है — फिर कोशिश करो', 'નેટવર્ક બહુ ધીમું છે — ફરી પ્રયત્ન કરો'),
+    noServer: t('Server se jawab nahi aaya — dobara try karo', 'सर्वर से जवाब नहीं आया — फिर कोशिश करो', 'સર્વરનો જવાબ ન આવ્યો — ફરી પ્રયત્ન કરો'),
+    expired: t('session expired', 'सेशन खत्म — फिर से लॉग इन करो', 'સેશન પૂરું — ફરી લૉગ ઇન કરો'),
+    netDown: t('⚠ Net nahi hai · last update ', '⚠ नेट नहीं है · आख़िरी अपडेट ', '⚠ નેટ નથી · છેલ્લું અપડેટ '),
+    retry: t('↻ Dobara try karo', '↻ फिर कोशिश करो', '↻ ફરી પ્રયત્ન કરો'),
+    retryShort: t('↻ Dobara', '↻ फिर से', '↻ ફરી'),
     tabOpen: t('Open orders', 'खुले ऑर्डर', 'ખુલ્લા ઓર્ડર'),
     tabBills: t('Bills', 'बिल', 'બિલ'),
-    noOpen: t('No open orders.', 'कोई ऑर्डर खुला नहीं है।', 'કોઈ ઓર્ડર ખુલ્લો નથી.'),
-    nOpen: function (n) { return t(n + ' open', n + ' खुले', n + ' ખુલ્લા'); },
-    paidClose: t('PAID ✓ — close it', 'पेड ✓ — बंद करो', 'પેડ ✓ — બંધ કરો'),
-    dueAmt: function (a) { return t(a + ' due', a + ' बाकी', a + ' બાકી'); },
+    noOpen: t('Koi order open nahi hai.', 'कोई ऑर्डर खुला नहीं है।', 'કોઈ ઓર્ડર ખુલ્લો નથી.'),
+    nOpen: function (n) { return t(n + ' order open', n + ' खुले', n + ' ખુલ્લા'); },
+    paidClose: t('PAID ✓ — close karo', 'पेड ✓ — बंद करो', 'પેડ ✓ — બંધ કરો'),
+    dueAmt: function (a) { return t(a + ' baaki', a + ' बाकी', a + ' બાકી'); },
     items: function (n) { return t(n + ' item' + (n === 1 ? '' : 's'), n + ' आइटम', n + ' આઈટમ'); },
-    cooking: function (n) { return t(n + ' cooking', n + ' बन रहे', n + ' બની રહ્યા'); },
-    billLoading: t('Opening the bill…', 'बिल खुल रहा है…', 'બિલ ખૂલી રહ્યું છે…'),
+    plates: function (n) { return t(n + ' plate', n + ' आइटम', n + ' આઈટમ'); },
+    cooking: function (n) { return t(n + ' banna baaki', n + ' बन रहे', n + ' બની રહ્યા'); },
+    billLoading: t('Bill khul raha hai…', 'बिल खुल रहा है…', 'બિલ ખૂલી રહ્યું છે…'),
     bill: t('Bill', 'बिल', 'બિલ'),
     orderNo: function (n) { return t('order #' + n, 'ऑर्डर #' + n, 'ઓર્ડર #' + n); },
     item: t('Item', 'आइटम', 'આઈટમ'),
@@ -87,56 +90,56 @@ function strings() {
     online: t('Online / UPI', 'ऑनलाइन / UPI', 'ઓનલાઈન / UPI'),
     allCash: t('💵 all cash', '💵 पूरा कैश', '💵 આખું કેશ'),
     allOnline: t('📲 all online', '📲 पूरा ऑनलाइन', '📲 આખું ઓનલાઈન'),
-    keysHint: t('Keys: C all cash · U all online · Enter close', 'कीबोर्ड: C पूरा कैश · U पूरा ऑनलाइन · Enter बंद', 'કીબોર્ડ: C આખું કેશ · U આખું ઓનલાઈન · Enter બંધ'),
+    keysHint: t('Keyboard: C poora cash · U poora online · Enter close', 'कीबोर्ड: C पूरा कैश · U पूरा ऑनलाइन · Enter बंद', 'કીબોર્ડ: C આખું કેશ · U આખું ઓનલાઈન · Enter બંધ'),
     splitHd: t('Split · cash + UPI', 'बाँटो · कैश + UPI', 'વહેંચો · કેશ + UPI'),
     splitSave: t('✓ Save', '✓ सेव', '✓ સેવ'),
-    splitMust: function (a) { return t('Cash + UPI must add up to ' + a, 'कैश + UPI मिलाकर ' + a + ' होना चाहिए', 'કેશ + UPI મળીને ' + a + ' થવા જોઈએ'); },
-    gotCash: t('Cash given:', 'कैश मिला:', 'કેશ મળ્યા:'),
-    giveBack: function (a) { return t('give back ' + a, a + ' वापस दो', a + ' પાછા આપો'); },
+    splitMust: function (a) { return t('Cash + UPI milake ' + a + ' hona chahiye', 'कैश + UPI मिलाकर ' + a + ' होना चाहिए', 'કેશ + UPI મળીને ' + a + ' થવા જોઈએ'); },
+    gotCash: t('Cash mila:', 'कैश मिला:', 'કેશ મળ્યા:'),
+    giveBack: function (a) { return t(a + ' wapas do', a + ' वापस दो', a + ' પાછા આપો'); },
     print: t('🖨  Print bill', '🖨  बिल छापो', '🖨  બિલ છાપો'),
-    printFail: t('Could not load the bill to print — try again', 'छापने के लिए बिल नहीं खुला — फिर कोशिश करो', 'છાપવા માટે બિલ ન ખૂલ્યું — ફરી પ્રયત્ન કરો'),
+    printFail: t('Print ke liye bill nahi khula — dobara try karo', 'छापने के लिए बिल नहीं खुला — फिर कोशिश करो', 'છાપવા માટે બિલ ન ખૂલ્યું — ફરી પ્રયત્ન કરો'),
     closeAmt: function (a) { return t('Close · ' + a, 'बंद करो · ' + a, 'બંધ કરો · ' + a); },
-    payFirst: function (a) { return t('Payment first · ' + a + ' due', 'पहले पेमेंट · ' + a + ' बाकी', 'પહેલાં પેમેન્ટ · ' + a + ' બાકી'); },
-    billStale: t('Items changed — refreshing the bill…', 'आइटम बदले — बिल ताज़ा हो रहा है…', 'આઈટમ બદલાઈ — બિલ તાજું થાય છે…'),
-    noBill: t('Bill not ready yet — one moment', 'बिल अभी तैयार नहीं — थोड़ा रुको', 'બિલ હજી તૈયાર નથી — થોડી રાહ જુઓ'),
+    payFirst: function (a) { return t('Pehle payment · ' + a + ' baaki', 'पहले पेमेंट · ' + a + ' बाकी', 'પહેલાં પેમેન્ટ · ' + a + ' બાકી'); },
+    billStale: t('Items badle — bill refresh ho raha hai…', 'आइटम बदले — बिल ताज़ा हो रहा है…', 'આઈટમ બદલાઈ — બિલ તાજું થાય છે…'),
+    noBill: t('Bill abhi ready nahi — ek second', 'बिल अभी तैयार नहीं — थोड़ा रुको', 'બિલ હજી તૈયાર નથી — થોડી રાહ જુઓ'),
     paidLine: function (parts) { return t('Payment: ', 'पेमेंट: ', 'પેમેન્ટ: ') + parts + ' ✓'; },
     cashPart: function (a) { return t(a + ' cash', a + ' कैश', a + ' કેશ'); },
     upiPart: function (a) { return t(a + ' UPI', a + ' UPI', a + ' UPI'); },
     editDiscount: t('✎ edit', '✎ बदलो', '✎ બદલો'),
     discountAmt: t('Discount (₹)', 'छूट (₹)', 'છૂટ (₹)'),
     discountNote: t('Reason (optional)', 'कारण (ज़रूरी नहीं)', 'કારણ (જરૂરી નથી)'),
-    badAmount: t('Write the amount properly', 'रकम ठीक से लिखो', 'રકમ બરાબર લખો'),
+    badAmount: t('Amount theek se likho', 'रकम ठीक से लिखो', 'રકમ બરાબર લખો'),
     pct: function (n) { return n + '%'; },
-    newTotal: function (a) { return t('New total: ' + a, 'नया कुल: ' + a, 'નવું કુલ: ' + a); },
-    discountTooBig: t('Discount can\'t be more than the bill.', 'छूट बिल से ज़्यादा नहीं हो सकती।', 'છૂટ બિલ કરતાં વધારે ન હોઈ શકે.'),
+    newTotal: function (a) { return t('Naya total: ' + a, 'नया कुल: ' + a, 'નવું કુલ: ' + a); },
+    discountTooBig: t('Discount bill se zyada nahi ho sakta.', 'छूट बिल से ज़्यादा नहीं हो सकती।', 'છૂટ બિલ કરતાં વધારે ન હોઈ શકે.'),
     payMoreThanBill: t('The money entered is more than the bill now. Tap 💵 all cash or 📲 all online again.',
                        'डाली गई रकम अब बिल से ज़्यादा है। 💵 पूरा कैश या 📲 पूरा ऑनलाइन फिर से दबाओ।',
                        'નાખેલી રકમ હવે બિલ કરતાં વધારે છે. 💵 આખું કેશ કે 📲 આખું ઓનલાઈન ફરી દબાવો.'),
     alreadyClosed: t('This bill is already closed.', 'यह बिल पहले ही बंद हो चुका है।', 'આ બિલ પહેલેથી બંધ થઈ ગયું છે.'),
     closeQ: function (tb) { return t('Close ' + tb + '?', tb + ' बंद करें?', tb + ' બંધ કરવું?'); },
     totalLine: function (a) { return t('Total: ' + a, 'कुल: ' + a, 'કુલ: ' + a); },
-    notServed: t('Not served yet:', 'अभी तक परोसा नहीं गया:', 'હજી પીરસાયું નથી:'),
-    closeAnywayHint: t('These are already on the bill and will count as served once the table closes. Don\'t want to give them? Get them cancelled first.',
+    notServed: t('Abhi tak serve nahi hua:', 'अभी तक परोसा नहीं गया:', 'હજી પીરસાયું નથી:'),
+    closeAnywayHint: t('Table band ho jayega aur ye plates served maan liye jayenge (bill me ye already counted hain). Nahi dena hai to pehle manager se cancel karao.',
                        'ये बिल में पहले से हैं और टेबल बंद होते ही परोसे हुए गिने जाएँगे। नहीं देनी हैं तो पहले रद्द करा दो।',
                        'આ બિલમાં પહેલેથી છે અને ટેબલ બંધ થતાં જ પીરસાયેલા ગણાશે. નથી આપવા? તો પહેલાં રદ કરાવી દો.'),
     closeTable: t('Close table', 'टेबल बंद करो', 'ટેબલ બંધ કરો'),
     closeAnyway: t('Close anyway', 'फिर भी बंद करो', 'તોય બંધ કરો'),
-    closedToast: t('Order closed ✓', 'ऑर्डर बंद ✓', 'ઓર્ડર બંધ ✓'),
+    closedToast: t('Order close ✓', 'ऑर्डर बंद ✓', 'ઓર્ડર બંધ ✓'),
     cantClose: t('Can\'t close yet', 'अभी बंद नहीं हो सकता', 'હજી બંધ ન થાય'),
-    cantCloseHint: t('Only waiters mark plates served, one by one as they carry them. Wait for that — or cancel items with a reason.',
+    cantCloseHint: t('Serve mark sirf waiter karta hai (phone app se), ek-ek plate. Uska wait karo — ya reason ke saath item cancel karao.',
                      'सिर्फ़ वेटर ही प्लेट परोसा मार्क करते हैं, ले जाते हुए एक-एक करके। उसका इंतज़ार करो — या कारण देकर आइटम रद्द करो।',
                      'ફક્ત વેઈટર જ પ્લેટ પીરસી માર્ક કરે છે, લઈ જતાં એક-એક કરીને. એની રાહ જુઓ — અથવા કારણ આપી આઈટમ રદ કરો.'),
     today: t('today', 'आज', 'આજે'),
     billsN: function (n) { return t(n + ' bill' + (n === 1 ? '' : 's'), n + ' बिल', n + ' બિલ'); },
-    billsOf: function (n, all) { return t(n + ' of ' + all + ' bills', all + ' में से ' + n + ' बिल', all + ' માંથી ' + n + ' બિલ'); },
-    billSearch: t('🔍 T5 · #12 · name', '🔍 T5 · #12 · नाम', '🔍 T5 · #12 · નામ'),
+    billsOf: function (n, all) { return t(all + ' me se ' + n + ' bills', all + ' में से ' + n + ' बिल', all + ' માંથી ' + n + ' બિલ'); },
+    billSearch: t('🔍 T5 · #12 · naam', '🔍 T5 · #12 · नाम', '🔍 T5 · #12 · નામ'),
     discShort: t('− discount', '− छूट', '− છૂટ'),
-    noMatchBills: t('No bill matches.', 'कोई बिल नहीं मिला।', 'કોઈ બિલ ન મળ્યું.'),
+    noMatchBills: t('Koi bill nahi mila.', 'कोई बिल नहीं मिला।', 'કોઈ બિલ ન મળ્યું.'),
     cashSum: t('💵 cash', '💵 कैश', '💵 કેશ'),
     onlineSum: t('📲 online', '📲 ऑनलाइन', '📲 ઓનલાઈન'),
     closedLine: function (tm, who) { return who ? t('closed ' + tm + ' · ' + who, tm + ' बंद · ' + who, tm + ' બંધ · ' + who) : t('closed ' + tm, tm + ' बंद', tm + ' બંધ'); },
-    noBills: t('No bills for this day.', 'इस दिन का कोई बिल नहीं।', 'આ દિવસનું કોઈ બિલ નથી.'),
-    viewOnly: t('View only — the cashier makes the bill and closes this table.',
+    noBills: t('Is din ka koi bill nahi.', 'इस दिन का कोई बिल नहीं।', 'આ દિવસનું કોઈ બિલ નથી.'),
+    viewOnly: t('Sirf dekh sakte ho — bill banana aur table close karna cashier ka kaam hai.',
                 'सिर्फ़ देखने के लिए — बिल बनाना और टेबल बंद करना कैशियर का काम है।',
                 'ફક્ત જોવા માટે — બિલ બનાવવું અને ટેબલ બંધ કરવું કેશિયરનું કામ છે.')
   };
@@ -147,6 +150,7 @@ strings();
 // own language (the app's billErrorText). Anything else shows as sent.
 function billError(msg) {
   msg = String(msg || '');
+  if (lang === 'hg') return msg;   // Hinglish shows them as they come, as it always did
   if (msg.indexOf('payment exceeds') === 0) return S.payMoreThanBill;
   if (msg.indexOf('discount must be') === 0) return S.discountTooBig;
   if (msg.indexOf('order already closed') === 0) return S.alreadyClosed;
@@ -411,7 +415,7 @@ async function openOrders() {
         '<span class="nm">' + (t.kind === 'parcel' ? '🥡 ' : '') + esc(t.name) + '</span>' +
         '<span class="sub">#' + o.orderNo + ' · ' + clock(o.openedAt) + '</span>' +
         (o.customerName ? '<span class="sub">' + esc(o.customerName) + '</span>' : '') +
-        '<span class="sub">' + esc(S.items(o.itemCount)) +
+        '<span class="sub">' + esc(S.plates(o.itemCount)) +
           (o.pendingCount ? ' · ⏳ ' + esc(S.cooking(o.pendingCount)) : '') + '</span>' +
         '<span class="amt">' + rupees(o.total) + '</span>' +
         (pay ? '<span class="spill ' + (pay.settled ? 'ready' : 'cook') + '" style="align-self:flex-start">' +

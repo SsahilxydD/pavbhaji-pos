@@ -14,8 +14,8 @@
 <div class="top">
   <button class="tile" id="tile" disabled>🍽</button>
   <div class="ttl"><b id="ttlT">Manager</b><small id="who"></small></div>
-  <label class="lang"><span id="langMark">EN</span><select id="langSel" aria-label="Language">
-    <option value="en">English</option><option value="hi">हिंदी</option><option value="gu">ગુજરાતી</option></select></label>
+  <label class="lang"><span id="langMark">Hinglish</span><select id="langSel" aria-label="Language / भाषा">
+    <option value="hg">Hinglish</option><option value="hi">हिंदी</option><option value="gu">ગુજરાતી</option></select></label>
   <button id="logoutBtn">logout</button>
   <div class="net" id="net" hidden></div>
 </div>
@@ -36,89 +36,90 @@ try { me = JSON.parse(localStorage.getItem(WHO) || 'null'); } catch (e) { me = n
 if (!token || !me || (me.role !== 'manager' && me.role !== 'admin')) location.replace('/');
 
 // ---------------------------------------------------------------- language
-// EN / हिं / ગુ — the app's three (ui/L10n.kt), in the app's own words
-// wherever it has them. The choice is kept in this browser (shared by every
-// screen) and the page redraws in place, so a half-punched cart survives a
-// switch. Not translated, as in the app: dish, table and staff names (the
-// owner's data), the note chips (they are what the kitchen reads on the KOT)
-// and the server's own error messages.
-var LANG_KEY = 'pbpos.lang', LANG_MARK = { en:'EN', hi:'हिं', gu:'ગુ' };
-var lang = 'en';
-try { lang = LANG_MARK[localStorage.getItem(LANG_KEY)] ? localStorage.getItem(LANG_KEY) : 'en'; } catch (e) {}
-function t(en, hi, gu) { return lang === 'hi' ? hi : lang === 'gu' ? gu : en; }
+// Hinglish (the default — the words this screen always used) / हिं / ગુ.
+// Hindi and Gujarati are the app's ui/L10n.kt words wherever it has them.
+// The choice is kept in this browser (shared by every screen; a phone that
+// already chose हिं or ગુ keeps it) and the page redraws in place, so a
+// half-punched cart survives a switch. Not translated, as in the app: dish,
+// table and staff names (the owner's data), the note chips (they are what
+// the kitchen reads on the KOT) and the server's own error messages.
+var LANG_KEY = 'pbpos.lang', LANG_MARK = { hg:'Hinglish', hi:'हिं', gu:'ગુ' };
+var lang = 'hg';
+try { lang = LANG_MARK[localStorage.getItem(LANG_KEY)] ? localStorage.getItem(LANG_KEY) : 'hg'; } catch (e) {}
+function t(hg, hi, gu) { return lang === 'hi' ? hi : lang === 'gu' ? gu : hg; }
 
 var S = {};
 function strings() {
-  document.documentElement.lang = lang;
+  document.documentElement.lang = lang === 'hg' ? 'hi-Latn' : lang;
   S = {
     title: t('Manager', 'मैनेजर', 'મેનેજર'),
-    logout: t('Logout', 'बाहर निकलो', 'બહાર નીકળો'),
+    logout: t('logout', 'बाहर निकलो', 'બહાર નીકળો'),
     back: t('Back', 'पीछे', 'પાછળ'),
     save: t('Save', 'सेव करो', 'સેવ કરો'),
-    noNet: t('No network — try again', 'नेटवर्क नहीं है — फिर कोशिश करो', 'નેટવર્ક નથી — ફરી પ્રયત્ન કરો'),
-    slowNet: t('The network is very slow — try again', 'नेटवर्क बहुत धीमा है — फिर कोशिश करो', 'નેટવર્ક બહુ ધીમું છે — ફરી પ્રયત્ન કરો'),
-    noServer: t('The server is not answering — try again', 'सर्वर से जवाब नहीं आया — फिर कोशिश करो', 'સર્વરનો જવાબ ન આવ્યો — ફરી પ્રયત્ન કરો'),
-    expired: t('Session expired — log in again', 'सेशन खत्म — फिर से लॉग इन करो', 'સેશન પૂરું — ફરી લૉગ ઇન કરો'),
-    netDown: t('⚠ No network · last update ', '⚠ नेट नहीं है · आख़िरी अपडेट ', '⚠ નેટ નથી · છેલ્લું અપડેટ '),
-    retry: t('↻ Try again', '↻ फिर कोशिश करो', '↻ ફરી પ્રયત્ન કરો'),
-    retryShort: t('↻ Retry', '↻ फिर से', '↻ ફરી'),
-    sending: t('Sending…', 'भेज रहे हैं…', 'મોકલી રહ્યાં છીએ…'),
-    wait: t('Sending — one second', 'भेज रहे हैं — एक सेकंड', 'મોકલી રહ્યાં છીએ — એક સેકન્ડ'),
-    resend: t('↻ Send again', '↻ फिर से भेजो', '↻ ફરી મોકલો'),
-    unsureBar: t('⚠ No reply — this KOT may already be in the kitchen. Tap "Send again": it will not make a double KOT.',
+    noNet: t('Network nahi hai — dobara try karo', 'नेटवर्क नहीं है — फिर कोशिश करो', 'નેટવર્ક નથી — ફરી પ્રયત્ન કરો'),
+    slowNet: t('Network bahut slow hai — dobara try karo', 'नेटवर्क बहुत धीमा है — फिर कोशिश करो', 'નેટવર્ક બહુ ધીમું છે — ફરી પ્રયત્ન કરો'),
+    noServer: t('Server se jawab nahi aaya — dobara try karo', 'सर्वर से जवाब नहीं आया — फिर कोशिश करो', 'સર્વરનો જવાબ ન આવ્યો — ફરી પ્રયત્ન કરો'),
+    expired: t('session expired', 'सेशन खत्म — फिर से लॉग इन करो', 'સેશન પૂરું — ફરી લૉગ ઇન કરો'),
+    netDown: t('⚠ Net nahi hai · last update ', '⚠ नेट नहीं है · आख़िरी अपडेट ', '⚠ નેટ નથી · છેલ્લું અપડેટ '),
+    retry: t('↻ Dobara try karo', '↻ फिर कोशिश करो', '↻ ફરી પ્રયત્ન કરો'),
+    retryShort: t('↻ Dobara', '↻ फिर से', '↻ ફરી'),
+    sending: t('Bhej rahe…', 'भेज रहे हैं…', 'મોકલી રહ્યાં છીએ…'),
+    wait: t('Bhej rahe hain — ek second', 'भेज रहे हैं — एक सेकंड', 'મોકલી રહ્યાં છીએ — એક સેકન્ડ'),
+    resend: t('↻ Dobara bhejo', '↻ फिर से भेजो', '↻ ફરી મોકલો'),
+    unsureBar: t('⚠ Jawab nahi aaya — ho sakta hai KOT kitchen pahunch gaya ho. "Dobara bhejo" dabao: double KOT nahi banega.',
                  '⚠ जवाब नहीं आया — हो सकता है KOT किचन पहुँच गया हो। "फिर से भेजो" दबाओ: डबल KOT नहीं बनेगा।',
                  '⚠ જવાબ ન આવ્યો — કદાચ KOT રસોડામાં પહોંચી ગયો હોય. "ફરી મોકલો" દબાવો: ડબલ KOT નહીં બને.'),
-    locked: t('Send this KOT first — tap "Send again" when the net is back',
+    locked: t('Pehle ye KOT bhejo — net aate hi "Dobara bhejo" dabao',
               'पहले यह KOT भेजो — नेट आते ही "फिर से भेजो" दबाओ',
               'પહેલાં આ KOT મોકલો — નેટ આવે એટલે "ફરી મોકલો" દબાવો'),
-    leaveTitle: t('No reply for this KOT', 'इस KOT का जवाब नहीं आया', 'આ KOTનો જવાબ ન આવ્યો'),
-    leaveBody: t('This KOT may already be in the kitchen. Leave it and punch it again, and the kitchen cooks it twice — check the table first.',
+    leaveTitle: t('KOT ka jawab nahi aaya', 'इस KOT का जवाब नहीं आया', 'આ KOTનો જવાબ ન આવ્યો'),
+    leaveBody: t('Ho sakta hai ye KOT kitchen pahunch gaya ho. Chhod ke dobara punch kiya to kitchen do baar bana dega — pehle table pe check karo.',
                  'हो सकता है यह KOT किचन पहुँच गया हो। छोड़कर दोबारा पंच किया तो किचन दो बार बना देगा — पहले टेबल पर देख लो।',
                  'કદાચ આ KOT રસોડામાં પહોંચી ગયો હોય. છોડીને ફરી પંચ કર્યો તો રસોડું બે વાર બનાવશે — પહેલાં ટેબલ પર જોઈ લો.'),
-    discardQ: function (items) { return t('Discard ' + items + ' not sent yet?', items + ' अभी भेजे नहीं — हटा दें?', items + ' હજી મોકલી નથી — કાઢી નાખવી?'); },
-    discardBody: t('They haven\'t gone to the kitchen. Keep them to send, or discard and go back.',
+    discardQ: function (items) { return t(items + ' abhi bheje nahi — hata dein?', items + ' अभी भेजे नहीं — हटा दें?', items + ' હજી મોકલી નથી — કાઢી નાખવી?'); },
+    discardBody: t('Ye kitchen nahi gaye. Bhejna hai to rakho, warna hata ke wapas jao.',
                    'ये किचन में नहीं गए हैं। भेजने हैं तो रखो, वरना हटाकर वापस जाओ।',
                    'આ રસોડામાં ગઈ નથી. મોકલવી હોય તો રાખો, નહીં તો કાઢીને પાછા જાઓ.'),
-    keep: t('Keep', 'रखो', 'રાખો'),
-    discard: t('Discard', 'हटा दो', 'કાઢી નાખો'),
-    stay: t('Stay', 'रुको', 'રોકાઓ'),
-    leave: t('Leave it', 'छोड़ दो', 'છોડી દો'),
-    khatam: t('out of stock', 'खत्म', 'ખલાસ'),
-    isKhatam: function (n) { return t(n + ' is out of stock', n + ' खत्म है', n + ' ખલાસ છે'); },
-    wentKhatam: function (n) { return t(n + ' just ran out — it is in the cart', n + ' अभी खत्म हो गया — कार्ट में है', n + ' હમણાં ખલાસ થયું — કાર્ટમાં છે'); },
-    khatamTitle: t('This ran out', 'यह खत्म हो गया', 'આ ખલાસ થઈ ગયું'),
-    khatamHint: t('Tell the customer. With these in it the whole KOT is refused — take them out and send the rest.',
+    keep: t('Rakho', 'रखो', 'રાખો'),
+    discard: t('Hata do', 'हटा दो', 'કાઢી નાખો'),
+    stay: t('Ruko', 'रुको', 'રોકાઓ'),
+    leave: t('Chhod do', 'छोड़ दो', 'છોડી દો'),
+    khatam: t('khatam', 'खत्म', 'ખલાસ'),
+    isKhatam: function (n) { return t(n + ' khatam hai', n + ' खत्म है', n + ' ખલાસ છે'); },
+    wentKhatam: function (n) { return t(n + ' abhi khatam ho gaya — cart me hai', n + ' अभी खत्म हो गया — कार्ट में है', n + ' હમણાં ખલાસ થયું — કાર્ટમાં છે'); },
+    khatamTitle: t('Ye khatam ho gaya', 'यह खत्म हो गया', 'આ ખલાસ થઈ ગયું'),
+    khatamHint: t('Customer ko bata do. Inke saath poora KOT ruk jayega — inhe hata ke baaki bhejo.',
                   'ग्राहक को बता दो। इनके साथ पूरा KOT रुक जाएगा — इन्हें हटाकर बाकी भेजो।',
                   'ગ્રાહકને કહી દો. આની સાથે આખો KOT અટકી જશે — આને કાઢીને બાકી મોકલો.'),
-    khatamHintAll: t('Tell the customer. Nothing else is in the cart.', 'ग्राहक को बता दो। कार्ट में और कुछ नहीं है।', 'ગ્રાહકને કહી દો. કાર્ટમાં બીજું કંઈ નથી.'),
-    dropAndSend: t('Remove and send', 'हटाकर भेजो', 'કાઢીને મોકલો'),
-    drop: t('Remove', 'हटा दो', 'કાઢી નાખો'),
+    khatamHintAll: t('Customer ko bata do. Cart me aur kuch nahi hai.', 'ग्राहक को बता दो। कार्ट में और कुछ नहीं है।', 'ગ્રાહકને કહી દો. કાર્ટમાં બીજું કંઈ નથી.'),
+    dropAndSend: t('Hata ke bhejo', 'हटाकर भेजो', 'કાઢીને મોકલો'),
+    drop: t('Hata do', 'हटा दो', 'કાઢી નાખો'),
     cartHint: t('📝 note · cart ›', '📝 नोट · कार्ट ›', '📝 નોંધ · કાર્ટ ›'),
-    cartTitle: t('NEW KOT — NOT SENT YET', 'नया KOT — अभी भेजा नहीं', 'નવો KOT — હજી મોકલ્યો નથી'),
+    cartTitle: t('Naya KOT — abhi bheja nahi', 'नया KOT — अभी भेजा नहीं', 'નવો KOT — હજી મોકલ્યો નથી'),
     addNote: t('note', 'नोट', 'નોંધ'),
-    noteFor: function (n) { return t('Note for ' + n, n + ' के लिए नोट', n + ' માટે નોંધ'); },
-    notePh: t('less spicy, no onion…', 'कम तीखा, बिना प्याज़…', 'ઓછું તીખું, ડુંગળી વગર…'),
-    noteHint: t('The kitchen sees exactly this on the KOT.', 'किचन को KOT पर यही लिखा दिखेगा।', 'રસોડાને KOT પર આ જ લખેલું દેખાશે.'),
-    noteLong: t('The note is too long — keep it short', 'नोट बहुत लंबा है — छोटा लिखो', 'નોંધ બહુ લાંબી છે — ટૂંકી લખો'),
-    search: t('🔍 Search', '🔍 ढूँढो', '🔍 શોધો'),
-    noMatch: t('No dish by that name', 'इस नाम की कोई डिश नहीं मिली', 'આ નામની કોઈ ડિશ ન મળી'),
+    noteFor: function (n) { return t('Note · ' + n, n + ' के लिए नोट', n + ' માટે નોંધ'); },
+    notePh: t('kam teekha, bina pyaaz…', 'कम तीखा, बिना प्याज़…', 'ઓછું તીખું, ડુંગળી વગર…'),
+    noteHint: t('Kitchen ko KOT pe yahi likha dikhega.', 'किचन को KOT पर यही लिखा दिखेगा।', 'રસોડાને KOT પર આ જ લખેલું દેખાશે.'),
+    noteLong: t('Note bahut lamba hai — chhota likho', 'नोट बहुत लंबा है — छोटा लिखो', 'નોંધ બહુ લાંબી છે — ટૂંકી લખો'),
+    search: t('🔍 Dhoondo', '🔍 ढूँढो', '🔍 શોધો'),
+    noMatch: t('Is naam ki koi dish nahi mili', 'इस नाम की कोई डिश नहीं मिली', 'આ નામની કોઈ ડિશ ન મળી'),
     tabTables: t('Tables', 'टेबल', 'ટેબલ'),
-    tabParcel: t('Parcels', 'पार्सल', 'પાર્સલ'),
+    tabParcel: t('Parcel', 'पार्सल', 'પાર્સલ'),
     tabKitchen: t('Kitchen', 'किचन', 'રસોડું'),
-    runningParcels: t('Running parcels', 'चल रहे पार्सल', 'ચાલુ પાર્સલ'),
-    items: function (n) { return t(n + ' item' + (n === 1 ? '' : 's'), n + ' आइटम', n + ' આઈટમ'); },
-    cooking: function (n) { return t(n + ' cooking', n + ' बन रहे', n + ' બની રહ્યા'); },
+    runningParcels: t('Chal rahe parcel', 'चल रहे पार्सल', 'ચાલુ પાર્સલ'),
+    items: function (n) { return t(n + ' plate', n + ' आइटम', n + ' આઈટમ'); },
+    cooking: function (n) { return t(n + ' banna baaki', n + ' बन रहे', n + ' બની રહ્યા'); },
     readyN: function (n) { return t(n + ' ready', n + ' तैयार', n + ' તૈયાર'); },
-    free: t('free', 'खाली', 'ખાલી'),
-    now: t('now', 'अभी', 'હમણાં'),
+    free: t('khaali', 'खाली', 'ખાલી'),
+    now: t('abhi', 'अभी', 'હમણાં'),
     occupied: function (busy, total) {
-      return t(busy + ' of ' + total + ' occupied', total + ' में से ' + busy + ' भरे', total + ' માંથી ' + busy + ' ભરેલા');
+      return t(total + ' me se ' + busy + ' bhare', total + ' में से ' + busy + ' भरे', total + ' માંથી ' + busy + ' ભરેલા');
     },
-    inKitchen: t('in kitchen', 'किचन में', 'રસોડામાં'),
-    readyPickup: function (n) { return t(n + ' READY — pick up', n + ' तैयार — ले जाओ', n + ' તૈયાર — લઈ જાઓ'); },
-    collectAmt: function (a) { return t('COLLECT ' + a, a + ' लो', a + ' લો'); },
-    newOrder: t('new order', 'नया ऑर्डर', 'નવો ઓર્ડર'),
-    noOrder: t('No order on this table yet.', 'इस टेबल पर अभी कोई ऑर्डर नहीं।', 'આ ટેબલ પર હજી કોઈ ઓર્ડર નથી.'),
+    inKitchen: t('kitchen me', 'किचन में', 'રસોડામાં'),
+    readyPickup: function (n) { return t(n + ' READY — le jao', n + ' तैयार — ले जाओ', n + ' તૈયાર — લઈ જાઓ'); },
+    collectAmt: function (a) { return t(a + ' lena hai', a + ' लो', a + ' લો'); },
+    newOrder: t('naya order', 'नया ऑर्डर', 'નવો ઓર્ડર'),
+    noOrder: t('Is table pe koi order nahi.', 'इस टेबल पर अभी कोई ऑर्डर नहीं।', 'આ ટેબલ પર હજી કોઈ ઓર્ડર નથી.'),
     orderNo: function (n) { return t('Order #' + n, 'ऑर्डर #' + n, 'ઓર્ડર #' + n); },
     status: function (raw) {
       return ({ pending: t('pending', 'बाकी', 'બાકી'), preparing: t('preparing', 'बन रहा', 'બની રહ્યું'),
@@ -127,38 +128,38 @@ function strings() {
     },
     cancel: t('cancel', 'रद्द', 'રદ'),
     total: t('Total', 'कुल', 'કુલ'),
-    addItems: t('+ Add items', '+ आइटम जोड़ो', '+ વસ્તુઓ ઉમેરો'),
-    pickSub: t('add items', 'आइटम जोड़ो', 'વસ્તુઓ ઉમેરો'),
-    cancelQ: function (q, n) { return t('Cancel ' + q + '× ' + n + '?', q + '× ' + n + ' रद्द करें?', q + '× ' + n + ' રદ કરવું?'); },
-    reasonRequired: t('A reason is required — it goes in the audit log.', 'कारण ज़रूरी है — ऑडिट लॉग में जाएगा।', 'કારણ જરૂરી છે — ઓડિટ લોગમાં જશે.'),
-    reason: t('Reason', 'कारण', 'કારણ'),
-    cancelItem: t('Cancel item', 'आइटम रद्द करो', 'આઈટમ રદ કરો'),
-    cancelReasons: [t('Customer said no', 'ग्राहक ने मना किया', 'ગ્રાહકે ના પાડી'),
-                    t('Punched by mistake', 'गलती से पंच हुआ', 'ભૂલથી પંચ થયું'),
-                    t('Ran out', 'खत्म हो गया', 'ખલાસ થઈ ગયું'),
-                    t('Took too long', 'बहुत देर हो गई', 'બહુ મોડું થયું')],
-    cancelled: t('Cancelled', 'रद्द हो गया', 'રદ થઈ ગયું'),
-    sendKitchen: t('Send to kitchen', 'किचन में भेजो', 'રસોડામાં મોકલો'),
-    sentToast: t('Sent to kitchen ✓', 'किचन में भेज दिया ✓', 'રસોડામાં મોકલ્યું ✓'),
-    parcelPlaced: t('Parcel placed ✓', 'पार्सल लग गया ✓', 'પાર્સલ લાગી ગયો ✓'),
-    newParcel: t('New parcel', 'नया पार्सल', 'નવો પાર્સલ'),
-    custName: t('Customer name *', 'ग्राहक का नाम *', 'ગ્રાહકનું નામ *'),
-    namePh: t('name', 'नाम', 'નામ'),
+    addItems: t('+ Items add karo', '+ आइटम जोड़ो', '+ વસ્તુઓ ઉમેરો'),
+    pickSub: t('items add karo', 'आइटम जोड़ो', 'વસ્તુઓ ઉમેરો'),
+    cancelQ: function (q, n) { return t(q + '× ' + n + ' cancel karna hai?', q + '× ' + n + ' रद्द करें?', q + '× ' + n + ' રદ કરવું?'); },
+    reasonRequired: t('Kyun? — kam se kam 2 akshar, audit log me jayega.', 'कारण ज़रूरी है — ऑडिट लॉग में जाएगा।', 'કારણ જરૂરી છે — ઓડિટ લોગમાં જશે.'),
+    reason: t('Kyun?', 'कारण', 'કારણ'),
+    cancelItem: t('Cancel karo', 'आइटम रद्द करो', 'આઈટમ રદ કરો'),
+    cancelReasons: [t('Customer ne mana kiya', 'ग्राहक ने मना किया', 'ગ્રાહકે ના પાડી'),
+                    t('Galti se punch', 'गलती से पंच हुआ', 'ભૂલથી પંચ થયું'),
+                    t('Khatam', 'खत्म हो गया', 'ખલાસ થઈ ગયું'),
+                    t('Bahut der ho gayi', 'बहुत देर हो गई', 'બહુ મોડું થયું')],
+    cancelled: t('Cancel ho gaya', 'रद्द हो गया', 'રદ થઈ ગયું'),
+    sendKitchen: t('Kitchen bhejo', 'किचन में भेजो', 'રસોડામાં મોકલો'),
+    sentToast: t('Kitchen ko bhej diya ✓', 'किचन में भेज दिया ✓', 'રસોડામાં મોકલ્યું ✓'),
+    parcelPlaced: t('Parcel ban gaya ✓', 'पार्सल लग गया ✓', 'પાર્સલ લાગી ગયો ✓'),
+    newParcel: t('Naya parcel', 'नया पार्सल', 'નવો પાર્સલ'),
+    custName: t('Customer ka naam *', 'ग्राहक का नाम *', 'ગ્રાહકનું નામ *'),
+    namePh: t('naam', 'नाम', 'નામ'),
     custPhone: t('Phone (optional)', 'फ़ोन (ज़रूरी नहीं)', 'ફોન (જરૂરી નથી)'),
-    chooseItems: t('Choose items ›', 'आइटम चुनो ›', 'વસ્તુઓ પસંદ કરો ›'),
-    parcelHint: t('Once placed, the parcel shows on the Tables screen under "Running parcels".',
+    chooseItems: t('Items chuno ›', 'आइटम चुनो ›', 'વસ્તુઓ પસંદ કરો ›'),
+    parcelHint: t('Parcel banane ke baad wo Tables screen pe "chal rahe parcel" me dikhega.',
                   'पार्सल लगने के बाद वो टेबल स्क्रीन पर "चल रहे पार्सल" में दिखेगा।',
                   'પાર્સલ લાગ્યા પછી તે ટેબલ સ્ક્રીન પર "ચાલુ પાર્સલ"માં દેખાશે.'),
-    nameNeeded: t('Customer name is required', 'ग्राहक का नाम ज़रूरी है', 'ગ્રાહકનું નામ જરૂરી છે'),
-    nameLong: t('That is as long as a name can be — 60 English letters, about 20 in Hindi or Gujarati.',
+    nameNeeded: t('Customer ka naam chahiye', 'ग्राहक का नाम ज़रूरी है', 'ગ્રાહકનું નામ જરૂરી છે'),
+    nameLong: t('Naam isse lamba nahi ho sakta — English me 60 akshar, Hindi/Gujarati me lagbhag 20.',
                 'नाम इससे लंबा नहीं हो सकता — अंग्रेज़ी में 60 अक्षर, हिंदी या गुजराती में लगभग 20।',
                 'નામ આનાથી લાંબું ન થઈ શકે — અંગ્રેજીમાં 60 અક્ષર, ગુજરાતી કે હિન્દીમાં લગભગ 20.'),
-    kitchenEmpty: t('No buckets — nothing to cook 👨‍🍳', 'कोई बकेट नहीं — कुछ नहीं पकाना 👨‍🍳', 'કોઈ બકેટ નથી — કંઈ રાંધવાનું નથી 👨‍🍳'),
-    kitchenHd: t('On the tawa / in the queue', 'तवे पर / कतार में', 'તવા પર / કતારમાં'),
+    kitchenEmpty: t('Kitchen khaali hai — kuch pending nahi.', 'कोई बकेट नहीं — कुछ नहीं पकाना 👨‍🍳', 'કોઈ બકેટ નથી — કંઈ રાંધવાનું નથી 👨‍🍳'),
+    kitchenHd: t('Tawa pe / queue me', 'तवे पर / कतार में', 'તવા પર / કતારમાં'),
     overCap: function (q, c) { return t(q + ' (cap ' + c + ')', q + ' (कैप ' + c + ')', q + ' (કેપ ' + c + ')'); },
     bucket: function (raw) {
-      return ({ open: t('filling', 'भर रहा', 'ભરાય છે'), full: t('full', 'भरा', 'ભરેલું'),
-                taken: t('on the tawa', 'तवे पर', 'તવા પર') })[raw] || raw;
+      return ({ open: t('open', 'भर रहा', 'ભરાય છે'), full: t('full', 'भरा', 'ભરેલું'),
+                taken: t('taken', 'तवे पर', 'તવા પર') })[raw] || raw;
     }
   };
 }

@@ -69,11 +69,20 @@ fun StaffAdmin(onBack: () -> Unit) {
     var pinFor by remember { mutableStateOf<StaffDto?>(null) }
     var err by remember { mutableStateOf<String?>(null) }
 
+    var deactivateFor by remember { mutableStateOf<StaffDto?>(null) }
+
     suspend fun refresh() {
         when (val r = Deps.api.staffList()) {
             is ApiResult.Ok -> staff = r.value.staff
             is ApiResult.Err -> err = r.message
         }
+    }
+    suspend fun setActive(s: StaffDto, on: Boolean) {
+        when (val r = Deps.api.staffPatch(s.id, """{"active":$on}""")) {
+            is ApiResult.Ok -> {}
+            is ApiResult.Err -> err = r.message
+        }
+        refresh()
     }
     LaunchedEffect(Unit) { refresh() }
 
@@ -127,13 +136,10 @@ fun StaffAdmin(onBack: () -> Unit) {
                             Switch(
                                 checked = s.active,
                                 onCheckedChange = { on ->
-                                    scope.launch {
-                                        when (val r = Deps.api.staffPatch(s.id, """{"active":$on}""")) {
-                                            is ApiResult.Ok -> {}
-                                            is ApiResult.Err -> err = r.message
-                                        }
-                                        refresh()
-                                    }
+                                    // Switching someone OFF locks them out mid-shift:
+                                    // it asks first. Switching back on doesn't.
+                                    if (!on) deactivateFor = s
+                                    else scope.launch { setActive(s, true) }
                                 }
                             )
                         }
@@ -185,6 +191,17 @@ fun StaffAdmin(onBack: () -> Unit) {
                 }) { Text(S.add) }
             },
             dismissButton = { TextButton(onClick = { addOpen = false }) { Text(S.back) } }
+        )
+    }
+    deactivateFor?.let { s ->
+        com.pavbhaji.pos.ui.ConfirmDialog(
+            title = S.deactivateQ(s.name),
+            body = S.deactivateBody,
+            confirmLabel = S.deactivateBtn,
+            dismissLabel = S.keepBtn,
+            destructive = true,
+            onConfirm = { deactivateFor = null; scope.launch { setActive(s, false) } },
+            onDismiss = { deactivateFor = null }
         )
     }
     pinFor?.let { s ->

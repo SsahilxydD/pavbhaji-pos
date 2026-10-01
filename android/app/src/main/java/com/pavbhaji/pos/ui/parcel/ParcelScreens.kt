@@ -49,19 +49,21 @@ import com.pavbhaji.pos.data.TableStateDto
 import com.pavbhaji.pos.ui.AppHeader
 import com.pavbhaji.pos.ui.BigButton
 import com.pavbhaji.pos.ui.CardLine
+import com.pavbhaji.pos.ui.ConfirmDialog
 import com.pavbhaji.pos.ui.ConnBanner
 import com.pavbhaji.pos.ui.EmptyState
 import com.pavbhaji.pos.ui.ErrorBanner
 import com.pavbhaji.pos.ui.HeaderTextAction
 import com.pavbhaji.pos.ui.Pb
 import com.pavbhaji.pos.ui.Pill
-import com.pavbhaji.pos.ui.QtyStepper
 import com.pavbhaji.pos.ui.S
 import com.pavbhaji.pos.ui.SectionTitle
 import com.pavbhaji.pos.ui.ageMinutes
 import com.pavbhaji.pos.ui.dishColour
 import com.pavbhaji.pos.ui.items as itemsLabel
 import com.pavbhaji.pos.ui.rupees
+import com.pavbhaji.pos.ui.waiter.CartLine
+import com.pavbhaji.pos.ui.waiter.CartStrip
 import com.pavbhaji.pos.ui.waiter.MenuRow
 import com.pavbhaji.pos.ui.waiter.TableOrderScreen
 import kotlinx.coroutines.delay
@@ -239,11 +241,6 @@ private fun ParcelCard(t: TableStateDto, onClick: () -> Unit, modifier: Modifier
     }
 }
 
-private data class CartLine(
-    val menuItemId: Long, val name: String, val price: Long,
-    val qty: Long, val note: String
-)
-
 // The add-order flow: customer details on top, then the same tap-to-add menu
 // the manager uses. One send button — the server allocates a parcel slot,
 // opens the order and fires the KOT in a single transaction.
@@ -294,8 +291,13 @@ fun AddParcelScreen(onDone: (Long) -> Unit, onBack: () -> Unit) {
 
     val cartQty = remember(cart.toList()) { cart.groupBy { it.menuItemId }.mapValues { e -> e.value.sumOf { it.qty } } }
 
+    // Same rule as the table screen: Back (arrow or gesture) with an unsent
+    // cart asks before throwing it away.
+    var confirmDiscard by remember { mutableStateOf(false) }
+    val leave: () -> Unit = { if (cart.isEmpty()) onBack() else { confirmDiscard = true } }
+
     Column(Modifier.fillMaxSize()) {
-        AppHeader(title = "🥡 " + S.newParcel.trimStart('＋', ' '), subtitle = S.newOrder, onBack = onBack)
+        AppHeader(title = "🥡 " + S.newParcel.trimStart('＋', ' '), subtitle = S.newOrder, onBack = leave)
         ConnBanner(connected)
 
         LazyColumn(Modifier.weight(1f).padding(horizontal = 12.dp)) {
@@ -328,47 +330,8 @@ fun AddParcelScreen(onDone: (Long) -> Unit, onBack: () -> Unit) {
                 }
             }
 
-            // ---- cart ----
-            if (cart.isNotEmpty()) {
-                item {
-                    SectionTitle(S.newKot)
-                    Surface(
-                        shape = RoundedCornerShape(14.dp),
-                        color = Color(0xFFFFF3E7),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Column(Modifier.padding(horizontal = 12.dp, vertical = 6.dp)) {
-                            cart.forEachIndexed { idx, line ->
-                                Row(
-                                    Modifier.fillMaxWidth().padding(vertical = 5.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Column(Modifier.weight(1f).padding(end = 4.dp)) {
-                                        Text(line.name, fontSize = 15.sp, fontWeight = FontWeight.Bold)
-                                        val sub = listOfNotNull(
-                                            rupees(line.price),
-                                            if (line.note.isNotEmpty()) "✎ ${line.note}" else null
-                                        ).joinToString(" · ")
-                                        Text(
-                                            sub, fontSize = 12.sp,
-                                            color = if (line.note.isEmpty()) MaterialTheme.colorScheme.onSurfaceVariant
-                                            else MaterialTheme.colorScheme.error
-                                        )
-                                    }
-                                    TextButton(
-                                        onClick = { noteEditIdx = idx },
-                                        contentPadding = PaddingValues(horizontal = 6.dp)
-                                    ) { Text(S.noteBtn, fontSize = 12.sp) }
-                                    QtyStepper(line.qty) { q ->
-                                        if (q <= 0) cart.removeAt(idx)
-                                        else cart[idx] = line.copy(qty = q)
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
+            // (The cart is docked in the send bar below, not in this list, so
+            // it never lands off-screen above the menu row just tapped.)
 
             // ---- menu: one straight list per category, bhajis and extras
             // together in menu order. No colour grouping. ----
@@ -413,6 +376,13 @@ fun AddParcelScreen(onDone: (Long) -> Unit, onBack: () -> Unit) {
                         modifier = Modifier.padding(bottom = 6.dp)
                     )
                 }
+                if (cart.isNotEmpty()) {
+                    CartStrip(
+                        cart,
+                        onNote = { noteEditIdx = it },
+                        onQty = { idx, q -> if (q <= 0) cart.removeAt(idx) else cart[idx] = cart[idx].copy(qty = q) }
+                    )
+                }
                 val count = cart.sumOf { it.qty }
                 val total = cart.sumOf { it.qty * it.price }
                 BigButton(
@@ -430,6 +400,17 @@ fun AddParcelScreen(onDone: (Long) -> Unit, onBack: () -> Unit) {
         }
     }
 
+    if (confirmDiscard) {
+        ConfirmDialog(
+            title = S.discardCartQ(itemsLabel(cart.sumOf { it.qty })),
+            body = S.discardCartBody,
+            confirmLabel = S.discardBtn,
+            dismissLabel = S.keepBtn,
+            destructive = true,
+            onConfirm = { confirmDiscard = false; onBack() },
+            onDismiss = { confirmDiscard = false }
+        )
+    }
     noteEditIdx?.let { idx ->
         var text by remember { mutableStateOf(cart.getOrNull(idx)?.note ?: "") }
         AlertDialog(

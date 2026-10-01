@@ -612,8 +612,14 @@ fun ReasonDialog(title: String, onConfirm: (String) -> Unit, onDismiss: () -> Un
     )
 }
 
+// destructive = the confirm button throws something away: it turns red, and
+// the dismiss label should name the safe choice ("Keep"), not just "Back".
 @Composable
-fun ConfirmDialog(title: String, body: String, confirmLabel: String, onConfirm: () -> Unit, onDismiss: () -> Unit) {
+fun ConfirmDialog(
+    title: String, body: String, confirmLabel: String,
+    onConfirm: () -> Unit, onDismiss: () -> Unit,
+    dismissLabel: String = S.back, destructive: Boolean = false
+) {
     AlertDialog(
         onDismissRequest = onDismiss,
         shape = RoundedCornerShape(22.dp),
@@ -623,10 +629,12 @@ fun ConfirmDialog(title: String, body: String, confirmLabel: String, onConfirm: 
         confirmButton = {
             Button(
                 onClick = onConfirm,
-                shape = RoundedCornerShape(12.dp)
+                shape = RoundedCornerShape(12.dp),
+                colors = if (destructive) ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                else ButtonDefaults.buttonColors()
             ) { Text(confirmLabel, fontWeight = FontWeight.Bold) }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text(S.back) } }
+        dismissButton = { TextButton(onClick = onDismiss) { Text(dismissLabel) } }
     )
 }
 

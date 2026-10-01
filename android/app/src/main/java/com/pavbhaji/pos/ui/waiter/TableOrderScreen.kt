@@ -14,11 +14,14 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
@@ -34,11 +37,13 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -46,6 +51,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.pavbhaji.pos.Deps
@@ -57,8 +63,10 @@ import com.pavbhaji.pos.data.OrderItemDto
 import com.pavbhaji.pos.ui.AppHeader
 import com.pavbhaji.pos.ui.BigButton
 import com.pavbhaji.pos.ui.CardLine
+import com.pavbhaji.pos.ui.ConfirmDialog
 import com.pavbhaji.pos.ui.ConnBanner
 import com.pavbhaji.pos.ui.ErrorBanner
+import com.pavbhaji.pos.ui.ListSkeleton
 import com.pavbhaji.pos.ui.Pb
 import com.pavbhaji.pos.ui.QtyStepper
 import com.pavbhaji.pos.ui.ReasonDialog
@@ -71,10 +79,13 @@ import com.pavbhaji.pos.ui.dishColour
 import com.pavbhaji.pos.ui.items as itemsLabel
 import com.pavbhaji.pos.ui.pricesVisible
 import com.pavbhaji.pos.ui.rupees
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import java.util.UUID
 
-private data class CartLine(
+// One line of a cart that hasn't gone to the kitchen yet. Shared with the
+// parcel manager's add-order screen.
+data class CartLine(
     val menuItemId: Long, val name: String, val price: Long,
     val qty: Long, val note: String
 )
@@ -100,26 +111,36 @@ fun TableOrderScreen(tableId: Long, tableName: String, onBack: () -> Unit) {
     var toast by remember { mutableStateOf<String?>(null) }
 
     var loadError by remember { mutableStateOf<String?>(null) }
-    suspend fun refresh() {
+    var loaded by remember { mutableStateOf(false) }
+    suspend fun loadMenu() {
+        when (val m = Deps.api.menu()) {
+            is ApiResult.Ok -> menu = m.value.menu
+            is ApiResult.Err -> {}
+        }
+    }
+    suspend fun loadOrder() {
         when (val r = Deps.api.tableOrder(tableId)) {
             is ApiResult.Ok -> { order = r.value.order; loadError = null }
             is ApiResult.Err -> loadError = r.message
         }
     }
+    suspend fun refresh() {
+        if (menu.isEmpty()) loadMenu() // the first try failed (no signal) — try again
+        loadOrder()
+    }
     LaunchedEffect(Unit) {
-        when (val m = Deps.api.menu()) {
-            is ApiResult.Ok -> menu = m.value.menu
-            is ApiResult.Err -> {}
+        // Ticket and menu load together, and the list isn't drawn until both
+        // answered: a list that starts as menu-only stays parked on the menu
+        // when the tickets land above it, and the manager never sees what the
+        // kitchen already has (and punches it twice).
+        coroutineScope {
+            launch { loadMenu() }
+            launch { loadOrder() }
         }
-        refresh()
+        loaded = true
         Deps.live.topics.collect {
             if (it == "tables" || it == "kitchen") refresh()
-            if (it == "menu") {
-                when (val m = Deps.api.menu()) {
-                    is ApiResult.Ok -> menu = m.value.menu
-                    is ApiResult.Err -> {}
-                }
-            }
+            if (it == "menu") loadMenu()
         }
     }
 
@@ -150,6 +171,11 @@ fun TableOrderScreen(tableId: Long, tableName: String, onBack: () -> Unit) {
     // How many of each menu item is sitting in the cart (for the badges).
     val cartQty = remember(cart.toList()) { cart.groupBy { it.menuItemId }.mapValues { e -> e.value.sumOf { it.qty } } }
 
+    // Back (the header arrow AND the system gesture — AppHeader wires both to
+    // this) never silently drops punched items: with an unsent cart it asks.
+    var confirmDiscard by remember { mutableStateOf(false) }
+    val leave: () -> Unit = { if (cart.isEmpty()) onBack() else { confirmDiscard = true } }
+
     Column(Modifier.fillMaxSize()) {
         val o = order
         AppHeader(
@@ -159,19 +185,25 @@ fun TableOrderScreen(tableId: Long, tableName: String, onBack: () -> Unit) {
                 pricesVisible() -> "${S.orderNo(o.orderNo)} · ${rupees(o.total)} · ${o.openedByName}"
                 else -> "${S.orderNo(o.orderNo)} · ${o.openedByName}"
             },
-            onBack = onBack
+            onBack = leave
         )
         ConnBanner(connected)
         ErrorBanner(loadError)
         toast?.let { LaunchedEffect(it) { kotlinx.coroutines.delay(2500); toast = null } }
 
         // Opening a table shows the ticket first: what the kitchen already
-        // has sits at the top, the cart and menu follow underneath. No
-        // auto-scroll — the waiter decides where to look.
+        // has sits at the top, the menu follows underneath. The cart being
+        // punched is NOT in this list — it lives in the bottom bar, so a new
+        // line can never land off-screen above the menu row just tapped.
         val listState = rememberLazyListState()
+        // When the table's order first appears (opened, or this cart was the
+        // first KOT) go to the top, where its tickets are. Waits for layout.
+        LaunchedEffect(o?.id) { if (o != null && cart.isEmpty()) listState.scrollToItem(0) }
 
         Box(Modifier.weight(1f)) {
-            LazyColumn(
+            if (!loaded) {
+                ListSkeleton(rows = 5, rowHeight = 56.dp)
+            } else LazyColumn(
                 Modifier.fillMaxSize().padding(horizontal = 12.dp),
                 state = listState
             ) {
@@ -196,53 +228,6 @@ fun TableOrderScreen(tableId: Long, tableName: String, onBack: () -> Unit) {
                                         (it.status == "pending" || isAdmin),
                                     onCancel = { cancelTarget = it }
                                 )
-                            }
-                        }
-                    }
-                }
-
-                // ---- cart (new KOT) ----
-                if (cart.isNotEmpty()) {
-                    item(key = "cart") {
-                        SectionTitle(S.newKot)
-                        Surface(
-                            shape = RoundedCornerShape(16.dp),
-                            color = Color(0xFFFFF3E7),
-                            border = androidx.compose.foundation.BorderStroke(1.dp, Pb.warnLine),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Column(Modifier.padding(horizontal = 12.dp, vertical = 6.dp)) {
-                                cart.forEachIndexed { idx, line ->
-                                    Row(
-                                        Modifier.fillMaxWidth().padding(vertical = 5.dp),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Column(
-                                            Modifier.weight(1f)
-                                                .padding(end = 4.dp)
-                                        ) {
-                                            Text(line.name, fontSize = 15.sp, fontWeight = FontWeight.Bold)
-                                            val sub = listOfNotNull(
-                                                if (pricesVisible()) rupees(line.price) else null,
-                                                if (line.note.isNotEmpty()) "✎ ${line.note}" else null
-                                            ).joinToString(" · ")
-                                            if (sub.isNotEmpty()) Text(
-                                                sub,
-                                                fontSize = 12.sp,
-                                                color = if (line.note.isEmpty()) MaterialTheme.colorScheme.onSurfaceVariant
-                                                else MaterialTheme.colorScheme.error
-                                            )
-                                        }
-                                        TextButton(
-                                            onClick = { noteEditIdx = idx },
-                                            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 6.dp)
-                                        ) { Text(S.noteBtn, fontSize = 12.sp) }
-                                        QtyStepper(line.qty) { q ->
-                                            if (q <= 0) cart.removeAt(idx)
-                                            else cart[idx] = line.copy(qty = q)
-                                        }
-                                    }
-                                }
                             }
                         }
                     }
@@ -311,6 +296,11 @@ fun TableOrderScreen(tableId: Long, tableName: String, onBack: () -> Unit) {
                     )
                 }
                 if (cart.isNotEmpty()) {
+                    CartStrip(
+                        cart,
+                        onNote = { noteEditIdx = it },
+                        onQty = { idx, q -> if (q <= 0) cart.removeAt(idx) else cart[idx] = cart[idx].copy(qty = q) }
+                    )
                     val count = cart.sumOf { it.qty }
                     val total = cart.sumOf { it.qty * it.price }
                     BigButton(
@@ -341,6 +331,17 @@ fun TableOrderScreen(tableId: Long, tableName: String, onBack: () -> Unit) {
     }
 
     // ---- dialogs ----
+    if (confirmDiscard) {
+        ConfirmDialog(
+            title = S.discardCartQ(itemsLabel(cart.sumOf { it.qty })),
+            body = S.discardCartBody,
+            confirmLabel = S.discardBtn,
+            dismissLabel = S.keepBtn,
+            destructive = true,
+            onConfirm = { confirmDiscard = false; onBack() },
+            onDismiss = { confirmDiscard = false }
+        )
+    }
     cancelTarget?.let { target ->
         ReasonDialog(
             title = S.cancelQ(target.qty, target.name),
@@ -441,6 +442,70 @@ fun MenuRow(
                 Surface(color = MaterialTheme.colorScheme.primary, shape = CircleShape, modifier = Modifier.size(26.dp)) {
                     Box(contentAlignment = Alignment.Center) {
                         Text("$inCart", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.ExtraBold)
+                    }
+                }
+            }
+        }
+    }
+}
+
+// The cart being punched, docked in the bottom bar right above Send: on screen
+// however far down the menu the manager is, so what's about to go to the
+// kitchen can be read and fixed without hunting for it. A long cart scrolls
+// inside the strip, and a newly added line scrolls into view.
+@Composable
+fun CartStrip(
+    cart: List<CartLine>,
+    onNote: (Int) -> Unit,
+    onQty: (Int, Long) -> Unit
+) {
+    val scroll = rememberScrollState()
+    var shownLines by remember { mutableIntStateOf(cart.size) }
+    LaunchedEffect(cart.size) {
+        if (cart.size > shownLines) {
+            withFrameNanos { } // let the new line lay out first
+            scroll.animateScrollTo(scroll.maxValue)
+        }
+        shownLines = cart.size
+    }
+    Surface(
+        shape = RoundedCornerShape(14.dp),
+        color = Color(0xFFFFF3E7),
+        border = androidx.compose.foundation.BorderStroke(1.dp, Pb.warnLine),
+        modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)
+    ) {
+        Column(Modifier.padding(start = 12.dp, end = 8.dp, top = 6.dp, bottom = 2.dp)) {
+            Text(
+                S.newKot, fontSize = 11.sp, fontWeight = FontWeight.ExtraBold,
+                letterSpacing = 0.8.sp, color = WarnAmber
+            )
+            Column(Modifier.heightIn(max = 168.dp).verticalScroll(scroll)) {
+                cart.forEachIndexed { idx, line ->
+                    Row(
+                        Modifier.fillMaxWidth().padding(vertical = 3.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(Modifier.weight(1f).padding(end = 4.dp)) {
+                            Text(
+                                line.name, fontSize = 15.sp, fontWeight = FontWeight.Bold,
+                                maxLines = 2, overflow = TextOverflow.Ellipsis
+                            )
+                            val sub = listOfNotNull(
+                                if (pricesVisible()) rupees(line.price) else null,
+                                if (line.note.isNotEmpty()) "✎ ${line.note}" else null
+                            ).joinToString(" · ")
+                            if (sub.isNotEmpty()) Text(
+                                sub,
+                                fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                color = if (line.note.isEmpty()) MaterialTheme.colorScheme.onSurfaceVariant
+                                else MaterialTheme.colorScheme.error
+                            )
+                        }
+                        TextButton(
+                            onClick = { onNote(idx) },
+                            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 6.dp)
+                        ) { Text(S.noteBtn, fontSize = 12.sp) }
+                        QtyStepper(line.qty) { q -> onQty(idx, q) }
                     }
                 }
             }

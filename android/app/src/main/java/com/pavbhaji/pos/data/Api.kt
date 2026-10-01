@@ -108,9 +108,14 @@ class Api(private val session: Session) {
         if (menuItemId == null) call("POST", "/api/batches/$id/ready")
         else call("POST", "/api/batches/$id/ready", """{"menuItemId":$menuItemId}""")
 
+    // plates = how many plates this call sent to the pass. 0 means that line
+    // was already there (our copy of the bucket was stale) — nothing moved.
+    // Defaults to 1 so a server that doesn't report it never looks stale.
+    @Serializable data class PlateResp(val ok: Boolean = true, val plates: Long = 1, val remaining: Long = 0)
+
     // One plate is done. Not the bucket, not the variety — the single plate on
     // that ticket line. The server splits the line so the rest keeps cooking.
-    suspend fun readyPlate(id: Long, ticketItemId: Long): ApiResult<OkResp> =
+    suspend fun readyPlate(id: Long, ticketItemId: Long): ApiResult<PlateResp> =
         call("POST", "/api/batches/$id/ready", """{"ticketItemId":$ticketItemId}""")
 
     // Step away from a bucket without finishing it: the plates stay in the

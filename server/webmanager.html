@@ -75,6 +75,12 @@ function strings() {
     leaveBody: t('This KOT may already be in the kitchen. Leave it and punch it again, and the kitchen cooks it twice — check the table first.',
                  'हो सकता है यह KOT किचन पहुँच गया हो। छोड़कर दोबारा पंच किया तो किचन दो बार बना देगा — पहले टेबल पर देख लो।',
                  'કદાચ આ KOT રસોડામાં પહોંચી ગયો હોય. છોડીને ફરી પંચ કર્યો તો રસોડું બે વાર બનાવશે — પહેલાં ટેબલ પર જોઈ લો.'),
+    discardQ: function (items) { return t('Discard ' + items + ' not sent yet?', items + ' अभी भेजे नहीं — हटा दें?', items + ' હજી મોકલી નથી — કાઢી નાખવી?'); },
+    discardBody: t('They haven\'t gone to the kitchen. Keep them to send, or discard and go back.',
+                   'ये किचन में नहीं गए हैं। भेजने हैं तो रखो, वरना हटाकर वापस जाओ।',
+                   'આ રસોડામાં ગઈ નથી. મોકલવી હોય તો રાખો, નહીં તો કાઢીને પાછા જાઓ.'),
+    keep: t('Keep', 'रखो', 'રાખો'),
+    discard: t('Discard', 'हटा दो', 'કાઢી નાખો'),
     stay: t('Stay', 'रुको', 'રોકાઓ'),
     leave: t('Leave it', 'छोड़ दो', 'છોડી દો'),
     khatam: t('out of stock', 'खत्म', 'ખલાસ'),
@@ -340,14 +346,26 @@ function newCart() { cart = []; cartId = uid(); cartLocked = false; }
 var sleep = function (ms) { return new Promise(function (r) { setTimeout(r, ms); }); };
 
 // Leaving a cart whose KOT may already be in the kitchen is how a table gets
-// cooked twice, so that one case asks first.
+// cooked twice, so that case asks first. So does leaving a cart that hasn't
+// gone yet (the app's "Discard 3 items not sent yet?"): Back or logout used
+// to drop it without a word.
 function confirmLeave(go) {
   if (sending) { toast(S.wait); return; }
-  if (!cartLocked) { go(); return; }
-  showModal(S.leaveTitle, '<div class="mut" style="font-size:14px">' + esc(S.leaveBody) + '</div>',
-    [{ label: S.stay, cls: 'ghost' },
-     { label: S.leave, cls: 'danger', act: function () { hideModal(); newCart(); go(); } }]);
+  if (cartLocked) {
+    showModal(S.leaveTitle, '<div class="mut" style="font-size:14px">' + esc(S.leaveBody) + '</div>',
+      [{ label: S.stay, cls: 'ghost' },
+       { label: S.leave, cls: 'danger', act: function () { hideModal(); newCart(); go(); } }]);
+    return;
+  }
+  if (!cart.length) { go(); return; }
+  showModal(S.discardQ(S.items(cartPlates())), '<div class="mut" style="font-size:14px">' + esc(S.discardBody) + '</div>',
+    [{ label: S.keep, cls: 'ghost' },
+     { label: S.discard, cls: 'danger', act: function () { hideModal(); newCart(); go(); } }]);
 }
+// A reload or a closed tab would lose it too: let the browser ask.
+window.addEventListener('beforeunload', function (e) {
+  if (cart.length) { e.preventDefault(); e.returnValue = ''; }
+});
 var pane = '';   // 'table' | 'picker' — a late refresh must not yank the picker away
 // Bumped on every tab switch. A slow load (up to NET_TIMEOUT offline) that
 // finishes after the user has moved on must not start its poll on top of

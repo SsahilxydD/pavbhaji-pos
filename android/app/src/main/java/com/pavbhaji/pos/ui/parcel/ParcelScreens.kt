@@ -55,13 +55,14 @@ import com.pavbhaji.pos.ui.ErrorBanner
 import com.pavbhaji.pos.ui.HeaderTextAction
 import com.pavbhaji.pos.ui.Pb
 import com.pavbhaji.pos.ui.Pill
-import com.pavbhaji.pos.ui.QtyStepper
 import com.pavbhaji.pos.ui.S
 import com.pavbhaji.pos.ui.SectionTitle
 import com.pavbhaji.pos.ui.ageMinutes
 import com.pavbhaji.pos.ui.dishColour
 import com.pavbhaji.pos.ui.items as itemsLabel
 import com.pavbhaji.pos.ui.rupees
+import com.pavbhaji.pos.ui.waiter.CartLine
+import com.pavbhaji.pos.ui.waiter.CartStrip
 import com.pavbhaji.pos.ui.waiter.MenuRow
 import com.pavbhaji.pos.ui.waiter.TableOrderScreen
 import kotlinx.coroutines.delay
@@ -239,11 +240,6 @@ private fun ParcelCard(t: TableStateDto, onClick: () -> Unit, modifier: Modifier
     }
 }
 
-private data class CartLine(
-    val menuItemId: Long, val name: String, val price: Long,
-    val qty: Long, val note: String
-)
-
 // The add-order flow: customer details on top, then the same tap-to-add menu
 // the manager uses. One send button — the server allocates a parcel slot,
 // opens the order and fires the KOT in a single transaction.
@@ -328,47 +324,8 @@ fun AddParcelScreen(onDone: (Long) -> Unit, onBack: () -> Unit) {
                 }
             }
 
-            // ---- cart ----
-            if (cart.isNotEmpty()) {
-                item {
-                    SectionTitle(S.newKot)
-                    Surface(
-                        shape = RoundedCornerShape(14.dp),
-                        color = Color(0xFFFFF3E7),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Column(Modifier.padding(horizontal = 12.dp, vertical = 6.dp)) {
-                            cart.forEachIndexed { idx, line ->
-                                Row(
-                                    Modifier.fillMaxWidth().padding(vertical = 5.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Column(Modifier.weight(1f).padding(end = 4.dp)) {
-                                        Text(line.name, fontSize = 15.sp, fontWeight = FontWeight.Bold)
-                                        val sub = listOfNotNull(
-                                            rupees(line.price),
-                                            if (line.note.isNotEmpty()) "✎ ${line.note}" else null
-                                        ).joinToString(" · ")
-                                        Text(
-                                            sub, fontSize = 12.sp,
-                                            color = if (line.note.isEmpty()) MaterialTheme.colorScheme.onSurfaceVariant
-                                            else MaterialTheme.colorScheme.error
-                                        )
-                                    }
-                                    TextButton(
-                                        onClick = { noteEditIdx = idx },
-                                        contentPadding = PaddingValues(horizontal = 6.dp)
-                                    ) { Text(S.noteBtn, fontSize = 12.sp) }
-                                    QtyStepper(line.qty) { q ->
-                                        if (q <= 0) cart.removeAt(idx)
-                                        else cart[idx] = line.copy(qty = q)
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
+            // (The cart is docked in the send bar below, not in this list, so
+            // it never lands off-screen above the menu row just tapped.)
 
             // ---- menu: one straight list per category, bhajis and extras
             // together in menu order. No colour grouping. ----
@@ -411,6 +368,13 @@ fun AddParcelScreen(onDone: (Long) -> Unit, onBack: () -> Unit) {
                     Text(
                         it, color = MaterialTheme.colorScheme.error, fontSize = 13.sp,
                         modifier = Modifier.padding(bottom = 6.dp)
+                    )
+                }
+                if (cart.isNotEmpty()) {
+                    CartStrip(
+                        cart,
+                        onNote = { noteEditIdx = it },
+                        onQty = { idx, q -> if (q <= 0) cart.removeAt(idx) else cart[idx] = cart[idx].copy(qty = q) }
                     )
                 }
                 val count = cart.sumOf { it.qty }

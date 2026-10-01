@@ -410,6 +410,16 @@ object S {
     )
     val bucketColour get() = t("Bucket colour", "बकेट का रंग", "બકેટનો રંગ")
     val orMixOwn get() = t("or mix your own", "या अपना रंग बनाओ", "અથવા તમારો રંગ બનાવો")
+    fun colourTooClose(names: String) = t(
+        "⚠ Looks like $names — chefs may mix up the buckets. Pick one further away.",
+        "⚠ $names जैसा दिखता है — शेफ़ बकेट में गड़बड़ कर सकते हैं। थोड़ा अलग रंग लो।",
+        "⚠ $names જેવો દેખાય છે — શેફ બકેટમાં ગોટાળો કરી શકે. થોડો અલગ રંગ લો."
+    )
+    fun colourSameAs(names: String) = t(
+        "Same colour as $names — they cook in one bucket.",
+        "$names जैसा ही रंग — एक ही बकेट में बनेंगे।",
+        "$names જેવો જ રંગ — એક જ બકેટમાં બનશે."
+    )
 
     // ---- staff & tables admin ----
     val staffTitle get() = t("Staff & PINs", "स्टाफ़ और PIN", "સ્ટાફ અને PIN")

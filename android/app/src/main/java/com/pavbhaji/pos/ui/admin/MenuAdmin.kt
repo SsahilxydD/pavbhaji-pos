@@ -37,6 +37,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -155,6 +157,9 @@ fun MenuAdmin(onBack: () -> Unit) {
         }
     }
 
+    // Every kitchen dish's bucket colour, for the "too close to …" note.
+    val kitchenColours = menu.flatMap { it.items }.filter { it.station == "kitchen" }
+
     // ---- colour ----
     colourFor?.let { mi ->
         ColourPickerDialog(
@@ -167,7 +172,10 @@ fun MenuAdmin(onBack: () -> Unit) {
                     refresh()
                 }
             },
-            onDismiss = { colourFor = null }
+            onDismiss = { colourFor = null },
+            others = if (mi.station == "kitchen")
+                kitchenColours.filter { it.id != mi.id }.map { it.name to colourOf(it) }
+            else emptyList()
         )
     }
 
@@ -271,6 +279,7 @@ fun MenuAdmin(onBack: () -> Unit) {
                     StationPicker(station) { station = it }
                     if (station == "counter") WithFoodToggle(withFood) { withFood = it }
                     ColourSwatchRow(colour, onSelect = { colour = it }, onMore = { morePicker = true })
+                    if (station == "kitchen") ColourClashNote(colour, kitchenColours.map { it.name to colourOf(it) })
                     dErr?.let { Text(it, color = MaterialTheme.colorScheme.error, fontSize = 13.sp, modifier = Modifier.padding(top = 6.dp)) }
                 }
             },
@@ -293,7 +302,8 @@ fun MenuAdmin(onBack: () -> Unit) {
                 title = name.trim().ifBlank { S.newItem },
                 initial = colour,
                 onPick = { colour = it; morePicker = false },
-                onDismiss = { morePicker = false }
+                onDismiss = { morePicker = false },
+                others = if (station == "kitchen") kitchenColours.map { it.name to colourOf(it) } else emptyList()
             )
         }
     }
@@ -366,7 +376,8 @@ private fun MenuItemCard(
         ) {
             // Generous tap target around the swatch — this is the colour editor.
             Box(
-                Modifier.size(46.dp).clip(RoundedCornerShape(12.dp)).clickable(onClick = onColour),
+                Modifier.size(46.dp).clip(RoundedCornerShape(12.dp)).clickable(onClick = onColour)
+                    .semantics { contentDescription = "${S.bucketColour} · ${mi.name}" },
                 contentAlignment = Alignment.Center
             ) {
                 Box(Modifier.size(24.dp).background(dishColour(mi.colour, mi.id), RoundedCornerShape(8.dp)))

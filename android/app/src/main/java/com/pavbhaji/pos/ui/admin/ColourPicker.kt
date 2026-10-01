@@ -65,6 +65,56 @@ private fun hsvToHex(h: Float, s: Float, v: Float): String {
     return "#%06X".format(c and 0xFFFFFF)
 }
 
+// sRGB hex → CIE Lab (D65), for "how different do these two look" (ΔE76).
+private fun lab(hex: String): DoubleArray? {
+    val v = hex.trim().removePrefix("#").toLongOrNull(16) ?: return null
+    fun lin(c: Long): Double {
+        val s = c / 255.0
+        return if (s <= 0.04045) s / 12.92 else Math.pow((s + 0.055) / 1.055, 2.4)
+    }
+    val r = lin((v shr 16) and 0xFF); val g = lin((v shr 8) and 0xFF); val b = lin(v and 0xFF)
+    fun f(t: Double) = if (t > 0.008856) Math.cbrt(t) else 7.787 * t + 16.0 / 116
+    val fx = f((0.4124 * r + 0.3576 * g + 0.1805 * b) / 0.95047)
+    val fy = f(0.2126 * r + 0.7152 * g + 0.0722 * b)
+    val fz = f((0.0193 * r + 0.1192 * g + 0.9505 * b) / 1.08883)
+    return doubleArrayOf(116 * fy - 16, 500 * (fx - fy), 200 * (fy - fz))
+}
+
+private fun deltaE(a: String, b: String): Double? {
+    val x = lab(a) ?: return null
+    val y = lab(b) ?: return null
+    return Math.sqrt((x[0] - y[0]).let { it * it } + (x[1] - y[1]).let { it * it } + (x[2] - y[2]).let { it * it })
+}
+
+// Chefs read bucket colours from across the kitchen, and Pav Bhaji orange vs
+// Pulav orange (ΔE ≈ 19) merge on a dimmed bucket. Under a pick this says
+// when it is the SAME colour as another kitchen dish (they share one bucket —
+// that's how dishes are clubbed, so it's said, not warned), or only CLOSE to
+// one (ΔE < 25), which is the mix-up. `others` = (dish name, #RRGGBB) of the
+// other kitchen dishes. Nothing is blocked; the owner decides.
+@Composable
+fun ColourClashNote(hex: String, others: List<Pair<String, String>>) {
+    val same = others.filter { it.second.equals(hex, ignoreCase = true) }.map { it.first }.distinct()
+    val close = others.filter { !it.second.equals(hex, ignoreCase = true) && (deltaE(hex, it.second) ?: 99.0) < 25 }
+        .map { it.first }.distinct()
+    fun names(ns: List<String>) = ns.take(2).joinToString(", ") + if (ns.size > 2) " +${ns.size - 2}" else ""
+    if (close.isNotEmpty()) {
+        Text(
+            com.pavbhaji.pos.ui.S.colourTooClose(names(close)),
+            fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold,
+            color = com.pavbhaji.pos.ui.WarnAmber,
+            modifier = Modifier.padding(top = 8.dp)
+        )
+    }
+    if (same.isNotEmpty()) {
+        Text(
+            com.pavbhaji.pos.ui.S.colourSameAs(names(same)),
+            fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(top = 4.dp)
+        )
+    }
+}
+
 // One dialog for every colour decision in the app: tap a swatch, or mix any
 // colour with the square + hue bar. Returns #RRGGBB via onPick.
 @Composable
@@ -72,7 +122,8 @@ fun ColourPickerDialog(
     title: String,
     initial: String,
     onPick: (String) -> Unit,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    others: List<Pair<String, String>> = emptyList()
 ) {
     val start = remember(initial) { hexToHsv(initial.ifBlank { PickerPalette[0] }) }
     var hue by remember { mutableFloatStateOf(start[0]) }
@@ -136,6 +187,7 @@ fun ColourPickerDialog(
                         modifier = Modifier.padding(start = 10.dp)
                     )
                 }
+                ColourClashNote(hex, others)
             }
         },
         confirmButton = { Button(onClick = { onPick(hex) }) { Text(com.pavbhaji.pos.ui.S.save) } },

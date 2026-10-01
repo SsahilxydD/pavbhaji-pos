@@ -38,6 +38,8 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -289,9 +291,24 @@ fun AddParcelScreen(onDone: (Long) -> Unit, onBack: () -> Unit) {
         if (cartAddOne(cart, id, name, price)) barArmedAt = android.os.SystemClock.uptimeMillis()
     }
 
+    val listState = rememberLazyListState()
+    // A missing name is the name field's problem, not the send button's:
+    // the field turns red with the reason under it, the list scrolls up to
+    // it and the keyboard opens there. The button keeps its own label (it
+    // used to flip to "Try again", which reads like a network failure).
+    var nameError by remember { mutableStateOf(false) }
+    val nameFocus = remember { FocusRequester() }
+
     fun send() {
         if (sending || cart.isEmpty()) return
-        if (custName.trim().isEmpty()) { sendError = S.nameNeeded; return }
+        if (custName.trim().isEmpty()) {
+            nameError = true
+            scope.launch {
+                listState.animateScrollToItem(0)
+                try { nameFocus.requestFocus() } catch (_: Exception) {}
+            }
+            return
+        }
         sending = true; sendError = null
         scope.launch {
             val lines = cart.map { NewTicketLine(it.menuItemId, it.qty, it.note) }
@@ -319,7 +336,6 @@ fun AddParcelScreen(onDone: (Long) -> Unit, onBack: () -> Unit) {
 
         // Category chips, as on the table screen. The list below is: the
         // customer card, the ADD ITEMS header, then category by category.
-        val listState = rememberLazyListState()
         val catFirstIndex = remember(menu) {
             var i = 2
             buildMap {
@@ -340,11 +356,13 @@ fun AddParcelScreen(onDone: (Long) -> Unit, onBack: () -> Unit) {
                 ) {
                     Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         OutlinedTextField(
-                            value = custName, onValueChange = { custName = it.take(60) },
+                            value = custName, onValueChange = { custName = it.take(60); nameError = false },
                             label = { Text(S.customerName) },
                             singleLine = true,
+                            isError = nameError,
+                            supportingText = if (nameError) { { Text(S.nameNeeded) } } else null,
                             shape = RoundedCornerShape(12.dp),
-                            modifier = Modifier.fillMaxWidth()
+                            modifier = Modifier.fillMaxWidth().focusRequester(nameFocus)
                         )
                         OutlinedTextField(
                             value = custPhone,

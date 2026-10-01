@@ -218,11 +218,33 @@ func (s *Server) handleBillPatch(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, nb)
 }
 
+// billRupees prints paise the Indian way — ₹13,660, ₹1,23,456, ₹42.50 — the
+// same grouping the app and the browser screens show, so a printed bill
+// reads the way the cashier's screen does.
 func billRupees(p int64) string {
-	if p%100 == 0 {
-		return fmt.Sprintf("₹%d", p/100)
+	sign := ""
+	if p < 0 {
+		sign, p = "-", -p
 	}
-	return fmt.Sprintf("₹%d.%02d", p/100, p%100)
+	s := "₹" + sign + groupIndian(p/100)
+	if p%100 != 0 {
+		s += fmt.Sprintf(".%02d", p%100)
+	}
+	return s
+}
+
+// groupIndian: 1234567 → "12,34,567" (last three digits, then pairs).
+func groupIndian(n int64) string {
+	d := strconv.FormatInt(n, 10)
+	if len(d) <= 3 {
+		return d
+	}
+	head, out := d[:len(d)-3], d[len(d)-3:]
+	for len(head) > 2 {
+		out = head[len(head)-2:] + "," + out
+		head = head[:len(head)-2]
+	}
+	return head + "," + out
 }
 
 // GET /bill/{id} — a print-ready HTML bill for one order, laid out for an

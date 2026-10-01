@@ -12,8 +12,10 @@
 <body>
 
 <div class="top">
-  <div class="tile">🍽</div>
-  <div class="ttl"><b>Manager</b><small id="who"></small></div>
+  <button class="tile" id="tile" disabled>🍽</button>
+  <div class="ttl"><b id="ttlT">Manager</b><small id="who"></small></div>
+  <label class="lang"><span id="langMark">Hinglish</span><select id="langSel" aria-label="Language / भाषा">
+    <option value="hg">Hinglish</option><option value="hi">हिंदी</option><option value="gu">ગુજરાતી</option></select></label>
   <button id="logoutBtn">logout</button>
   <div class="net" id="net" hidden></div>
 </div>
@@ -33,45 +35,135 @@ try { me = JSON.parse(localStorage.getItem(WHO) || 'null'); } catch (e) { me = n
 // hand-types /manager gets sent home instead of staring at dead buttons.
 if (!token || !me || (me.role !== 'manager' && me.role !== 'admin')) location.replace('/');
 
-// New screen text sits here in one place, so a later EN / हिं / ગુ switch only
-// has to swap this table.
-var S = {
-  noNet: 'Network nahi hai — dobara try karo',
-  slowNet: 'Network bahut slow hai — dobara try karo',
-  noServer: 'Server se jawab nahi aaya — dobara try karo',
-  netDown: '⚠ Net nahi hai · last update ',
-  retry: '↻ Dobara try karo',
-  retryShort: '↻ Dobara',
-  sending: 'Bhej rahe…',
-  wait: 'Bhej rahe hain — ek second',
-  resend: '↻ Dobara bhejo',
-  unsureBar: '⚠ Jawab nahi aaya — ho sakta hai KOT kitchen pahunch gaya ho. ' +
-             '"Dobara bhejo" dabao: double KOT nahi banega.',
-  locked: 'Pehle ye KOT bhejo — net aate hi "Dobara bhejo" dabao',
-  leaveTitle: 'KOT ka jawab nahi aaya',
-  leaveBody: 'Ho sakta hai ye KOT kitchen pahunch gaya ho. Chhod ke dobara punch kiya to ' +
-             'kitchen do baar bana dega — pehle table pe check karo.',
-  stay: 'Ruko',
-  leave: 'Chhod do',
-  khatam: 'khatam',
-  isKhatam: function (n) { return n + ' khatam hai'; },
-  wentKhatam: function (n) { return n + ' abhi khatam ho gaya — cart me hai'; },
-  khatamTitle: 'Ye khatam ho gaya',
-  khatamHint: 'Customer ko bata do. Inke saath poora KOT ruk jayega — inhe hata ke baaki bhejo.',
-  khatamHintAll: 'Customer ko bata do. Cart me aur kuch nahi hai.',
-  dropAndSend: 'Hata ke bhejo',
-  drop: 'Hata do',
-  cartHint: '📝 note · cart ›',
-  cartTitle: 'Naya KOT — abhi bheja nahi',
-  addNote: 'note',
-  noteFor: function (n) { return 'Note · ' + n; },
-  notePh: 'kam teekha, bina pyaaz…',
-  noteHint: 'Kitchen ko KOT pe yahi likha dikhega.',
-  noteLong: 'Note bahut lamba hai — chhota likho',
-  save: 'Save',
-  search: '🔍 Dhoondo',
-  noMatch: 'Is naam ki koi dish nahi mili'
-};
+// ---------------------------------------------------------------- language
+// Hinglish (the default — the words this screen always used) / हिं / ગુ.
+// Hindi and Gujarati are the app's ui/L10n.kt words wherever it has them.
+// The choice is kept in this browser (shared by every screen; a phone that
+// already chose हिं or ગુ keeps it) and the page redraws in place, so a
+// half-punched cart survives a switch. Not translated, as in the app: dish,
+// table and staff names (the owner's data), the note chips (they are what
+// the kitchen reads on the KOT) and the server's own error messages.
+var LANG_KEY = 'pbpos.lang', LANG_MARK = { hg:'Hinglish', hi:'हिं', gu:'ગુ' };
+var lang = 'hg';
+try { lang = LANG_MARK[localStorage.getItem(LANG_KEY)] ? localStorage.getItem(LANG_KEY) : 'hg'; } catch (e) {}
+function t(hg, hi, gu) { return lang === 'hi' ? hi : lang === 'gu' ? gu : hg; }
+
+var S = {};
+function strings() {
+  document.documentElement.lang = lang === 'hg' ? 'hi-Latn' : lang;
+  S = {
+    title: t('Manager', 'मैनेजर', 'મેનેજર'),
+    logout: t('logout', 'बाहर निकलो', 'બહાર નીકળો'),
+    back: t('Back', 'पीछे', 'પાછળ'),
+    save: t('Save', 'सेव करो', 'સેવ કરો'),
+    noNet: t('Network nahi hai — dobara try karo', 'नेटवर्क नहीं है — फिर कोशिश करो', 'નેટવર્ક નથી — ફરી પ્રયત્ન કરો'),
+    slowNet: t('Network bahut slow hai — dobara try karo', 'नेटवर्क बहुत धीमा है — फिर कोशिश करो', 'નેટવર્ક બહુ ધીમું છે — ફરી પ્રયત્ન કરો'),
+    noServer: t('Server se jawab nahi aaya — dobara try karo', 'सर्वर से जवाब नहीं आया — फिर कोशिश करो', 'સર્વરનો જવાબ ન આવ્યો — ફરી પ્રયત્ન કરો'),
+    expired: t('session expired', 'सेशन खत्म — फिर से लॉग इन करो', 'સેશન પૂરું — ફરી લૉગ ઇન કરો'),
+    netDown: t('⚠ Net nahi hai · last update ', '⚠ नेट नहीं है · आख़िरी अपडेट ', '⚠ નેટ નથી · છેલ્લું અપડેટ '),
+    retry: t('↻ Dobara try karo', '↻ फिर कोशिश करो', '↻ ફરી પ્રયત્ન કરો'),
+    retryShort: t('↻ Dobara', '↻ फिर से', '↻ ફરી'),
+    sending: t('Bhej rahe…', 'भेज रहे हैं…', 'મોકલી રહ્યાં છીએ…'),
+    wait: t('Bhej rahe hain — ek second', 'भेज रहे हैं — एक सेकंड', 'મોકલી રહ્યાં છીએ — એક સેકન્ડ'),
+    resend: t('↻ Dobara bhejo', '↻ फिर से भेजो', '↻ ફરી મોકલો'),
+    unsureBar: t('⚠ Jawab nahi aaya — ho sakta hai KOT kitchen pahunch gaya ho. "Dobara bhejo" dabao: double KOT nahi banega.',
+                 '⚠ जवाब नहीं आया — हो सकता है KOT किचन पहुँच गया हो। "फिर से भेजो" दबाओ: डबल KOT नहीं बनेगा।',
+                 '⚠ જવાબ ન આવ્યો — કદાચ KOT રસોડામાં પહોંચી ગયો હોય. "ફરી મોકલો" દબાવો: ડબલ KOT નહીં બને.'),
+    locked: t('Pehle ye KOT bhejo — net aate hi "Dobara bhejo" dabao',
+              'पहले यह KOT भेजो — नेट आते ही "फिर से भेजो" दबाओ',
+              'પહેલાં આ KOT મોકલો — નેટ આવે એટલે "ફરી મોકલો" દબાવો'),
+    leaveTitle: t('KOT ka jawab nahi aaya', 'इस KOT का जवाब नहीं आया', 'આ KOTનો જવાબ ન આવ્યો'),
+    leaveBody: t('Ho sakta hai ye KOT kitchen pahunch gaya ho. Chhod ke dobara punch kiya to kitchen do baar bana dega — pehle table pe check karo.',
+                 'हो सकता है यह KOT किचन पहुँच गया हो। छोड़कर दोबारा पंच किया तो किचन दो बार बना देगा — पहले टेबल पर देख लो।',
+                 'કદાચ આ KOT રસોડામાં પહોંચી ગયો હોય. છોડીને ફરી પંચ કર્યો તો રસોડું બે વાર બનાવશે — પહેલાં ટેબલ પર જોઈ લો.'),
+    discardQ: function (items) { return t(items + ' abhi bheje nahi — hata dein?', items + ' अभी भेजे नहीं — हटा दें?', items + ' હજી મોકલી નથી — કાઢી નાખવી?'); },
+    discardBody: t('Ye kitchen nahi gaye. Bhejna hai to rakho, warna hata ke wapas jao.',
+                   'ये किचन में नहीं गए हैं। भेजने हैं तो रखो, वरना हटाकर वापस जाओ।',
+                   'આ રસોડામાં ગઈ નથી. મોકલવી હોય તો રાખો, નહીં તો કાઢીને પાછા જાઓ.'),
+    keep: t('Rakho', 'रखो', 'રાખો'),
+    discard: t('Hata do', 'हटा दो', 'કાઢી નાખો'),
+    stay: t('Ruko', 'रुको', 'રોકાઓ'),
+    leave: t('Chhod do', 'छोड़ दो', 'છોડી દો'),
+    khatam: t('khatam', 'खत्म', 'ખલાસ'),
+    isKhatam: function (n) { return t(n + ' khatam hai', n + ' खत्म है', n + ' ખલાસ છે'); },
+    wentKhatam: function (n) { return t(n + ' abhi khatam ho gaya — cart me hai', n + ' अभी खत्म हो गया — कार्ट में है', n + ' હમણાં ખલાસ થયું — કાર્ટમાં છે'); },
+    khatamTitle: t('Ye khatam ho gaya', 'यह खत्म हो गया', 'આ ખલાસ થઈ ગયું'),
+    khatamHint: t('Customer ko bata do. Inke saath poora KOT ruk jayega — inhe hata ke baaki bhejo.',
+                  'ग्राहक को बता दो। इनके साथ पूरा KOT रुक जाएगा — इन्हें हटाकर बाकी भेजो।',
+                  'ગ્રાહકને કહી દો. આની સાથે આખો KOT અટકી જશે — આને કાઢીને બાકી મોકલો.'),
+    khatamHintAll: t('Customer ko bata do. Cart me aur kuch nahi hai.', 'ग्राहक को बता दो। कार्ट में और कुछ नहीं है।', 'ગ્રાહકને કહી દો. કાર્ટમાં બીજું કંઈ નથી.'),
+    dropAndSend: t('Hata ke bhejo', 'हटाकर भेजो', 'કાઢીને મોકલો'),
+    drop: t('Hata do', 'हटा दो', 'કાઢી નાખો'),
+    cartHint: t('📝 note · cart ›', '📝 नोट · कार्ट ›', '📝 નોંધ · કાર્ટ ›'),
+    cartTitle: t('Naya KOT — abhi bheja nahi', 'नया KOT — अभी भेजा नहीं', 'નવો KOT — હજી મોકલ્યો નથી'),
+    addNote: t('note', 'नोट', 'નોંધ'),
+    noteFor: function (n) { return t('Note · ' + n, n + ' के लिए नोट', n + ' માટે નોંધ'); },
+    notePh: t('kam teekha, bina pyaaz…', 'कम तीखा, बिना प्याज़…', 'ઓછું તીખું, ડુંગળી વગર…'),
+    noteHint: t('Kitchen ko KOT pe yahi likha dikhega.', 'किचन को KOT पर यही लिखा दिखेगा।', 'રસોડાને KOT પર આ જ લખેલું દેખાશે.'),
+    noteLong: t('Note bahut lamba hai — chhota likho', 'नोट बहुत लंबा है — छोटा लिखो', 'નોંધ બહુ લાંબી છે — ટૂંકી લખો'),
+    search: t('🔍 Dhoondo', '🔍 ढूँढो', '🔍 શોધો'),
+    noMatch: t('Is naam ki koi dish nahi mili', 'इस नाम की कोई डिश नहीं मिली', 'આ નામની કોઈ ડિશ ન મળી'),
+    tabTables: t('Tables', 'टेबल', 'ટેબલ'),
+    tabParcel: t('Parcel', 'पार्सल', 'પાર્સલ'),
+    tabKitchen: t('Kitchen', 'किचन', 'રસોડું'),
+    runningParcels: t('Chal rahe parcel', 'चल रहे पार्सल', 'ચાલુ પાર્સલ'),
+    items: function (n) { return t(n + ' plate', n + ' आइटम', n + ' આઈટમ'); },
+    cooking: function (n) { return t(n + ' banna baaki', n + ' बन रहे', n + ' બની રહ્યા'); },
+    readyN: function (n) { return t(n + ' ready', n + ' तैयार', n + ' તૈયાર'); },
+    free: t('khaali', 'खाली', 'ખાલી'),
+    now: t('abhi', 'अभी', 'હમણાં'),
+    occupied: function (busy, total) {
+      return t(total + ' me se ' + busy + ' bhare', total + ' में से ' + busy + ' भरे', total + ' માંથી ' + busy + ' ભરેલા');
+    },
+    inKitchen: t('kitchen me', 'किचन में', 'રસોડામાં'),
+    readyPickup: function (n) { return t(n + ' READY — le jao', n + ' तैयार — ले जाओ', n + ' તૈયાર — લઈ જાઓ'); },
+    collectAmt: function (a) { return t(a + ' lena hai', a + ' लो', a + ' લો'); },
+    newOrder: t('naya order', 'नया ऑर्डर', 'નવો ઓર્ડર'),
+    noOrder: t('Is table pe koi order nahi.', 'इस टेबल पर अभी कोई ऑर्डर नहीं।', 'આ ટેબલ પર હજી કોઈ ઓર્ડર નથી.'),
+    orderNo: function (n) { return t('Order #' + n, 'ऑर्डर #' + n, 'ઓર્ડર #' + n); },
+    status: function (raw) {
+      return ({ pending: t('pending', 'बाकी', 'બાકી'), preparing: t('preparing', 'बन रहा', 'બની રહ્યું'),
+                ready: t('ready', 'तैयार', 'તૈયાર'), served: t('served', 'परोसा', 'પીરસ્યું'),
+                cancelled: t('cancelled', 'रद्द', 'રદ') })[raw] || raw;
+    },
+    cancel: t('cancel', 'रद्द', 'રદ'),
+    total: t('Total', 'कुल', 'કુલ'),
+    addItems: t('+ Items add karo', '+ आइटम जोड़ो', '+ વસ્તુઓ ઉમેરો'),
+    pickSub: t('items add karo', 'आइटम जोड़ो', 'વસ્તુઓ ઉમેરો'),
+    cancelQ: function (q, n) { return t(q + '× ' + n + ' cancel karna hai?', q + '× ' + n + ' रद्द करें?', q + '× ' + n + ' રદ કરવું?'); },
+    reasonRequired: t('Kyun? — kam se kam 2 akshar, audit log me jayega.', 'कारण ज़रूरी है — ऑडिट लॉग में जाएगा।', 'કારણ જરૂરી છે — ઓડિટ લોગમાં જશે.'),
+    reason: t('Kyun?', 'कारण', 'કારણ'),
+    cancelItem: t('Cancel karo', 'आइटम रद्द करो', 'આઈટમ રદ કરો'),
+    cancelReasons: [t('Customer ne mana kiya', 'ग्राहक ने मना किया', 'ગ્રાહકે ના પાડી'),
+                    t('Galti se punch', 'गलती से पंच हुआ', 'ભૂલથી પંચ થયું'),
+                    t('Khatam', 'खत्म हो गया', 'ખલાસ થઈ ગયું'),
+                    t('Bahut der ho gayi', 'बहुत देर हो गई', 'બહુ મોડું થયું')],
+    cancelled: t('Cancel ho gaya', 'रद्द हो गया', 'રદ થઈ ગયું'),
+    sendKitchen: t('Kitchen bhejo', 'किचन में भेजो', 'રસોડામાં મોકલો'),
+    sentToast: t('Kitchen ko bhej diya ✓', 'किचन में भेज दिया ✓', 'રસોડામાં મોકલ્યું ✓'),
+    parcelPlaced: t('Parcel ban gaya ✓', 'पार्सल लग गया ✓', 'પાર્સલ લાગી ગયો ✓'),
+    newParcel: t('Naya parcel', 'नया पार्सल', 'નવો પાર્સલ'),
+    custName: t('Customer ka naam *', 'ग्राहक का नाम *', 'ગ્રાહકનું નામ *'),
+    namePh: t('naam', 'नाम', 'નામ'),
+    custPhone: t('Phone (optional)', 'फ़ोन (ज़रूरी नहीं)', 'ફોન (જરૂરી નથી)'),
+    chooseItems: t('Items chuno ›', 'आइटम चुनो ›', 'વસ્તુઓ પસંદ કરો ›'),
+    parcelHint: t('Parcel banane ke baad wo Tables screen pe "chal rahe parcel" me dikhega.',
+                  'पार्सल लगने के बाद वो टेबल स्क्रीन पर "चल रहे पार्सल" में दिखेगा।',
+                  'પાર્સલ લાગ્યા પછી તે ટેબલ સ્ક્રીન પર "ચાલુ પાર્સલ"માં દેખાશે.'),
+    nameNeeded: t('Customer ka naam chahiye', 'ग्राहक का नाम ज़रूरी है', 'ગ્રાહકનું નામ જરૂરી છે'),
+    nameLong: t('Naam isse lamba nahi ho sakta — English me 60 akshar, Hindi/Gujarati me lagbhag 20.',
+                'नाम इससे लंबा नहीं हो सकता — अंग्रेज़ी में 60 अक्षर, हिंदी या गुजराती में लगभग 20।',
+                'નામ આનાથી લાંબું ન થઈ શકે — અંગ્રેજીમાં 60 અક્ષર, ગુજરાતી કે હિન્દીમાં લગભગ 20.'),
+    kitchenEmpty: t('Kitchen khaali hai — kuch pending nahi.', 'कोई बकेट नहीं — कुछ नहीं पकाना 👨‍🍳', 'કોઈ બકેટ નથી — કંઈ રાંધવાનું નથી 👨‍🍳'),
+    kitchenHd: t('Tawa pe / queue me', 'तवे पर / कतार में', 'તવા પર / કતારમાં'),
+    overCap: function (q, c) { return t(q + ' (cap ' + c + ')', q + ' (कैप ' + c + ')', q + ' (કેપ ' + c + ')'); },
+    bucket: function (raw) {
+      return ({ open: t('open', 'भर रहा', 'ભરાય છે'), full: t('full', 'भरा', 'ભરેલું'),
+                taken: t('taken', 'तवे पर', 'તવા પર') })[raw] || raw;
+    }
+  };
+}
+strings();
 
 var $ = function (id) { return document.getElementById(id); };
 var esc = function (s) {
@@ -79,7 +171,15 @@ var esc = function (s) {
     return { '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c];
   });
 };
-var rupees = function (p) { return p % 100 === 0 ? '₹' + (p / 100) : '₹' + (p / 100).toFixed(2); };
+// Money is paise on the wire. On screen it is Indian-grouped with no decimals
+// for whole rupees — ₹13,660, ₹1,23,456, ₹42.50 — the same as the app.
+var INR0 = window.Intl ? new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0 }) : null;
+var INR2 = window.Intl ? new Intl.NumberFormat('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : null;
+var rupees = function (p) {
+  var whole = p % 100 === 0;
+  if (!INR0) return '₹' + (whole ? p / 100 : (p / 100).toFixed(2));
+  return '₹' + (whole ? INR0 : INR2).format(p / 100);
+};
 var clock = function (ms) { return new Date(ms).toTimeString().slice(0, 5); };
 var uid = function () {
   if (window.crypto && crypto.randomUUID) return crypto.randomUUID();
@@ -104,7 +204,36 @@ function signOut(silent) {
   location.replace('/');
 }
 $('logoutBtn').onclick = function () { confirmLeave(function () { signOut(false); }); };
-$('who').textContent = me.name;
+
+// The header is the screen's title bar, like the app's AppHeader: on a
+// table or the picker its tile turns into ‹ and is the way back — it never
+// scrolls away, where the old in-page "‹ Back" did.
+function setTop(icon, title, sub, onBack) {
+  var tile = $('tile');
+  tile.textContent = icon;
+  tile.className = 'tile' + (onBack ? ' back' : '');
+  tile.disabled = !onBack;
+  tile.onclick = onBack || null;
+  tile.setAttribute('aria-label', onBack ? S.back : S.title);
+  $('ttlT').textContent = title;
+  $('who').textContent = sub || '';
+  syncTop();
+}
+
+// The language chip. Redraws whatever is on screen in the new language —
+// the cart, the search box and the scroll position stay as they are.
+function paintChrome() {
+  $('langSel').value = lang;
+  $('langMark').textContent = LANG_MARK[lang];
+  $('logoutBtn').textContent = S.logout;
+}
+$('langSel').onchange = function () {
+  lang = this.value;
+  try { localStorage.setItem(LANG_KEY, lang); } catch (e) {}
+  strings();
+  paintChrome();
+  redraw();
+};
 
 // ---------------------------------------------------------------- network
 // Phones on shop WiFi or mobile data drop out mid-rush. Every call gives up
@@ -162,7 +291,7 @@ async function api(method, path, body) {
   // Caddy answers these itself when the POS server behind it is down.
   if (r.status === 502 || r.status === 503 || r.status === 504) { netFail(); throw netError(S.noServer); }
   netOk();
-  if (r.status === 401) { signOut(true); throw new Error('session expired'); }
+  if (r.status === 401) { signOut(true); throw new Error(S.expired); }
   var d = await r.json().catch(function () { return {}; });
   if (!r.ok) {
     var e = new Error(d.error || ('server error ' + r.status));
@@ -182,6 +311,23 @@ function failView(e, again) {
 }
 
 // ---------------------------------------------------------------- dialogs
+// The sheets sit at the bottom of the screen, which is exactly where an
+// iPhone's keyboard opens — over the Save button. visualViewport shrinks by
+// the keyboard's height; the sheet is lifted by the same amount (pos.css
+// --kb) and never grows taller than what is still visible (--vvh).
+function fitKeyboard() {
+  var vv = window.visualViewport;
+  if (!vv) return;
+  var kb = Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop));
+  document.documentElement.style.setProperty('--kb', kb + 'px');
+  document.documentElement.style.setProperty('--vvh', Math.round(vv.height) + 'px');
+}
+if (window.visualViewport) {
+  window.visualViewport.addEventListener('resize', fitKeyboard);
+  window.visualViewport.addEventListener('scroll', fitKeyboard);
+  fitKeyboard();
+}
+
 var modalUp = false;
 function showModal(title, body, buttons) {
   hideModal();
@@ -208,6 +354,31 @@ function hideModal() {
   if (m) m.remove();
 }
 
+// Keyboard, for a laptop. In a sheet: Esc does what its first button
+// (Back / Keep / Stay) does; Enter presses the main button — Save, Send to
+// kitchen — but never a red one (Discard, Cancel item), which wants a
+// deliberate click. In the picker, "/" jumps to the search box, so nobody
+// has to Tab through a hundred − / + buttons.
+document.addEventListener('keydown', function (e) {
+  if (e.ctrlKey || e.metaKey || e.altKey || e.isComposing) return;
+  var tg = e.target.tagName;
+  if (modalUp) {
+    var m = document.querySelector('.modal');
+    if (!m) return;
+    var btns = m.querySelectorAll('.btnrow button[data-i]');
+    if (e.key === 'Escape') { e.preventDefault(); if (btns[0]) btns[0].click(); else hideModal(); }
+    else if (e.key === 'Enter' && tg !== 'BUTTON' && tg !== 'TEXTAREA') {
+      var main = btns[btns.length - 1];
+      if (main && /\b(primary|okbtn)\b/.test(main.className) && !main.disabled) { e.preventDefault(); main.click(); }
+    }
+    return;
+  }
+  if (e.key === '/' && pane === 'picker' && $('pkQ') && tg !== 'INPUT' && tg !== 'TEXTAREA' && tg !== 'SELECT') {
+    e.preventDefault();
+    $('pkQ').focus();
+  }
+});
+
 // ---------------------------------------------------------------- state
 var tab = 'tables', timer = null, menu = [], openTable = null, parcelMode = false;
 // The cart and its idempotency key — the app's contract (data/Api.kt
@@ -222,26 +393,53 @@ function newCart() { cart = []; cartId = uid(); cartLocked = false; }
 var sleep = function (ms) { return new Promise(function (r) { setTimeout(r, ms); }); };
 
 // Leaving a cart whose KOT may already be in the kitchen is how a table gets
-// cooked twice, so that one case asks first.
+// cooked twice, so that case asks first. So does leaving a cart that hasn't
+// gone yet (the app's "Discard 3 items not sent yet?"): Back or logout used
+// to drop it without a word.
 function confirmLeave(go) {
   if (sending) { toast(S.wait); return; }
-  if (!cartLocked) { go(); return; }
-  showModal(S.leaveTitle, '<div class="mut" style="font-size:14px">' + esc(S.leaveBody) + '</div>',
-    [{ label: S.stay, cls: 'ghost' },
-     { label: S.leave, cls: 'danger', act: function () { hideModal(); newCart(); go(); } }]);
+  if (cartLocked) {
+    showModal(S.leaveTitle, '<div class="mut" style="font-size:14px">' + esc(S.leaveBody) + '</div>',
+      [{ label: S.stay, cls: 'ghost' },
+       { label: S.leave, cls: 'danger', act: function () { hideModal(); newCart(); go(); } }]);
+    return;
+  }
+  if (!cart.length) { go(); return; }
+  showModal(S.discardQ(S.items(cartPlates())), '<div class="mut" style="font-size:14px">' + esc(S.discardBody) + '</div>',
+    [{ label: S.keep, cls: 'ghost' },
+     { label: S.discard, cls: 'danger', act: function () { hideModal(); newCart(); go(); } }]);
 }
+// A reload or a closed tab would lose it too: let the browser ask.
+window.addEventListener('beforeunload', function (e) {
+  if (cart.length) { e.preventDefault(); e.returnValue = ''; }
+});
 var pane = '';   // 'table' | 'picker' — a late refresh must not yank the picker away
 // Bumped on every tab switch. A slow load (up to NET_TIMEOUT offline) that
 // finishes after the user has moved on must not start its poll on top of
 // the new tab's.
 var nav = 0;
 
-var TABS = { tables:['🪑','Tables'], parcel:['🥡','Parcel'], kitchen:['🔥','Kitchen'] };
+var TABS = { tables:'🪑', parcel:'🥡', kitchen:'🔥' };
 function paintTabs() {
+  var label = { tables:S.tabTables, parcel:S.tabParcel, kitchen:S.tabKitchen };
   $('tabs').innerHTML = Object.keys(TABS).map(function (k) {
     return '<button class="' + (k === tab ? 'on' : '') + '" data-tab="' + k + '">' +
-           TABS[k][0] + ' ' + TABS[k][1] + '</button>';
+           TABS[k] + ' ' + esc(label[k]) + '</button>';
   }).join('');
+}
+
+function redraw() {
+  paintTabs();
+  if (pane === 'picker') { paintPickerText(); return; }
+  if (pane === 'table') { paintTable(); return; }
+  setTop('🍽', S.title, me.name, null);
+  if (tab === 'parcel') {
+    var nm = $('pcName') ? $('pcName').value : '', ph = $('pcPhone') ? $('pcPhone').value : '';
+    parcel();
+    $('pcName').value = nm; $('pcPhone').value = ph;
+    return;
+  }
+  if (repaint) repaint().catch(function () {});
 }
 $('tabs').addEventListener('click', function (e) {
   var b = e.target.closest('button[data-tab]');
@@ -252,6 +450,8 @@ function show(t) {
   tab = t; clearInterval(timer); repaint = null; nav++; pane = '';
   openTable = null; newCart(); parcelMode = (t === 'parcel');
   $('bar').className = ''; $('bar').innerHTML = '';
+  $('tabs').hidden = false;
+  setTop('🍽', S.title, me.name, null);
   paintTabs();
   ({ tables:tables, parcel:parcel, kitchen:kitchen })[t]();
 }
@@ -286,9 +486,16 @@ async function tables() {
     if (tab !== 'tables' || openTable) return;
     var list = (d.tables || []).filter(function (t) { return t.kind !== 'parcel'; });
     var parcels = (d.tables || []).filter(function (t) { return t.kind === 'parcel' && t.order; });
+    // The room at a glance, in the header (the app's "9 of 24 occupied").
+    var busy = list.filter(function (t) { return t.order; }).length;
+    var ready = (d.tables || []).reduce(function (s, t) { return s + (t.order ? t.order.readyCount : 0); }, 0);
+    // (the counts first: on a narrow phone the name is what gets cut)
+    $('who').textContent = S.occupied(busy, list.length) + (ready ? ' · ' + S.readyN(ready) : '') + ' · ' + me.name;
+    // Running parcels are few and time-critical: they go on top, not after
+    // all 24 tables.
     $('view').innerHTML =
-      '<h2>Tables</h2><div class="grid">' + list.map(tableTile).join('') + '</div>' +
-      (parcels.length ? '<h2>Chal rahe parcel</h2><div class="grid">' + parcels.map(tableTile).join('') + '</div>' : '');
+      (parcels.length ? '<h2>🥡 ' + esc(S.runningParcels) + '</h2><div class="grid">' + parcels.map(tableTile).join('') + '</div>' : '') +
+      '<h2>' + esc(S.tabTables) + '</h2><div class="grid">' + list.map(tableTile).join('') + '</div>';
   };
   var my = nav;
   repaint = paint;
@@ -298,16 +505,39 @@ async function tables() {
   if (my === nav) timer = setInterval(function () { paint().catch(function () {}); }, 10000);
 }
 
+// A dish's bucket colour (#RRGGBB set in admin), or the app's stable pick
+// from its palette when none is set (Theme.kt dishColour).
+var DISH_PALETTE = ['#E8483F', '#FFC93D', '#FF8A3D', '#6FCF6F', '#C79BFF', '#5BC8DB'];
+function dishColour(hex, id) {
+  if (/^#[0-9a-fA-F]{6}$/.test(String(hex || '').trim())) return String(hex).trim();
+  var n = DISH_PALETTE.length;
+  return DISH_PALETTE[(((Number(id) || 0) % n) + n) % n];
+}
+
+// "now", "6m", "1h20m" since the order opened — the app's ageMinutes.
+function age(ms) {
+  var m = Math.max(0, Math.floor((Date.now() - ms) / 60000));
+  return m < 1 ? S.now : m < 60 ? m + 'm' : Math.floor(m / 60) + 'h' + (m % 60) + 'm';
+}
+
+// One table, coloured by what to do next (the app's TableCard): free,
+// in the kitchen, plates ready to pick up, or all served — collect.
 function tableTile(t) {
   var o = t.order;
-  return '<button class="tile-btn' + (o ? ' busy' : '') + '" data-table="' + t.id + '" data-name="' + esc(t.name) + '">' +
-    '<span class="nm">' + (t.kind === 'parcel' ? '🥡 ' : '') + esc(t.name) + '</span>' +
-    (o
-      ? '<span class="sub">#' + o.orderNo + ' · ' + clock(o.openedAt) + ' · ' + o.itemCount + ' plate</span>' +
-        (o.pendingCount ? '<span class="sub">⏳ ' + o.pendingCount + ' banna baaki</span>' : '') +
-        (o.readyCount ? '<span class="sub">✅ ' + o.readyCount + ' ready</span>' : '') +
-        '<span class="amt">' + rupees(o.total) + '</span>'
-      : '<span class="sub">khaali</span><span class="amt" style="color:var(--ink3)">—</span>') +
+  var attrs = ' data-table="' + t.id + '" data-name="' + esc(t.name) + '" data-free="' + (o ? '' : '1') + '"';
+  if (!o) {
+    return '<button class="tile-btn free"' + attrs + '><span class="nm">' + esc(t.name) + '</span>' +
+      '<span class="sub">' + esc(S.free) + '</span></button>';
+  }
+  var state = o.readyCount > 0 ? 'ready' : o.pendingCount > 0 ? 'cook' : 'collect';
+  var pill = state === 'ready' ? S.readyPickup(o.readyCount)
+           : state === 'cook' ? S.inKitchen : S.collectAmt(rupees(o.total));
+  return '<button class="tile-btn ' + state + '"' + attrs + '>' +
+    '<span class="hd"><span class="nm">' + (t.kind === 'parcel' ? '🥡 ' : '') + esc(t.name) + '</span>' +
+      '<span class="no">#' + o.orderNo + '</span></span>' +
+    '<span class="money">' + rupees(o.total) + ' · ' + esc(S.items(o.itemCount)) + '</span>' +
+    '<span class="meta"><span class="who">' + esc(age(o.openedAt) + ' · ' + (o.customerName || o.openedByName)) + '</span>' +
+      '<span class="spill ' + state + '">' + esc(pill) + '</span></span>' +
     '</button>';
 }
 
@@ -326,36 +556,53 @@ async function openTableView(id, name) {
   clearInterval(timer); repaint = null;
   openTable = { id: id, name: name, order: d.order };
   newCart();
+  // A free table has nothing to look at yet: the most common tap of the
+  // night goes straight to the menu (Back from there returns to the grid).
+  if (!d.order) {
+    // (if even the menu can't load, put the live grid back rather than
+    // leave a stale one with its poll stopped)
+    if (!(await picker(name, sendTicket)) && my === nav) show('tables');
+    return;
+  }
   paintTable();
 }
 
 // Re-reads the order. Offline it falls back to the copy already on screen,
 // so Back from the picker always lands somewhere.
-async function refreshTable() {
+// quiet = the background poll: a miss there shows on the amber net strip,
+// not as a toast every 8 seconds.
+async function refreshTable(quiet) {
   var t = openTable;
   try {
     var d = await api('GET', '/api/dining-tables/' + t.id + '/order');
     t.order = d.order;
-  } catch (e) { oops(e); }
-  if (openTable === t && pane === 'table') paintTable();
+  } catch (e) { if (!quiet) oops(e); return; }
+  if (openTable === t && pane === 'table' && !(quiet && modalUp)) paintTable();
 }
 
 function paintTable() {
   pane = 'table'; clearInterval(timer);   // the picker's menu poll, if we came from there
+  // The order keeps itself fresh while it is on screen: PENDING turns READY
+  // as the kitchen ticks it, without leaving and coming back. (Skips a round
+  // while the cancel sheet is open, so the reason being typed survives.)
+  timer = setInterval(function () {
+    if (pane === 'table' && !modalUp) refreshTable(true);
+  }, 8000);
   var o = openTable.order;
-  var html = '<div class="row" style="margin-bottom:12px">' +
-    '<button class="ghost" id="backBtn" style="min-height:42px;padding:9px 14px">‹ Tables</button>' +
-    '<b class="grow" style="font-size:17px;text-align:center">' + esc(openTable.name) + '</b>' +
-    '<span style="width:86px"></span></div>';
+  $('tabs').hidden = true;
+  setTop('‹', openTable.name,
+    o ? S.orderNo(o.orderNo) + ' · ' + rupees(o.total) + ' · ' + o.openedByName : S.newOrder,
+    function () { show('tables'); });
+  var html = '';
 
   if (!o) {
-    html += '<div class="empty">Is table pe koi order nahi.<br>Neeche se items add karo.</div>';
+    html += '<div class="empty">' + esc(S.noOrder) + '</div>';
   } else {
     html += '<div class="card"><div class="row" style="margin-bottom:6px">' +
-      '<b>Order #' + o.orderNo + '</b>' +
+      '<b>' + esc(S.orderNo(o.orderNo)) + '</b>' +
       '<span class="right mut">' + clock(o.openedAt) + ' · ' + esc(o.openedByName) + '</span></div>';
     (o.tickets || []).forEach(function (tk) {
-      html += '<div class="mut" style="margin:10px 0 2px;font-weight:700">KOT #' + tk.ticketNo + ' · ' + clock(tk.createdAt) + '</div>';
+      html += '<div class="mut" style="margin:10px 0 2px;font-weight:700">KOT ' + tk.ticketNo + ' · ' + clock(tk.createdAt) + '</div>';
       (tk.items || []).forEach(function (it) {
         html += '<div class="line">' +
           '<span class="qty">' + it.qty + '×</span>' +
@@ -363,53 +610,95 @@ function paintTable() {
           (it.note ? '<div class="note">📝 ' + esc(it.note) + '</div>' : '') +
           (it.cancelReason ? '<div class="note">✕ ' + esc(it.cancelReason) + '</div>' : '') +
           '</span>' +
-          '<span class="pill p-' + it.status + '">' + it.status + '</span>' +
-          (it.status === 'pending'
-            ? '<button class="danger" data-cancel="' + it.id + '" data-nm="' + esc(it.name) + '" style="min-height:38px;padding:8px 11px;font-size:13px">cancel</button>'
+          '<span class="pill p-' + it.status + '">' + esc(S.status(it.status)) + '</span>' +
+          // as in the app and the server: a manager cancels a line the
+          // kitchen hasn't started; an admin anything not yet served
+          (it.status === 'pending' || (me.role === 'admin' && (it.status === 'preparing' || it.status === 'ready'))
+            ? '<button class="danger" data-cancel="' + it.id + '" style="min-height:44px;padding:8px 11px;font-size:13px">' + esc(S.cancel) + '</button>'
             : '') +
           '</div>';
       });
     });
     html += '<div class="row" style="margin-top:12px;padding-top:11px;border-top:1px solid var(--line)">' +
-      '<b>Total</b><b class="right tnum">' + rupees(o.total) + '</b></div></div>';
+      '<b>' + esc(S.total) + '</b><b class="right tnum">' + rupees(o.total) + '</b></div></div>';
   }
 
-  html += '<button class="primary" id="addBtn" style="width:100%">+ Items add karo</button>';
+  html += '<button class="primary" id="addBtn" style="width:100%">' + esc(S.addItems) + '</button>';
   $('view').innerHTML = html;
-  $('bar').innerHTML = '';
-  $('backBtn').onclick = function () { show('tables'); };
+  $('bar').className = ''; $('bar').innerHTML = '';
   $('addBtn').onclick = function () { picker(openTable.name, sendTicket); };
 
   $('view').querySelectorAll('button[data-cancel]').forEach(function (b) {
-    b.onclick = async function () {
-      var reason = prompt('Cancel "' + b.dataset.nm + '" — kyun? (kam se kam 2 akshar)');
-      if (reason === null) return;
-      try {
-        await api('POST', '/api/items/' + b.dataset.cancel + '/cancel', { reason: reason.trim() });
-        toast('Cancel ho gaya', 'ok');
-        await refreshTable();
-      } catch (e) { toast(e.message, 'bad'); }
-    };
+    b.onclick = function () { askCancel(Number(b.dataset.cancel)); };
+  });
+}
+
+// Cancelling a line: a sheet (the app's ReasonDialog) with one-tap reasons
+// instead of the browser's tiny prompt(). The reason goes in the audit log,
+// so it is required, and checked here the way the server counts it.
+function askCancel(itemId) {
+  var it = null;
+  ((openTable.order || {}).tickets || []).forEach(function (tk) {
+    (tk.items || []).forEach(function (x) { if (x.id === itemId) it = x; });
+  });
+  if (!it) return;
+  var reasons = S.cancelReasons;
+  var m = showModal(S.cancelQ(it.qty, it.name),
+    '<div class="hint" style="margin:0 0 10px">' + esc(S.reasonRequired) + '</div>' +
+    '<div class="nchips">' + reasons.map(function (r, i) {
+      return '<button class="nchip" data-r="' + i + '">' + esc(r) + '</button>';
+    }).join('') + '</div>' +
+    '<input id="mReason" maxlength="120" autocomplete="off" placeholder="' + esc(S.reason) + '">',
+    [{ label: S.back, cls: 'ghost' },
+     { label: S.cancelItem, cls: 'danger', act: async function () {
+        var reason = $('mReason').value.replace(/\s+/g, ' ').trim();
+        if (noteBytes(reason) < 2) { toast(S.reasonRequired, 'bad'); $('mReason').focus(); return; }
+        hideModal();
+        try {
+          await api('POST', '/api/items/' + itemId + '/cancel', { reason: reason });
+          toast(S.cancelled, 'ok');
+          await refreshTable();
+        } catch (e) { toast(e.message, 'bad'); }
+     } }]);
+  m.querySelector('.nchips').addEventListener('click', function (e) {
+    var c = e.target.closest('.nchip');
+    if (!c) return;
+    $('mReason').value = reasons[Number(c.dataset.r)];
+    m.querySelectorAll('.nchip').forEach(function (x) { x.classList.toggle('on', x === c); });
   });
 }
 
 // ---------------------------------------------------------------- picker
+var pickTitle = '';
+function pickerTop() {
+  setTop('‹', pickTitle, S.pickSub, pickerBack);
+}
+function pickerBack() {
+  confirmLeave(function () {
+    newCart(); paintCartBar();
+    if (parcelMode) { show('parcel'); return; }
+    // came straight from a free tile: back to the grid, not an empty table
+    if (!openTable.order) { show('tables'); return; }
+    paintTable();     // the copy we have, at once — even with no network
+    refreshTable();
+  });
+}
+
 async function picker(title, send) {
   clearInterval(timer);
   onSend = send;
   var my = nav;
-  try { await loadMenu(); } catch (e) { toast(e.message, 'bad'); return; }
-  if (my !== nav) return;
+  try { await loadMenu(); } catch (e) { toast(e.message, 'bad'); return false; }
+  if (my !== nav) return true;
   pane = 'picker';
-  var html = '<div class="row" style="margin-bottom:12px">' +
-    '<button class="ghost" id="pBack" style="min-height:42px;padding:9px 14px">‹ Back</button>' +
-    '<b class="grow" style="font-size:17px;text-align:center">' + esc(title) + '</b>' +
-    '<span style="width:86px"></span></div>';
+  pickTitle = title;
+  $('tabs').hidden = true;   // no tab to fat-finger away from a cart
+  pickerTop();
   // Finding a dish: a search box and one chip per category, stuck under the
   // header so they're there at any scroll depth.
   var cats = menu.filter(function (c) { return (c.items || []).length; });
-  html += '<div class="pk-tools" id="pkTools">' +
-    '<input id="pkQ" type="search" enterkeyhint="search" autocomplete="off" placeholder="' + esc(S.search) + '">' +
+  var html = '<div class="pk-tools" id="pkTools">' +
+    '<input id="pkQ" type="search" enterkeyhint="search" autocomplete="off" title="/" aria-keyshortcuts="/" placeholder="' + esc(S.search) + '">' +
     '<button id="pkClear" hidden aria-label="clear">✕</button>' +
     '<div class="pk-chips" id="pkChips">' + cats.map(function (c) {
       return '<button data-cat="' + c.id + '">' + esc(c.name) + '</button>';
@@ -446,14 +735,6 @@ async function picker(title, send) {
     if (b) jumpTo(b.dataset.cat);
   });
   timer = setInterval(menuPoll, 30000);
-  $('pBack').onclick = function () {
-    confirmLeave(function () {
-      newCart(); paintCartBar();
-      if (parcelMode) { show('parcel'); return; }
-      paintTable();     // the copy we have, at once — even with no network
-      refreshTable();
-    });
-  };
   // − takes one off; + or a tap anywhere else on the row adds one (the app's
   // MenuRow does the same), so a fat-fingered tap still lands on that dish.
   $('pkList').addEventListener('click', function (e) {
@@ -463,6 +744,7 @@ async function picker(title, send) {
     else bump(Number(row.dataset.item), 1);
   });
   paintCartBar();
+  return true;
 }
 
 // "Sp. Pulav" -> "sp pulav", so "sp pul" or "pulav sp" both find it.
@@ -580,6 +862,16 @@ function applyStock() {
   });
 }
 
+// Language switched mid-punch: re-word the picker in place (rows, counts,
+// search text and scroll stay put).
+function paintPickerText() {
+  pickerTop();
+  $('pkQ').placeholder = S.search;
+  $('pkNone').textContent = S.noMatch;
+  applyStock();
+  paintCartBar();
+}
+
 function menuPoll() {
   var a = document.activeElement;
   if (pane !== 'picker' || modalUp || sending || (a && a.tagName === 'INPUT')) return;
@@ -604,7 +896,7 @@ function offerDropKhatam() {
     '<div style="font-size:15px;font-weight:700">• ' +
       bad.map(function (l) { return esc(l.qty + '× ' + l.name); }).join('<br>• ') + '</div>' +
     '<div class="hint">' + esc(left ? S.khatamHint : S.khatamHintAll) + '</div>',
-    [{ label: 'Back', cls: 'ghost' },
+    [{ label: S.back, cls: 'ghost' },
      { label: left ? S.dropAndSend : S.drop, cls: 'primary', act: function () {
         hideModal();
         cart = cart.filter(function (l) { return bad.indexOf(l) < 0; });
@@ -641,13 +933,13 @@ function paintCartBar() {
   if (cartLocked) {
     bar.className = 'bar stack';
     bar.innerHTML = '<div class="unsure">' + esc(S.unsureBar) + '</div>' +
-      btn + esc(sending ? S.sending : S.resend + ' · ' + n + ' plate') + '</button>';
+      btn + esc(sending ? S.sending : S.resend + ' · ' + S.items(n)) + '</button>';
   } else {
     // The left half opens the cart: every line, its note, its count.
     bar.className = 'bar';
     bar.innerHTML = '<button class="ghost cartbtn" id="cartBtn">' +
-        '<b>' + n + ' plate · ' + rupees(cartTotal()) + '</b><small>' + esc(S.cartHint) + '</small></button>' +
-      btn + (sending ? esc(S.sending) : 'Kitchen bhejo') + '</button>';
+        '<b>' + esc(S.items(n)) + ' · ' + rupees(cartTotal()) + '</b><small>' + esc(S.cartHint) + '</small></button>' +
+      btn + esc(sending ? S.sending : S.sendKitchen) + '</button>';
     $('cartBtn').onclick = openCart;
   }
   $('sendBtn').onclick = function () { if (onSend) onSend(); };
@@ -672,8 +964,8 @@ function openCart() {
       '</div>';
   }).join('') + '</div>';
   var m = showModal(S.cartTitle, body,
-    [{ label: 'Back', cls: 'ghost' },
-     { label: (cartLocked ? S.resend : 'Kitchen bhejo') + ' · ' + cartPlates() + ' plate', cls: 'primary',
+    [{ label: S.back, cls: 'ghost' },
+     { label: (cartLocked ? S.resend : S.sendKitchen) + ' · ' + S.items(cartPlates()), cls: 'primary',
        act: function () { hideModal(); if (onSend) onSend(); } }]);
   m.querySelector('.cart-ls').addEventListener('click', function (e) {
     var b = e.target.closest('button');
@@ -717,7 +1009,7 @@ function editNote(i) {
     }).join('') + '</div>' +
     '<input id="mNote" maxlength="120" autocomplete="off" placeholder="' + esc(S.notePh) + '" value="' + esc(l.note) + '">' +
     '<div class="hint">' + esc(S.noteHint) + '</div>',
-    [{ label: 'Back', cls: 'ghost', act: openCart },
+    [{ label: S.back, cls: 'ghost', act: openCart },
      { label: S.save, cls: 'primary', act: function () {
         var v = $('mNote').value.replace(/\s+/g, ' ').trim();
         if (noteBytes(v) > 200) { toast(S.noteLong, 'bad'); return; }
@@ -802,7 +1094,7 @@ async function sendTicket() {
   await sendCart(function (id, items) {
     return api('POST', '/api/dining-tables/' + t.id + '/tickets', { clientTicketId: id, items: items });
   }, function (d) {
-    toast('Kitchen ko bhej diya ✓', 'ok');
+    toast(S.sentToast, 'ok');
     if (openTable !== t) return;
     if (d && d.tickets) { t.order = d; paintTable(); }   // the reply is the saved order
     else { paintTable(); refreshTable(); }
@@ -810,17 +1102,45 @@ async function sendTicket() {
 }
 
 // ---------------------------------------------------------------- parcel
+// The server refuses a parcel whose name is over 60 BYTES (phone over 20),
+// and that refusal bounced the whole parcel at "send". A Hindi or Gujarati
+// letter is 3 bytes, so 60 is about 20 letters there — the browser's
+// maxlength counts letters and let 60 of them through. These boxes stop at
+// the byte limit instead, and say so.
+var NAME_MAX = 60, PHONE_MAX = 20;
+function fitBytes(s, max) {
+  if (noteBytes(s) <= max) return s;
+  var out = '';
+  Array.from(s).some(function (ch) {
+    if (noteBytes(out + ch) > max) return true;
+    out += ch; return false;
+  });
+  return out;
+}
+function capBytes(el, max, warn) {
+  var check = function (e) {
+    if (e && e.isComposing) return;   // mid-word on an Indic keyboard: wait
+    var v = fitBytes(el.value, max);
+    if (v !== el.value) { el.value = v; if (warn) warn.hidden = false; }
+  };
+  el.addEventListener('input', check);
+  el.addEventListener('compositionend', check);
+}
+
 function parcel() {
   $('view').innerHTML =
-    '<h2>Naya parcel</h2><div class="card">' +
-    '<label class="fld"><span>Customer ka naam *</span><input id="pcName" maxlength="60" placeholder="naam"></label>' +
-    '<label class="fld"><span>Phone (optional)</span><input id="pcPhone" inputmode="tel" maxlength="20" placeholder="98xxxxxxxx"></label>' +
-    '<button class="primary" id="pcNext" style="width:100%">Items chuno ›</button></div>' +
-    '<p class="hint">Parcel banane ke baad wo Tables screen pe "chal rahe parcel" me dikhega.</p>';
+    '<h2>' + esc(S.newParcel) + '</h2><div class="card">' +
+    '<label class="fld"><span>' + esc(S.custName) + '</span><input id="pcName" autocomplete="off" placeholder="' + esc(S.namePh) + '">' +
+      '<span class="note" id="pcLong" hidden style="display:block;margin-top:5px;font-size:12.5px;color:var(--amber)">' + esc(S.nameLong) + '</span></label>' +
+    '<label class="fld"><span>' + esc(S.custPhone) + '</span><input id="pcPhone" inputmode="tel" autocomplete="off" placeholder="98xxxxxxxx"></label>' +
+    '<button class="primary" id="pcNext" style="width:100%">' + esc(S.chooseItems) + '</button></div>' +
+    '<p class="hint">' + esc(S.parcelHint) + '</p>';
+  capBytes($('pcName'), NAME_MAX, $('pcLong'));
+  capBytes($('pcPhone'), PHONE_MAX, null);
   $('pcNext').onclick = function () {
-    var nm = $('pcName').value.trim();
-    if (!nm) { toast('Customer ka naam chahiye', 'bad'); return; }
-    openTable = { parcelName: nm, parcelPhone: $('pcPhone').value.trim() };
+    var nm = fitBytes($('pcName').value.trim(), NAME_MAX).trim();
+    if (!nm) { toast(S.nameNeeded, 'bad'); return; }
+    openTable = { parcelName: nm, parcelPhone: fitBytes($('pcPhone').value.trim(), PHONE_MAX).trim() };
     newCart();
     picker('🥡 ' + nm, sendParcel);
   };
@@ -833,7 +1153,7 @@ async function sendParcel() {
       customerName: t.parcelName, customerPhone: t.parcelPhone, clientTicketId: id, items: items
     });
   }, function () {
-    toast('Parcel ban gaya ✓', 'ok');
+    toast(S.parcelPlaced, 'ok');
     show('tables');
   });
 }
@@ -844,18 +1164,26 @@ async function kitchen() {
     var d = await api('GET', '/api/kitchen');
     if (tab !== 'kitchen') return;
     var bs = d.buckets || [];
-    if (!bs.length) { $('view').innerHTML = '<div class="empty">Kitchen khaali hai — kuch pending nahi.</div>'; return; }
-    $('view').innerHTML = '<h2>Tawa pe / queue me</h2>' + bs.map(function (b) {
-      return '<div class="card"><div class="row" style="margin-bottom:6px">' +
-        '<b>' + esc(b.name) + '</b>' +
-        '<span class="pill p-' + b.status + '">' + b.status + '</span>' +
-        '<span class="right mut tnum">' + b.qty + '/' + (b.cap || d.cap) + '</span></div>' +
-        (b.takenByName ? '<div class="mut">👨‍🍳 ' + esc(b.takenByName) + '</div>' : '') +
+    if (!bs.length) { $('view').innerHTML = '<div class="empty">' + esc(S.kitchenEmpty) + '</div>'; return; }
+    // Each bucket wears its dish colour down the left edge (the kitchen's
+    // identity — the chef cooks by colour), a styled state pill, its age, and
+    // "30 (cap 15)" instead of an over-cap "30/15" that read like an error.
+    $('view').innerHTML = '<h2>' + esc(S.kitchenHd) + '</h2>' + bs.map(function (b) {
+      var cap = b.cap || d.cap;
+      var fill = b.qty > cap ? '<span class="amber">' + esc(S.overCap(b.qty, cap)) + '</span>' : b.qty + '/' + cap;
+      return '<div class="card bucket" style="border-left-color:' + dishColour(b.colour, b.menuItemId) + '">' +
+        '<div class="row" style="margin-bottom:6px">' +
+        '<b class="grow">' + esc(b.name) + '</b>' +
+        '<span class="pill p-' + esc(b.status) + '">' + esc(S.bucket(b.status)) + '</span></div>' +
+        '<div class="row mut tnum" style="font-size:13px;margin-bottom:2px">' +
+          '<span>⏱ ' + esc(age(b.createdAt)) + '</span><span>🍽 ' + fill + '</span>' +
+          (b.takenByName ? '<span class="grow" style="text-align:right">👨‍🍳 ' + esc(b.takenByName) + '</span>' : '') +
+        '</div>' +
         (b.lines || []).map(function (l) {
           return '<div class="line"><span class="qty">' + l.qty + '×</span>' +
             '<span class="grow"><span class="nm">' + esc(l.tableName) + '</span>' +
             (l.note ? '<div class="note">📝 ' + esc(l.note) + '</div>' : '') + '</span>' +
-            (l.done ? '<span class="pill p-ready">ready</span>' : '') + '</div>';
+            (l.done ? '<span class="pill p-ready">' + esc(S.status('ready')) + '</span>' : '') + '</div>';
         }).join('') + '</div>';
     }).join('');
   };
@@ -867,6 +1195,7 @@ async function kitchen() {
   if (my === nav) timer = setInterval(function () { paint().catch(function () {}); }, 8000);
 }
 
+paintChrome();
 show('tables');
 </script>
 </body>

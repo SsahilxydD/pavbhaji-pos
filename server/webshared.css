@@ -4,19 +4,27 @@
    that iOS zooms the page on focus and the layout jumps. No CDNs, no web
    fonts: the shop's link is a cheap VPS and the page must paint instantly. */
 :root {
+  /* Every text colour below clears WCAG AA (4.5:1) on the backgrounds it is
+     used on — small grey labels in bright shop light were 2.98:1 before.
+     ink3 5.13:1 on bg · green 5.45:1 on green-bg, 6.13:1 white-on ·
+     amber 5.58:1 on amber-bg · danger 5.23:1 on danger-bg. */
   --red:#c63c0a; --red-deep:#a93307; --red-dark:#7a2e0e;
-  --ink:#221a12; --ink2:#6e6055; --ink3:#9c8d80;
+  --ink:#221a12; --ink2:#6e6055; --ink3:#75665a;
   --line:#efe6da; --bg:#faf6f0; --card:#ffffff;
-  --green:#1e8f53; --green-bg:#e4f6ea;
-  --amber:#b26a00; --amber-bg:#fff3e2;
+  --green:#17703f; --green-bg:#e4f6ea;
+  --amber:#8f5400; --amber-bg:#fff3e2;
   --blue:#1f5fa8; --blue-bg:#e8f0fa;
-  --danger:#d23b2e; --danger-bg:#fdecea;
+  --danger:#b8321f; --danger-bg:#fdecea;
   --shadow:0 1px 2px rgba(60,35,20,.06), 0 4px 16px rgba(60,35,20,.05);
   --r:16px;
   --safe-b:env(safe-area-inset-bottom, 0px);
 }
 * { box-sizing:border-box; margin:0; -webkit-tap-highlight-color:transparent; }
-html { -webkit-text-size-adjust:100%; }
+html {
+  -webkit-text-size-adjust:100%;
+  /* focus / scrollIntoView keep clear of the sticky header and action bar */
+  scroll-padding-top:calc(var(--top-h, 64px) + 8px); scroll-padding-bottom:96px;
+}
 body {
   font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
   background:var(--bg); color:var(--ink);
@@ -35,12 +43,17 @@ body {
   box-shadow:0 2px 10px rgba(60,35,20,.12);
 }
 .top .tile {
-  width:36px; height:36px; border-radius:12px; background:rgba(255,255,255,.16);
-  display:grid; place-items:center; font-size:19px; flex:0 0 36px;
+  width:42px; height:42px; border-radius:12px; background:rgba(255,255,255,.16);
+  display:grid; place-items:center; font-size:19px; flex:0 0 42px;
+  /* a <button>: on an inner screen it is the way back (Esc / Tab reach it) */
+  font-family:inherit; color:#fff; border:0; padding:0; min-height:0; cursor:pointer;
 }
+.top .tile.back { font-size:26px; font-weight:700; }
+.top .tile:disabled { opacity:1; cursor:default; }
 .top .ttl { flex:1; min-width:0; }
+.top .ttl b, .top .ttl small { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .top .ttl b { display:block; font-size:15.5px; letter-spacing:-.2px; }
-.top .ttl small { display:block; opacity:.78; font-size:11.5px; }
+.top .ttl small { display:block; font-size:12px; font-weight:600; }   /* full white: 4.5:1 even on the light end of the red */
 .top button {
   font:inherit; font-weight:700; font-size:13px; cursor:pointer;
   background:rgba(255,255,255,.14); color:#fff;
@@ -48,6 +61,27 @@ body {
   padding:9px 12px; min-height:38px;
 }
 .top button:active { background:rgba(255,255,255,.26); }
+
+/* Hinglish / हिं / ગુ — like the app's LangAction: shows the current language's own
+   mark; a native picker (an invisible <select> over the chip) lists the
+   three full names. 16px on the select or iOS zooms when it opens. */
+.lang {
+  position:relative; flex:0 0 auto; display:grid; place-items:center;
+  min-width:46px; min-height:38px; padding:0 10px; border-radius:11px; cursor:pointer;
+  font-weight:800; font-size:14px; line-height:1;
+  background:rgba(255,255,255,.14); color:#fff; border:1px solid rgba(255,255,255,.28);
+}
+.lang select {
+  position:absolute; inset:0; width:100%; height:100%; min-height:0; padding:0; margin:0;
+  opacity:0; cursor:pointer; font-size:16px; border:0;
+}
+.lang:focus-within { outline:2px solid #fff; outline-offset:1px; }
+/* the login page has no red header: a quiet chip in the top-right corner */
+.lang.corner {
+  position:absolute; top:calc(env(safe-area-inset-top, 0px) + 12px); right:12px;
+  background:var(--card); color:var(--red-deep); border-color:var(--line);
+}
+.lang.corner:focus-within { outline-color:var(--red); }
 
 /* offline strip: lives inside .top so it stays on screen while scrolling */
 .top { flex-wrap:wrap; row-gap:9px; }
@@ -63,8 +97,11 @@ body {
 }
 
 /* ---------- tab strip ---------- */
+/* Sticks just UNDER the header (whose height changes with the offline strip
+   and the phone's notch — syncTop() keeps --top-h right). At top:0 it slid
+   under the header and the tabs vanished on scroll. */
 .tabs {
-  position:sticky; top:0; z-index:15;
+  position:sticky; top:var(--top-h, 64px); z-index:15;
   display:flex; gap:6px; padding:9px 12px;
   background:var(--bg); border-bottom:1px solid var(--line);
   overflow-x:auto; -webkit-overflow-scrolling:touch;
@@ -97,13 +134,23 @@ h2:first-child { margin-top:4px; }
 .tnum { font-variant-numeric:tabular-nums; }
 
 /* ---------- buttons ---------- */
-button.primary, button.ghost, button.danger, button.okbtn {
+button.primary, button.ghost, button.danger, button.okbtn, button.warnbtn {
   font:inherit; font-weight:700; font-size:15px; cursor:pointer;
   border-radius:13px; padding:12px 16px; min-height:46px; border:1px solid transparent;
 }
 button.primary { background:var(--red); color:#fff; }
 button.primary:active { background:var(--red-deep); }
 button.okbtn { background:var(--green); color:#fff; }
+/* a Close that can't be pressed yet explains itself: ink on grey, readable */
+button.okbtn:disabled { opacity:1; background:#ece6de; color:var(--ink); font-size:14px; }
+/* "Close anyway": a close that marks unserved plates served — amber, not green */
+button.warnbtn { background:var(--amber); color:#fff; }
+/* small actions next to money (＋ discount, ✎ edit): chip-shaped, 44px tall */
+button.chipbtn {
+  font:inherit; font-size:13.5px; font-weight:800; cursor:pointer; white-space:nowrap;
+  min-height:44px; padding:8px 14px; border-radius:99px;
+  background:#fff4ee; color:var(--red-deep); border:1px solid #f3c3ab;
+}
 button.ghost { background:var(--card); color:var(--ink); border-color:var(--line); }
 button.danger { background:var(--danger-bg); color:var(--danger); border-color:#f6cfca; }
 button:disabled { opacity:.45; }
@@ -131,6 +178,12 @@ label.fld span { display:block; font-size:12px; font-weight:700; color:var(--ink
 .p-ready { background:var(--green-bg); color:var(--green); }
 .p-served { background:#f1ece5; color:var(--ink2); }
 .p-cancelled { background:var(--danger-bg); color:var(--danger); }
+/* kitchen bucket states: filling (still taking plates) · full (waiting for
+   a chef) · taken (on the tawa) */
+.p-open { background:var(--blue-bg); color:var(--blue); }
+.p-full { background:var(--amber-bg); color:var(--amber); }
+.p-taken { background:var(--green-bg); color:var(--green); }
+.card.bucket { border-left:6px solid var(--line); }
 
 /* ---------- table / order grid ---------- */
 .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:10px; }
@@ -145,6 +198,36 @@ label.fld span { display:block; font-size:12px; font-weight:700; color:var(--ink
 .tile-btn .nm { font-weight:800; font-size:15.5px; }
 .tile-btn .sub { font-size:12px; color:var(--ink2); }
 .tile-btn .amt { font-weight:800; font-size:15px; color:var(--red-deep); margin-top:auto; }
+
+/* Manager's tables grid — the tile's colour is the next move, as in the
+   app's TableCard: quiet = free · amber = kitchen has it · green = plates
+   at the pass, go get them · blue = all served, collect. Free tiles are
+   one short line, so far more of the room fits on one screen. */
+.tile-btn.free {
+  min-height:54px; padding:10px 13px; box-shadow:none;
+  background:#fbf7f1; border-color:#ede5dd;
+  flex-direction:row; align-items:center; gap:8px;
+}
+.tile-btn.free .nm { flex:1; min-width:0; font-size:17px; }
+.tile-btn.free .sub { color:var(--ink3); font-size:13px; }
+.tile-btn.cook { background:var(--amber-bg); border-color:#f2c88f; }
+.tile-btn.ready { background:var(--green-bg); border:2px solid #59b87e; padding:12px; }
+.tile-btn.collect { background:#e9f0fb; border-color:#8fb2e4; }
+.tile-btn .hd { display:flex; align-items:baseline; gap:6px; }
+.tile-btn .hd .nm { flex:1; min-width:0; font-size:19px; letter-spacing:-.3px;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.tile-btn .no { font-size:12.5px; font-weight:700; color:var(--ink2); }
+.tile-btn .money { font-weight:800; font-size:15px; font-variant-numeric:tabular-nums; }
+.tile-btn .meta {
+  display:flex; align-items:center; flex-wrap:wrap; gap:4px 6px; margin-top:auto;
+  font-size:12px; color:var(--ink2);
+}
+.tile-btn .meta .who { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:100%; }
+.tile-btn.busy.paid { background:var(--green-bg); border:2px solid #59b87e; padding:12px; }
+.spill { font-size:11px; font-weight:800; padding:3px 8px; border-radius:99px; white-space:nowrap; letter-spacing:.02em; }
+.spill.cook { background:#f5e3c2; color:var(--amber); }
+.spill.ready { background:var(--green); color:#fff; }
+.spill.collect { background:var(--blue); color:#fff; }
 
 /* ---------- line items ---------- */
 .line {
@@ -220,7 +303,6 @@ label.fld span { display:block; font-size:12px; font-weight:700; color:var(--ink
 .bar .cartbtn small { font-size:12px; font-weight:700; color:var(--red-deep); white-space:nowrap; }
 
 /* cart sheet + note sheet */
-.modal .box { max-height:92vh; overflow-y:auto; }
 .cart-ls .line { align-items:flex-start; }
 .cart-ls .step { margin-top:2px; }
 .notebtn {
@@ -263,11 +345,33 @@ label.fld span { display:block; font-size:12px; font-weight:700; color:var(--ink
 #login h1 { font-size:22px; letter-spacing:-.5px; margin-bottom:2px; }
 #login p.sub { color:var(--ink2); font-size:13.5px; margin-bottom:18px; }
 #login .card { padding:20px; }
-#login input {
-  font-size:27px; letter-spacing:.45em; text-align:center; padding-left:.45em;
-  margin-bottom:12px; min-height:56px;
-}
 .err { color:var(--danger); font-size:13px; min-height:19px; margin-bottom:8px; }
+/* the app's PinPad: 4 dots, then a 3×4 pad of big keys (≥60px) */
+#login .dots { display:flex; justify-content:center; gap:14px; margin:4px 0 10px; }
+#login .dots i {
+  /* empty dot: 3.2:1 ring, enough to count them (non-text contrast) */
+  width:16px; height:16px; border-radius:99px; background:#f4e9de; border:1.5px solid #9a8674;
+  transition:transform .12s, background .12s;
+}
+#login .dots i.on { background:var(--red); border-color:var(--red); transform:scale(1.15); }
+#login .dots.shake { animation:pinshake .32s; }
+@keyframes pinshake { 0%,100% { transform:none; } 20% { transform:translateX(16px); } 45% { transform:translateX(-13px); } 70% { transform:translateX(8px); } 88% { transform:translateX(-4px); } }
+#login .err { min-height:38px; font-weight:600; }
+#login .pad { display:grid; grid-template-columns:repeat(3, 1fr); gap:10px; }
+#login .pad button {
+  min-height:62px; border-radius:16px; font:inherit; font-size:24px; font-weight:700; cursor:pointer;
+  background:var(--card); color:var(--ink); border:1px solid var(--line); box-shadow:var(--shadow);
+  font-variant-numeric:tabular-nums;
+}
+#login .pad button:active { background:#f6efe6; transform:scale(.96); }
+#login .pad button.del { color:var(--ink2); }
+#login .pad.busy button { opacity:.6; }
+@media (max-height:700px) {
+  #login { margin-top:3vh; }
+  #login .tile { width:58px; height:58px; font-size:29px; margin-bottom:8px; border-radius:18px; }
+  #login p.sub { margin-bottom:10px; }
+  #login .pad button { min-height:58px; }
+}
 
 /* ---------- toast ---------- */
 #toasts {
@@ -320,6 +424,21 @@ label.fld span { display:block; font-size:12px; font-weight:700; color:var(--ink
 }
 .chips button.on { background:#fff4ee; color:var(--red-deep); border-color:var(--red); }
 
+/* keyboard shortcuts hint: only where there is a keyboard and a mouse */
+.kbdhint { display:none; font-size:12px; color:var(--ink3); margin-top:6px; }
+@media (hover:hover) and (pointer:fine) { .kbdhint { display:block; } }
+
+/* split: Cash ⇄ UPI boxes (each fills the other), then save */
+.split { display:grid; grid-template-columns:1fr 1fr auto; gap:8px; align-items:end; margin-top:6px; }
+.split label span { display:block; font-size:12px; font-weight:700; color:var(--ink2); margin-bottom:4px; }
+.split input { padding:10px 10px; }
+.split button { min-height:46px; padding:10px 14px; font-size:14px; white-space:nowrap; }
+/* change helper: the note handed over → what to give back */
+.change { display:flex; flex-wrap:wrap; align-items:center; gap:6px 8px; margin-top:10px; font-size:13.5px; }
+.change .chipbtn { min-height:44px; padding:6px 12px; background:var(--card); color:var(--ink); border-color:var(--line); }
+.change .chipbtn.on { background:#fff4ee; color:var(--red-deep); border-color:var(--red); }
+.change b { font-size:15px; }
+
 /* ---------- closed-bill history row ---------- */
 .billrow {
   display:flex; align-items:center; gap:10px; width:100%;
@@ -341,13 +460,65 @@ label.fld span { display:block; font-size:12px; font-weight:700; color:var(--ink
   min-height:40px; padding:8px 13px;
 }
 .datenav b { font-size:15px; padding:0 4px; font-variant-numeric:tabular-nums; }
+/* bills: search + Cash / UPI / discount filters; the total of what is
+   listed rides in the bottom bar */
+.bills-find { display:flex; gap:8px; align-items:center; margin-bottom:10px; }
+.bills-find input { flex:1; min-width:0; min-height:44px; padding:9px 11px; -webkit-appearance:none; appearance:none; }
+.bchips { display:flex; gap:6px; flex:0 0 auto; }
+.bchips .nchip { min-height:44px; padding:8px 11px; font-size:14px; white-space:nowrap; }
+.bar.sumbar { gap:12px; }
+.bar.sumbar .grow { flex:1; min-width:0; }
+.bar.sumbar b { font-size:15px; }
+.bar.sumbar .mut { font-size:12.5px; }
+.bar.sumbar .sumamt { font-size:20px; color:var(--red-deep); }
+
+/* ---------- laptop: everything lines up with the 760px column ----------
+   The content was a centred 760px column while the header, the tab strip
+   and the sticky bar ran the full 1366px: tabs floated far left and Close
+   was 1340px wide. Their insides now line up with the content. */
+@media (min-width:800px) {
+  .top { --padx:max(14px, calc(50vw - 368px)); padding-left:var(--padx); padding-right:var(--padx); }
+  .top .net {
+    flex-basis:calc(100% + 2 * var(--padx));
+    margin-left:calc(-1 * var(--padx)); margin-right:calc(-1 * var(--padx));
+    padding-left:var(--padx); padding-right:var(--padx);
+  }
+  .tabs, .bar { padding-left:max(12px, calc(50vw - 368px)); padding-right:max(12px, calc(50vw - 368px)); }
+}
+/* The cashier's bill on a laptop: invoice on the left, payment and the
+   Print / Close buttons on the right, always in view (at 768px tall the
+   split boxes used to sit under the sticky bar). */
+.billgrid > .card { margin-bottom:11px; }
+.acts-wide { display:flex; flex-direction:column; gap:9px; }
+.acts-wide button { width:100%; }
+.acts-wide button.okbtn { min-height:52px; }
+@media (min-width:1024px) {
+  .wrap.wide { max-width:1120px; }
+  body.wide .top { --padx:max(14px, calc(50vw - 548px)); }
+  .billgrid { display:grid; grid-template-columns:minmax(0, 1fr) 390px; gap:14px; align-items:start; }
+  .billgrid .paycol { position:sticky; top:calc(var(--top-h, 64px) + 12px); }
+}
+
+/* ---------- printing a bill without leaving the screen ----------
+   The /bill page sits in a hidden frame and is printed from there. Should
+   a browser print the whole page instead (iOS Safari does), paper shows
+   only that frame. */
+#printFrame { position:fixed; left:-10000px; top:0; width:360px; height:600px; border:0; }
+@media print {
+  body.has-print > *:not(#printFrame) { display:none !important; }
+  body.has-print #printFrame { position:static; width:100%; }
+}
 
 /* ---------- dialog (discount, confirm close, blockers) ---------- */
+/* --kb / --vvh come from visualViewport (see fitKeyboard): when the phone
+   keyboard opens, the sheet rises above it instead of hiding Save under it. */
 .modal {
   position:fixed; inset:0; z-index:70; background:rgba(40,22,10,.45);
   display:flex; align-items:flex-end; justify-content:center;
+  padding-bottom:var(--kb, 0px);
 }
 .modal .box {
+  max-height:calc(var(--vvh, 100vh) - 16px); overflow-y:auto;
   width:100%; max-width:460px; background:var(--card);
   border-radius:20px 20px 0 0; padding:18px 16px calc(var(--safe-b) + 16px);
   box-shadow:0 -10px 30px rgba(0,0,0,.22);
@@ -358,3 +529,6 @@ label.fld span { display:block; font-size:12px; font-weight:700; color:var(--ink
 /* two stacked actions (print above close), like the app's bottom bar */
 .bar.stack { flex-direction:column; align-items:stretch; }
 .bar.stack button { flex:0 0 auto; width:100%; }
+/* the bill's actions in ONE row (~70px, not 128): a compact print, then Close */
+.bar.acts button.printbtn { flex:0 0 58px; padding:0; font-size:22px; }
+.bar.acts button.okbtn { min-height:52px; line-height:1.2; }

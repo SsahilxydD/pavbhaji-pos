@@ -11,17 +11,24 @@
 </head>
 <body>
 
+<label class="lang corner"><span id="langMark">Hinglish</span><select id="langSel" aria-label="Language / भाषा">
+  <option value="hg">Hinglish</option><option value="hi">हिंदी</option><option value="gu">ગુજરાતી</option></select></label>
+
 <div id="login">
   <div class="tile">🍽</div>
   <h1>PavBhaji POS</h1>
-  <p class="sub">Apna PIN daalo</p>
-  <div class="card">
-    <input id="pin" type="password" inputmode="numeric" autocomplete="one-time-code"
-           maxlength="8" autofocus placeholder="••••">
-    <div class="err" id="err"></div>
-    <button class="primary" id="go" style="width:100%">Log in</button>
+  <p class="sub" id="subT">Enter your PIN</p>
+  <!-- The app's PinPad: 4 dots and a big 3×4 pad, no OS keyboard, and it
+       logs in by itself on the 4th digit. A laptop can just type it. -->
+  <div class="dots" id="dots" role="status" aria-live="polite"><i></i><i></i><i></i><i></i></div>
+  <div class="err" id="err"></div>
+  <div class="pad" id="pad">
+    <button data-k="1">1</button><button data-k="2">2</button><button data-k="3">3</button>
+    <button data-k="4">4</button><button data-k="5">5</button><button data-k="6">6</button>
+    <button data-k="7">7</button><button data-k="8">8</button><button data-k="9">9</button>
+    <span></span><button data-k="0">0</button><button data-k="del" class="del" id="delKey">⌫</button>
   </div>
-  <p class="hint">Wahi PIN jo phone app me daalte ho. PIN se hi tay hota hai konsi screen khulegi.</p>
+  <p class="hint" id="hintT"></p>
 </div>
 
 <div id="toasts"></div>
@@ -36,6 +43,69 @@ var HOME = { admin:'/admin', manager:'/manager', cashier:'/cashier' };
 
 var $ = function (id) { return document.getElementById(id); };
 
+// Hinglish (the default — the shop's own words) / हिं / ગુ. Hindi and
+// Gujarati use the app's ui/L10n.kt words. The choice is kept in this
+// browser and every screen after the PIN uses it; a phone that already
+// chose हिं or ગુ keeps it.
+var LANG_KEY = 'pbpos.lang', LANG_MARK = { hg:'Hinglish', hi:'हिं', gu:'ગુ' };
+var lang = 'hg';
+try { lang = LANG_MARK[localStorage.getItem(LANG_KEY)] ? localStorage.getItem(LANG_KEY) : 'hg'; } catch (e) {}
+function t(hg, hi, gu) { return lang === 'hi' ? hi : lang === 'gu' ? gu : hg; }
+var S = {};
+function strings() {
+  document.documentElement.lang = lang === 'hg' ? 'hi-Latn' : lang;
+  S = {
+    enterPin: t('Apna PIN daalo', 'अपना PIN डालो', 'તમારો PIN નાખો'),
+    hint: t('Wahi PIN jo phone app me daalte ho. PIN se hi tay hota hai konsi screen khulegi.',
+            'वही PIN जो फ़ोन ऐप में डालते हो। PIN से ही तय होता है कौन-सी स्क्रीन खुलेगी।',
+            'એ જ PIN જે ફોન એપમાં નાખો છો. PIN થી જ નક્કી થાય છે કઈ સ્ક્રીન ખુલશે.'),
+    pin4: t('PIN kam se kam 4 digit ka hai', 'PIN 4 अंकों का है', 'PIN 4 આંકડાનો છે'),
+    del: t('Mitao', 'मिटाओ', 'ભૂંસો'),
+    dotsLabel: function (n) { return t('4 me se ' + n + ' digit', '4 में से ' + n + ' अंक', '4 માંથી ' + n + ' આંકડા'); },
+    noNet: t('Network nahi hai — dobara try karo', 'नेटवर्क नहीं है — फिर कोशिश करो', 'નેટવર્ક નથી — ફરી પ્રયત્ન કરો'),
+    noServer: t('Server se jawab nahi aaya — dobara try karo', 'सर्वर से जवाब नहीं आया — फिर कोशिश करो', 'સર્વરનો જવાબ ન આવ્યો — ફરી પ્રયત્ન કરો'),
+    wrongPin: t('wrong PIN', 'गलत PIN', 'ખોટો PIN'),
+    wait: function (s) { return t('too many wrong PINs — wait ' + s + 's', 'बहुत बार गलत PIN — ' + s + ' सेकंड रुको', 'ઘણી વાર ખોટો PIN — ' + s + ' સેકન્ડ રાહ જુઓ'); },
+    appOnly: function (role) {
+      return t('PIN sahi hai (' + role + '), par ye role phone app me chalta hai.',
+               'PIN सही है (' + role + '), पर यह रोल फ़ोन ऐप में चलता है।',
+               'PIN સાચો છે (' + role + '), પણ આ રોલ ફોન એપમાં ચાલે છે.');
+    },
+    role: function (raw) {
+      return ({ waiter: t('waiter', 'वेटर', 'વેઈટર'), chef: t('chef', 'शेफ़', 'શેફ'),
+                parcel: t('parcel', 'पार्सल मैनेजर', 'પાર્સલ મેનેજર') })[raw] || raw;
+    }
+  };
+}
+strings();
+
+// The server says these in English (Hinglish shows them as they come, as it
+// always did); हिं / ગુ put them in the staff's words.
+function loginError(msg) {
+  msg = String(msg || '');
+  if (lang === 'hg') return msg;
+  if (msg === 'wrong PIN') return S.wrongPin;
+  var m = /^too many wrong PINs — wait (\d+)s/.exec(msg);
+  if (m) return S.wait(m[1]);
+  if (msg.indexOf('PIN must be') === 0) return S.pin4;
+  return msg;
+}
+
+function paintText() {
+  $('langSel').value = lang;
+  $('langMark').textContent = LANG_MARK[lang];
+  $('subT').textContent = S.enterPin;
+  $('hintT').textContent = S.hint;
+  $('delKey').setAttribute('aria-label', S.del);
+  paintDots();
+}
+$('langSel').onchange = function () {
+  lang = this.value;
+  try { localStorage.setItem(LANG_KEY, lang); } catch (e) {}
+  strings(); paintText();
+  $('err').textContent = '';
+};
+
 function toast(msg, kind) {
   var el = document.createElement('div');
   el.className = 'toast' + (kind ? ' ' + kind : '');
@@ -48,17 +118,56 @@ function toast(msg, kind) {
 // Already signed in on this phone? Don't make them retype — jump straight in.
 (function () {
   try {
-    var t = localStorage.getItem(TOK);
+    var tk = localStorage.getItem(TOK);
     var s = JSON.parse(localStorage.getItem(WHO) || 'null');
-    if (t && s && HOME[s.role]) location.replace(HOME[s.role]);
+    if (tk && s && HOME[s.role]) location.replace(HOME[s.role]);
   } catch (e) { /* corrupt storage is not worth a crash — just show the PIN box */ }
 })();
 
-async function login() {
-  var pin = $('pin').value.trim();
+// ---------------------------------------------------------------- PIN pad
+// PINs are exactly 4 digits (the server only issues those), so the 4th
+// digit logs in — no OS keyboard to raise first (iOS ignores autofocus),
+// no "Log in" button to find.
+var pin = '', busy = false;
+
+function paintDots() {
+  var dots = $('dots').children;
+  for (var i = 0; i < dots.length; i++) dots[i].className = i < pin.length ? 'on' : '';
+  $('dots').setAttribute('aria-label', S.dotsLabel(pin.length));
+}
+
+function press(k) {
+  if (busy) return;
+  if (k === 'del') { pin = pin.slice(0, -1); paintDots(); return; }
+  if (pin.length >= 4) return;
+  pin += k;
   $('err').textContent = '';
-  if (pin.length < 4) { $('err').textContent = 'PIN kam se kam 4 digit ka hai'; return; }
-  $('go').disabled = true;
+  paintDots();
+  if (pin.length === 4) login();
+}
+
+$('pad').addEventListener('click', function (e) {
+  var b = e.target.closest('button[data-k]');
+  if (b) press(b.dataset.k);
+});
+// a laptop types it: digits, Backspace (Enter isn't needed)
+document.addEventListener('keydown', function (e) {
+  if (e.ctrlKey || e.metaKey || e.altKey || e.target.tagName === 'SELECT') return;
+  if (/^[0-9]$/.test(e.key)) { e.preventDefault(); press(e.key); }
+  else if (e.key === 'Backspace') { e.preventDefault(); press('del'); }
+});
+
+// Wrong PIN: the dots shake and clear, the reason stays under them.
+function reject(msg) {
+  $('err').textContent = msg;
+  pin = ''; paintDots();
+  var d = $('dots');
+  d.classList.remove('shake'); void d.offsetWidth; d.classList.add('shake');
+}
+
+async function login() {
+  busy = true;
+  $('pad').classList.add('busy');
   try {
     var r = await fetch('/api/login', {
       method: 'POST',
@@ -66,35 +175,32 @@ async function login() {
       body: JSON.stringify({ pin: pin })
     }).catch(function () {
       // No answer at all — say so instead of the browser's "Failed to fetch".
-      throw new Error('Network nahi hai — dobara try karo');
+      throw new Error(S.noNet);
     });
-    if (r.status === 502 || r.status === 503 || r.status === 504) throw new Error('Server se jawab nahi aaya — dobara try karo');
+    if (r.status === 502 || r.status === 503 || r.status === 504) throw new Error(S.noServer);
     var d = await r.json().catch(function () { return {}; });
-    if (!r.ok) throw new Error(d.error || ('server error ' + r.status));
+    if (!r.ok) throw new Error(loginError(d.error || ('server error ' + r.status)));
 
     var dest = HOME[d.staff.role];
     if (!dest) {
       // waiter / chef / parcel have no browser screen — the phone app is their
       // tool. Hand the session straight back rather than leaving it dangling.
       fetch('/api/logout', { method: 'POST', headers: { 'Authorization': 'Bearer ' + d.token } });
-      $('err').textContent = 'PIN sahi hai (' + d.staff.role + '), par ye role phone app me chalta hai.';
-      $('pin').value = '';
+      reject(S.appOnly(S.role(d.staff.role)));
       return;
     }
     localStorage.setItem(TOK, d.token);
     localStorage.setItem(WHO, JSON.stringify(d.staff));
     location.replace(dest);
   } catch (e) {
-    $('err').textContent = e.message;
-    $('pin').value = '';
-    $('pin').focus();
+    reject(e.message);
   } finally {
-    $('go').disabled = false;
+    busy = false;
+    $('pad').classList.remove('busy');
   }
 }
 
-$('go').onclick = login;
-$('pin').addEventListener('keydown', function (e) { if (e.key === 'Enter') login(); });
+paintText();
 </script>
 </body>
 </html>

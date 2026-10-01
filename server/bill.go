@@ -304,6 +304,9 @@ func (s *Server) handleBillHTML(w http.ResponseWriter, r *http.Request) {
                    letter-spacing:.06em; padding:2px 0 5px; }
   table.items td { padding:3.5px 0; vertical-align:top; }
   .r { text-align:right; } .c { text-align:center; }
+  /* the th rule above out-ranks .r / .c, which left QTY, RATE and AMOUNT
+     flush left over right-aligned numbers */
+  table.items th.r { text-align:right; } table.items th.c { text-align:center; }
   .total td { padding-top:9px; font-size:17px; font-weight:800; }
   .count { color:#6f645b; font-size:12px; text-align:right; }
   .open-note { color:#a05a00; font-size:12px; text-align:center; margin-top:6px; }
@@ -380,7 +383,11 @@ func (s *Server) handleBillHTML(w http.ResponseWriter, r *http.Request) {
 		b.WriteString(`<tr><td colspan="2" style="color:#6f645b">Payment</td><td colspan="2" class="r" style="font-size:12.5px">` +
 			strings.Join(pay, " + ") + paid + `</td></tr>`)
 	}
-	b.WriteString(`</table><div class="count">` + strconv.FormatInt(pieces, 10) + ` item(s)</div>`)
+	itemWord := " items"
+	if pieces == 1 {
+		itemWord = " item"
+	}
+	b.WriteString(`</table><div class="count">` + strconv.FormatInt(pieces, 10) + itemWord + `</div>`)
 	if d.Status == "open" {
 		b.WriteString(`<div class="open-note">running bill — order is still open</div>`)
 	}

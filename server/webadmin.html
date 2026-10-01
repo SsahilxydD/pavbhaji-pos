@@ -159,6 +159,17 @@
   .toast.bad { background:var(--danger); }
   @keyframes toastin { from { opacity:0; transform:translateY(8px);} to { opacity:1; transform:none;} }
 
+  /* dashboard: how the money adds up, and the doors to the other screens */
+  .hero .reco { font-size:13.5px; font-weight:600; color:var(--ink); margin:6px 0 2px; }
+  .doors { display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:10px; margin-top:12px; }
+  .door {
+    display:flex; flex-direction:column; gap:2px; text-decoration:none; color:var(--ink);
+    background:var(--card); border:1px solid var(--line); border-radius:var(--r);
+    padding:14px 16px; font-weight:800; font-size:15px; box-shadow:var(--shadow);
+  }
+  .door:hover { box-shadow:var(--shadow-lift); border-color:#e2d5c4; }
+  .door small { font-size:12.5px; font-weight:500; color:var(--ink2); }
+
   /* stock: one big switch per dish */
   .stockhd { display:flex; flex-direction:column; gap:2px; margin-bottom:6px; }
   .stockhd b { font-size:18px; }
@@ -285,6 +296,13 @@ const S = {
   tawaCap: 'tawa cap', sealMin: 'seal (min)', auto: 'auto', inStock: 'in stock', outOfStock: 'out of stock',
   outCount: n => n ? n + ' dish' + (n === 1 ? '' : 'es') + ' out of stock' : 'Everything is in stock',
   stockHint: 'Tap a dish to switch it. It saves at once and greys out on every phone.',
+  collectedToday: 'COLLECTED TODAY', closedBills: n => n + ' closed bill' + (n === 1 ? '' : 's'),
+  served: 'served', discounts: 'discounts', stillOpen: (a, n) => a + ' still open on ' + n + ' table' + (n === 1 ? '' : 's'),
+  refreshes: 'refreshes by itself',
+  orders: 'orders', tablesOpen: 'tables open', platesCooking: 'plates cooking', phonesOnline: 'phones online',
+  openManager: 'Open the Manager screen', managerWhat: 'tables, punching orders, parcels, kitchen',
+  openCashier: 'Open the Cashier screen', cashierWhat: 'open bills (view only for admin) and closed bills',
+  netCollected: '✅ net collected', notCollected: a => a + ' on open tables not collected yet',
   archive: 'hide everywhere',
   namePriceNeeded: 'name and a valid ₹ price are needed',
   unsaved: n => n + ' dish row' + (n === 1 ? '' : 's') + ' not saved',
@@ -354,25 +372,49 @@ function show(t) {
 }
 
 // ---- dashboard ----
+// What is still open right now (from the live tables list): the money on
+// tables nobody has closed yet.
+async function openMoney() {
+  const t = await api('GET','/api/tables').catch(() => null);
+  if (!t) return null;
+  const open = (t.tables || []).filter(x => x.order);
+  return { n: open.length, total: open.reduce((s, x) => s + x.order.total, 0) };
+}
+
+// The hero used to be "SALES TODAY" = the value of served plates before
+// discount, while the cashier's Bills tab showed what was collected: two
+// different "today" numbers with nothing between them. The hero is now
+// the money collected (cash + UPI on closed bills — the drawer), and the
+// line under it accounts for the rest: what was served, the discounts,
+// and what is still open on tables.
 async function dashboard() {
   const paint = async () => {
-    const d = await api('GET','/api/admin/dashboard');
+    const [d, open] = await Promise.all([api('GET','/api/admin/dashboard'), openMoney()]);
     if (tab !== 'dashboard') return;
+    todayDate = d.date;
+    const got = (d.paidCash || 0) + (d.paidOnline || 0);
     $('view').innerHTML = `
       <div class="hero">
-        <span class="lbl">SALES TODAY</span>
-        <b class="big">${rupees(d.soldTotal)}</b>
-        <span class="mut">refreshes by itself · orders and the kitchen queue live in the phone app</span>
+        <span class="lbl">${esc(S.collectedToday)}</span>
+        <b class="big">${rupees(got)}</b>
+        <span class="mut">💵 ${rupees(d.paidCash || 0)} · 📲 ${rupees(d.paidOnline || 0)} · ${esc(S.closedBills(d.ordersClosed))}</span>
+        <div class="reco">${esc(S.served)} ${rupees(d.soldTotal)} · ${esc(S.discounts)} −${rupees(d.discountTotal || 0)}${open && open.n ? ' · ' + esc(S.stillOpen(rupees(open.total), open.n)) : ''}</div>
+        <span class="mut">${esc(S.refreshes)}</span>
       </div>
       <div class="stats">
-        <div class="stat"><span class="lbl">orders</span><b>${d.ordersOpened}</b></div>
-        <div class="stat amber"><span class="lbl">tables open</span><b>${d.ordersOpen}</b></div>
-        <div class="stat"><span class="lbl">plates cooking</span><b>${d.kitchenPending}</b></div>
-        <div class="stat green"><span class="lbl">phones online</span><b>${d.devicesOnline}</b></div>
+        <div class="stat"><span class="lbl">${esc(S.orders)}</span><b>${d.ordersOpened}</b></div>
+        <div class="stat amber"><span class="lbl">${esc(S.tablesOpen)}</span><b>${d.ordersOpen}</b></div>
+        <div class="stat"><span class="lbl">${esc(S.platesCooking)}</span><b>${d.kitchenPending}</b></div>
+        <div class="stat green"><span class="lbl">${esc(S.phonesOnline)}</span><b>${d.devicesOnline}</b></div>
+      </div>
+      <div class="doors">
+        <a class="door" href="/manager">🍽 ${esc(S.openManager)}<small>${esc(S.managerWhat)}</small></a>
+        <a class="door" href="/cashier">🧾 ${esc(S.openCashier)}<small>${esc(S.cashierWhat)}</small></a>
       </div>`;
   };
-  await paint(); dashTimer = setInterval(paint, 15000);
+  await paint(); dashTimer = setInterval(() => paint().catch(() => {}), 15000);
 }
+let todayDate = '';
 
 // ---- stock ----
 // "X is khatam" is the admin action most needed mid-service, and it was
@@ -669,8 +711,13 @@ function shiftBills(days) {
 // ---- report ----
 let repDate = '';
 async function report() {
+  const asked = repDate;
   const d = await api('GET','/api/admin/report' + (repDate ? '?date='+repDate : ''));
   repDate = d.date;
+  if (!asked) todayDate = d.date;
+  // tables still open count against today only (the live list has no date)
+  const open = d.ordersOpen > 0 && d.date === todayDate ? await openMoney() : null;
+  const got = (d.paidCash || 0) + (d.paidOnline || 0);
   const lines = (arr, cls) => arr.length
     ? arr.map(l => `<tr><td>${l.qty}× ${esc(l.name)}</td><td class="r ${cls||''}">${rupees(l.value)}</td></tr>`).join('')
     : '<tr><td class="mut">nothing</td><td></td></tr>';
@@ -685,11 +732,12 @@ async function report() {
       <div class="stat red"><span class="lbl">cancelled</span><b>${rupees(d.cancelledTotal)}</b></div>
     </div>
     <div class="stats" style="margin-top:10px">
+      <div class="stat green"><span class="lbl">${esc(S.netCollected)}</span><b>${rupees(got)}</b></div>
       <div class="stat"><span class="lbl">💵 cash in drawer</span><b>${rupees(d.paidCash||0)}</b></div>
       <div class="stat"><span class="lbl">📲 online / UPI</span><b>${rupees(d.paidOnline||0)}</b></div>
       <div class="stat amber"><span class="lbl">discounts given</span><b>${rupees(d.discountTotal||0)}</b></div>
     </div>
-    ${d.ordersOpen>0?`<p class="redtx" style="margin-top:10px">⚠ ${d.ordersOpen} order(s) still open for this date</p>`:''}
+    ${d.ordersOpen>0?`<p class="redtx" style="margin-top:10px">⚠ ${d.ordersOpen} order(s) still open for this date${open && open.n ? ' — ' + esc(S.notCollected(rupees(open.total))) : ''}</p>`:''}
     <h2>Sold (served items)</h2><div class="card"><table>${lines(d.sold)}
       <tr><th>TOTAL</th><th class="r green" style="font-size:14px">${rupees(d.soldTotal)}</th></tr></table></div>
     <h2>By waiter</h2><div class="card"><table>${d.waiters.map(w =>

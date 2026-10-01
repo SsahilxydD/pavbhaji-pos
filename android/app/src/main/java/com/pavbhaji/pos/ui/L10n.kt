@@ -208,7 +208,11 @@ object S {
     // ---- waiter serve list ----
     val serveTitle get() = t("Serve", "परोसो", "પીરસો")
     val nothingToCarry get() = t("nothing to carry", "कुछ नहीं ले जाना", "કંઈ લઈ જવાનું નથી")
-    fun toCarry(n: Int) = t("$n to carry · oldest on top", "$n ले जाने हैं · सबसे पुराना ऊपर", "$n લઈ જવાના · સૌથી જૂનું ઉપર")
+    fun toCarry(n: Int) = t(
+        "$n to carry · by table, longest wait on top",
+        "$n ले जाने हैं · टेबल के हिसाब से, सबसे पुराना ऊपर",
+        "$n લઈ જવાના · ટેબલ પ્રમાણે, સૌથી જૂનું ઉપર"
+    )
     fun toCarryTables(n: Int, tables: Int) = t(
         "$n to carry · $tables tables · oldest on top",
         "$n ले जाने हैं · $tables टेबल · सबसे पुराना ऊपर",

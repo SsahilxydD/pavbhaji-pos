@@ -196,8 +196,27 @@ private fun TableCarryCard(g: ReadyGroup, modifier: Modifier = Modifier) {
     }
 }
 
+// One trip per table. Sorting purely by age scattered a table across the list
+// (T1 in rows 1, 2 and 7) and put a drink punched early above hot food that
+// came off the tawa later. Now a table's plates sit together, the table that
+// has waited longest on top; inside a table hot kitchen plates come first,
+// drinks and counter items after, anything held for the bhaji last. Tables
+// with nothing carryable yet (all held) sink below the ones a waiter can act on.
+private fun carryOrder(lines: List<PickupLineDto>): List<PickupLineDto> =
+    lines.groupBy { it.tableName }.values
+        .sortedWith(
+            compareBy<List<PickupLineDto>>(
+                { g -> g.all { it.waiting } },
+                { g -> g.filter { !it.waiting }.minOfOrNull { it.sinceMs } ?: g.minOf { it.sinceMs } },
+                { g -> g.first().tableName }
+            )
+        )
+        .flatMap { g ->
+            g.sortedWith(compareBy({ it.waiting }, { it.station == "counter" }, { it.sinceMs }, { it.itemId }))
+        }
+
 // The waiter's ENTIRE app: one flat vertical list — every plate to carry right
-// now, oldest first. Each row reads like a call-out: "2× Cheese Bhaji → T4 ✓".
+// now, a table at a time. Each row reads like a call-out: "2× Cheese Bhaji → T4 ✓".
 // Waiters never take orders (that's the manager's job); they only serve, so
 // there are no tabs, no tables grid, nothing else to learn.
 @Composable
@@ -223,7 +242,7 @@ fun ServeScreen(onLogout: () -> Unit) {
     LaunchedEffect(Unit) { while (true) { delay(15_000); refresh() } }
     toast?.let { LaunchedEffect(it) { delay(2500); toast = null } }
 
-    val sorted = lines.sortedWith(compareBy({ it.sinceMs }, { it.itemId }))
+    val sorted = carryOrder(lines)
     // History renders oldest→newest, so the most recent serve sits directly
     // above the live list — one small scroll up answers "what did I just take?".
     val history = served.reversed()
@@ -270,9 +289,11 @@ fun ServeScreen(onLogout: () -> Unit) {
                     }
                     items(sorted.size, key = { "a${sorted[it].itemId}" }) { i ->
                         val l = sorted[i]
+                        // A little air where the next table starts.
+                        val newTable = i > 0 && sorted[i - 1].tableName != l.tableName
                         ServeRow(
                             l,
-                            modifier = Modifier.animateItem(),
+                            modifier = Modifier.animateItem().padding(top = if (newTable) 6.dp else 0.dp),
                             onServe = {
                                 scope.launch {
                                     when (val r = Deps.api.itemStatus(l.itemId, "served")) {

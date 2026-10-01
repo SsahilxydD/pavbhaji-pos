@@ -54,6 +54,7 @@ import com.pavbhaji.pos.ui.CardLine
 import com.pavbhaji.pos.ui.ConfirmDialog
 import com.pavbhaji.pos.ui.EmptyState
 import com.pavbhaji.pos.ui.ErrorBanner
+import com.pavbhaji.pos.ui.ListSkeleton
 import com.pavbhaji.pos.ui.Pb
 import com.pavbhaji.pos.ui.Pill
 import com.pavbhaji.pos.ui.S
@@ -89,10 +90,13 @@ fun ParcelHome(onLogout: () -> Unit) {
     var tables by remember { mutableStateOf<List<TableStateDto>>(emptyList()) }
     var loadError by remember { mutableStateOf<String?>(null) }
     var toast by remember { mutableStateOf<String?>(null) }
+    // Until the first answer, "no parcels" would be a guess — and staff
+    // re-punch parcels they think are missing.
+    var loaded by remember { mutableStateOf(false) }
 
     suspend fun refresh() {
         when (val r = Deps.api.tables()) {
-            is ApiResult.Ok -> { tables = r.value.tables; loadError = null }
+            is ApiResult.Ok -> { tables = r.value.tables; loadError = null; loaded = true }
             is ApiResult.Err -> loadError = r.message
         }
     }
@@ -127,7 +131,11 @@ fun ParcelHome(onLogout: () -> Unit) {
     Column(Modifier.fillMaxSize()) {
         AppHeader(
             title = "🥡 " + S.parcelsTitle,
-            subtitle = "${Deps.session.staffName} · ${S.openParcels(parcels.size)}",
+            subtitle = "${Deps.session.staffName} · " + when {
+                loaded -> S.openParcels(parcels.size)
+                loadError != null -> S.offlineShort
+                else -> S.loading
+            },
             actions = { com.pavbhaji.pos.ui.LogoutAction(onLogout) }
         )
         ErrorBanner(loadError)
@@ -140,7 +148,9 @@ fun ParcelHome(onLogout: () -> Unit) {
             LaunchedEffect(it) { delay(2500); toast = null }
         }
 
-        if (parcels.isEmpty()) {
+        if (!loaded) {
+            Box(Modifier.weight(1f).fillMaxWidth()) { ListSkeleton(rows = 3, rowHeight = 124.dp) }
+        } else if (parcels.isEmpty()) {
             Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
                 EmptyState("🥡", S.noParcels)
             }

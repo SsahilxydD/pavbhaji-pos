@@ -20,7 +20,11 @@
   --safe-b:env(safe-area-inset-bottom, 0px);
 }
 * { box-sizing:border-box; margin:0; -webkit-tap-highlight-color:transparent; }
-html { -webkit-text-size-adjust:100%; }
+html {
+  -webkit-text-size-adjust:100%;
+  /* focus / scrollIntoView keep clear of the sticky header and action bar */
+  scroll-padding-top:calc(var(--top-h, 64px) + 8px); scroll-padding-bottom:96px;
+}
 body {
   font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
   background:var(--bg); color:var(--ink);
@@ -130,13 +134,23 @@ h2:first-child { margin-top:4px; }
 .tnum { font-variant-numeric:tabular-nums; }
 
 /* ---------- buttons ---------- */
-button.primary, button.ghost, button.danger, button.okbtn {
+button.primary, button.ghost, button.danger, button.okbtn, button.warnbtn {
   font:inherit; font-weight:700; font-size:15px; cursor:pointer;
   border-radius:13px; padding:12px 16px; min-height:46px; border:1px solid transparent;
 }
 button.primary { background:var(--red); color:#fff; }
 button.primary:active { background:var(--red-deep); }
 button.okbtn { background:var(--green); color:#fff; }
+/* a Close that can't be pressed yet explains itself: ink on grey, readable */
+button.okbtn:disabled { opacity:1; background:#ece6de; color:var(--ink); font-size:14px; }
+/* "Close anyway": a close that marks unserved plates served — amber, not green */
+button.warnbtn { background:var(--amber); color:#fff; }
+/* small actions next to money (＋ discount, ✎ edit): chip-shaped, 44px tall */
+button.chipbtn {
+  font:inherit; font-size:13.5px; font-weight:800; cursor:pointer; white-space:nowrap;
+  min-height:44px; padding:8px 14px; border-radius:99px;
+  background:#fff4ee; color:var(--red-deep); border:1px solid #f3c3ab;
+}
 button.ghost { background:var(--card); color:var(--ink); border-color:var(--line); }
 button.danger { background:var(--danger-bg); color:var(--danger); border-color:#f6cfca; }
 button:disabled { opacity:.45; }
@@ -427,3 +441,6 @@ label.fld span { display:block; font-size:12px; font-weight:700; color:var(--ink
 /* two stacked actions (print above close), like the app's bottom bar */
 .bar.stack { flex-direction:column; align-items:stretch; }
 .bar.stack button { flex:0 0 auto; width:100%; }
+/* the bill's actions in ONE row (~70px, not 128): a compact print, then Close */
+.bar.acts button.printbtn { flex:0 0 58px; padding:0; font-size:22px; }
+.bar.acts button.okbtn { min-height:52px; line-height:1.2; }

@@ -92,6 +92,13 @@ function strings() {
     onlineTooBig: function (a) { return t('Online amount can\'t be more than ' + a, 'ऑनलाइन रकम ' + a + ' से ज़्यादा नहीं हो सकती', 'ઓનલાઈન રકમ ' + a + ' થી વધારે ન હોઈ શકે'); },
     print: t('🖨  Print bill', '🖨  बिल छापो', '🖨  બિલ છાપો'),
     closeAmt: function (a) { return t('Close · ' + a, 'बंद करो · ' + a, 'બંધ કરો · ' + a); },
+    payFirst: function (a) { return t('Payment first · ' + a + ' due', 'पहले पेमेंट · ' + a + ' बाकी', 'પહેલાં પેમેન્ટ · ' + a + ' બાકી'); },
+    billStale: t('Items changed — refreshing the bill…', 'आइटम बदले — बिल ताज़ा हो रहा है…', 'આઈટમ બદલાઈ — બિલ તાજું થાય છે…'),
+    noBill: t('Bill not ready yet — one moment', 'बिल अभी तैयार नहीं — थोड़ा रुको', 'બિલ હજી તૈયાર નથી — થોડી રાહ જુઓ'),
+    paidLine: function (parts) { return t('Payment: ', 'पेमेंट: ', 'પેમેન્ટ: ') + parts + ' ✓'; },
+    cashPart: function (a) { return t(a + ' cash', a + ' कैश', a + ' કેશ'); },
+    upiPart: function (a) { return t(a + ' UPI', a + ' UPI', a + ' UPI'); },
+    editDiscount: t('✎ edit', '✎ बदलो', '✎ બદલો'),
     discountAmt: t('Discount (₹)', 'छूट (₹)', 'છૂટ (₹)'),
     discountNote: t('Reason (optional)', 'कारण (ज़रूरी नहीं)', 'કારણ (જરૂરી નથી)'),
     badAmount: t('Write the amount properly', 'रकम ठीक से लिखो', 'રકમ બરાબર લખો'),
@@ -102,7 +109,6 @@ function strings() {
     alreadyClosed: t('This bill is already closed.', 'यह बिल पहले ही बंद हो चुका है।', 'આ બિલ પહેલેથી બંધ થઈ ગયું છે.'),
     closeQ: function (tb) { return t('Close ' + tb + '?', tb + ' बंद करें?', tb + ' બંધ કરવું?'); },
     totalLine: function (a) { return t('Total: ' + a, 'कुल: ' + a, 'કુલ: ' + a); },
-    collectFirst: t('Collect payment before closing.', 'बंद करने से पहले पैसे ले लो।', 'બંધ કરતાં પહેલાં પૈસા લઈ લો.'),
     notServed: t('Not served yet:', 'अभी तक परोसा नहीं गया:', 'હજી પીરસાયું નથી:'),
     closeAnywayHint: t('These are already on the bill and will count as served once the table closes. Don\'t want to give them? Get them cancelled first.',
                        'ये बिल में पहले से हैं और टेबल बंद होते ही परोसे हुए गिने जाएँगे। नहीं देनी हैं तो पहले रद्द करा दो।',
@@ -501,12 +507,14 @@ function paintBill() {
     h += '<div class="row amber" style="font-size:13px;margin-top:3px">' +
          '<span class="grow">' + esc(S.discount) + (b.discountNote ? ' · ' + esc(b.discountNote) : '') + '</span>' +
          '<b class="tnum">− ' + rupees(b.discount) + '</b>' +
-         (cur.readOnly ? '' : '<button class="lnk" id="discBtn" style="padding:0 4px">✎</button>') + '</div>';
+         (cur.readOnly ? '' : '<button class="chipbtn" id="discBtn">' + esc(S.editDiscount) + '</button>') + '</div>';
   }
   h += '<div class="row" style="margin-top:4px"><span class="tot-l grow">' + esc(S.total) + '</span>' +
        '<span class="tot-r">' + rupees(total) + '</span></div>';
-  h += '<div class="row">' +
-       (b && !b.discount && !cur.readOnly ? '<button class="lnk" id="discBtn">' + esc(S.addDiscount) + '</button>' : '') +
+  // "+ discount" was a 70×28 text link and ✎ about 20px wide: both are now
+  // chip buttons with a 44px tap target.
+  h += '<div class="row" style="margin-top:4px">' +
+       (b && !b.discount && !cur.readOnly ? '<button class="chipbtn" id="discBtn">' + esc(S.addDiscount) + '</button>' : '') +
        '<span class="mut right" style="font-size:12px">' + esc(S.items(itemQty)) + '</span></div>';
 
   if (pending > 0 || ready > 0) {
@@ -540,11 +548,22 @@ function paintBill() {
   h += '</div>';
   $('view').innerHTML = h;
 
-  $('bar').className = 'bar stack';
-  $('bar').innerHTML =
-    '<button class="ghost" id="printBtn">' + esc(S.print) + '</button>' +
-    (cur.readOnly ? '' :
-      '<button class="okbtn" id="closeBtn"' + (settled ? '' : ' disabled') + '>' + esc(S.closeAmt(rupees(total))) + '</button>');
+  // One row: a compact Print, then Close. Stacked, the two 46px buttons took
+  // 128px — on a 360×640 phone they sat on top of the "all cash" chip. A
+  // Close that can't be pressed yet says why, in ink on grey, instead of a
+  // pale-green slab that read as "button broken".
+  var why = !b ? S.noBill
+          : paid !== total ? S.payFirst(rupees(Math.max(0, total - paid)))
+          : b.subtotal !== o.total ? S.billStale : '';
+  if (cur.readOnly) {
+    $('bar').className = 'bar';
+    $('bar').innerHTML = '<button class="ghost" id="printBtn">' + esc(S.print) + '</button>';
+  } else {
+    $('bar').className = 'bar acts';
+    $('bar').innerHTML =
+      '<button class="ghost printbtn" id="printBtn" title="' + esc(S.print) + '" aria-label="' + esc(S.print) + '">🖨</button>' +
+      '<button class="okbtn" id="closeBtn"' + (settled ? '>' + esc(S.closeAmt(rupees(total))) : ' disabled>' + esc(why)) + '</button>';
+  }
 
   $('printBtn').onclick = function () { printBill(cur.id); };
   if ($('closeBtn')) $('closeBtn').onclick = confirmClose;
@@ -632,15 +651,23 @@ function confirmClose() {
       if (it.status !== 'served' && it.status !== 'cancelled') left.push(it.qty + '× ' + it.name);
     });
   });
-  var body = '<div class="mut">' + esc(S.totalLine(rupees(total))) + '<br>' + esc(S.collectFirst) + '</div>';
+  // Close is only enabled once the bill is paid, so instead of the stale
+  // "collect payment before closing" the dialog says what was collected.
+  var b = cur.bill, parts = [];
+  if (b && b.paidCash > 0) parts.push(S.cashPart(rupees(b.paidCash)));
+  if (b && b.paidOnline > 0) parts.push(S.upiPart(rupees(b.paidOnline)));
+  var body = '<div class="mut">' + esc(S.totalLine(rupees(total))) +
+    (parts.length ? '<br><span class="green" style="font-weight:700">' + esc(S.paidLine(parts.join(' + '))) + '</span>' : '') + '</div>';
   if (left.length) {
     body += '<div class="amber" style="font-size:13px;font-weight:600;margin-top:8px">' +
       esc(S.notServed) + '<br>• ' + left.map(esc).join('<br>• ') + '</div>' +
       '<div class="hint">' + esc(S.closeAnywayHint) + '</div>';
   }
+  // "Close anyway" is a different act from a plain close — it marks plates
+  // served that nobody carried out — so it looks different: amber, not green.
   showModal(S.closeQ(cur.order.tableName), body,
     [{ label:S.back, cls:'ghost' },
-     { label: left.length ? S.closeAnyway : S.closeTable, cls:'okbtn',
+     { label: left.length ? S.closeAnyway : S.closeTable, cls: left.length ? 'warnbtn' : 'okbtn',
        act: function () { hideModal(); closeOrder(); } }]);
 }
 

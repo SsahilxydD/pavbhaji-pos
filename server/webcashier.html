@@ -87,6 +87,7 @@ function strings() {
     online: t('Online / UPI', 'ऑनलाइन / UPI', 'ઓનલાઈન / UPI'),
     allCash: t('💵 all cash', '💵 पूरा कैश', '💵 આખું કેશ'),
     allOnline: t('📲 all online', '📲 पूरा ऑनलाइन', '📲 આખું ઓનલાઈન'),
+    keysHint: t('Keys: C all cash · U all online · Enter close', 'कीबोर्ड: C पूरा कैश · U पूरा ऑनलाइन · Enter बंद', 'કીબોર્ડ: C આખું કેશ · U આખું ઓનલાઈન · Enter બંધ'),
     splitHd: t('Split · cash + UPI', 'बाँटो · कैश + UPI', 'વહેંચો · કેશ + UPI'),
     splitSave: t('✓ Save', '✓ सेव', '✓ સેવ'),
     splitMust: function (a) { return t('Cash + UPI must add up to ' + a, 'कैश + UPI मिलाकर ' + a + ' होना चाहिए', 'કેશ + UPI મળીને ' + a + ' થવા જોઈએ'); },
@@ -588,9 +589,10 @@ function paintBill() {
          '<b class="tnum">' + rupees(b.paidOnline) + '</b></div>';
     if (!cur.readOnly) {
       h += '<div class="chips">' +
-        '<button id="allCash"' + (total > 0 && b.paidCash === total ? ' class="on"' : '') + '>' + esc(S.allCash) + '</button>' +
-        '<button id="allOnline"' + (total > 0 && b.paidOnline === total ? ' class="on"' : '') + '>' + esc(S.allOnline) + '</button>' +
-        '</div>';
+        '<button id="allCash" title="C"' + (total > 0 && b.paidCash === total ? ' class="on"' : '') + '>' + esc(S.allCash) + '</button>' +
+        '<button id="allOnline" title="U"' + (total > 0 && b.paidOnline === total ? ' class="on"' : '') + '>' + esc(S.allOnline) + '</button>' +
+        '</div>' +
+        '<div class="kbdhint">' + esc(S.keysHint) + '</div>';
       // Split the way staff say it — "₹500 cash diya, baaki UPI": two boxes,
       // and typing either one fills the other with the rest of the total.
       h += '<div class="sechd" style="margin-top:12px">' + esc(S.splitHd) + '</div>' +
@@ -736,6 +738,32 @@ function hideModal() {
   var m = document.querySelector('.modal');
   if (m) m.remove();
 }
+
+// Keyboard, for the laptop at the counter. In a dialog: Esc does what its
+// first button (Back) does; Enter presses the main button — Save, Close
+// table — but never an amber or red one ("Close anyway"), which wants a
+// deliberate click. On an open bill: C = all cash, U = all online, Enter =
+// Close (which still asks first).
+document.addEventListener('keydown', function (e) {
+  if (e.ctrlKey || e.metaKey || e.altKey || e.isComposing) return;
+  var tg = e.target.tagName;
+  if (modalUp) {
+    var m = document.querySelector('.modal');
+    if (!m) return;
+    var btns = m.querySelectorAll('.btnrow button[data-i]');
+    if (e.key === 'Escape') { e.preventDefault(); if (btns[0]) btns[0].click(); else hideModal(); }
+    else if (e.key === 'Enter' && tg !== 'BUTTON' && tg !== 'TEXTAREA') {
+      var main = btns[btns.length - 1];
+      if (main && /\b(primary|okbtn)\b/.test(main.className) && !main.disabled) { e.preventDefault(); main.click(); }
+    }
+    return;
+  }
+  if (!cur || !cur.order || cur.readOnly || tg === 'INPUT' || tg === 'TEXTAREA' || tg === 'SELECT') return;
+  var k = e.key.toLowerCase();
+  if (k === 'c' && $('allCash')) { e.preventDefault(); $('allCash').click(); }
+  else if (k === 'u' && $('allOnline')) { e.preventDefault(); $('allOnline').click(); }
+  else if (e.key === 'Enter' && tg !== 'BUTTON' && $('closeBtn') && !$('closeBtn').disabled) { e.preventDefault(); $('closeBtn').click(); }
+});
 
 // A discount over 10% of the bill or over ₹100 must say why — the audit
 // log otherwise loses the reason for the biggest give-aways.

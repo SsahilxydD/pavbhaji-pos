@@ -353,6 +353,31 @@ function hideModal() {
   if (m) m.remove();
 }
 
+// Keyboard, for a laptop. In a sheet: Esc does what its first button
+// (Back / Keep / Stay) does; Enter presses the main button — Save, Send to
+// kitchen — but never a red one (Discard, Cancel item), which wants a
+// deliberate click. In the picker, "/" jumps to the search box, so nobody
+// has to Tab through a hundred − / + buttons.
+document.addEventListener('keydown', function (e) {
+  if (e.ctrlKey || e.metaKey || e.altKey || e.isComposing) return;
+  var tg = e.target.tagName;
+  if (modalUp) {
+    var m = document.querySelector('.modal');
+    if (!m) return;
+    var btns = m.querySelectorAll('.btnrow button[data-i]');
+    if (e.key === 'Escape') { e.preventDefault(); if (btns[0]) btns[0].click(); else hideModal(); }
+    else if (e.key === 'Enter' && tg !== 'BUTTON' && tg !== 'TEXTAREA') {
+      var main = btns[btns.length - 1];
+      if (main && /\b(primary|okbtn)\b/.test(main.className) && !main.disabled) { e.preventDefault(); main.click(); }
+    }
+    return;
+  }
+  if (e.key === '/' && pane === 'picker' && $('pkQ') && tg !== 'INPUT' && tg !== 'TEXTAREA' && tg !== 'SELECT') {
+    e.preventDefault();
+    $('pkQ').focus();
+  }
+});
+
 // ---------------------------------------------------------------- state
 var tab = 'tables', timer = null, menu = [], openTable = null, parcelMode = false;
 // The cart and its idempotency key — the app's contract (data/Api.kt
@@ -672,7 +697,7 @@ async function picker(title, send) {
   // header so they're there at any scroll depth.
   var cats = menu.filter(function (c) { return (c.items || []).length; });
   var html = '<div class="pk-tools" id="pkTools">' +
-    '<input id="pkQ" type="search" enterkeyhint="search" autocomplete="off" placeholder="' + esc(S.search) + '">' +
+    '<input id="pkQ" type="search" enterkeyhint="search" autocomplete="off" title="/" aria-keyshortcuts="/" placeholder="' + esc(S.search) + '">' +
     '<button id="pkClear" hidden aria-label="clear">✕</button>' +
     '<div class="pk-chips" id="pkChips">' + cats.map(function (c) {
       return '<button data-cat="' + c.id + '">' + esc(c.name) + '</button>';

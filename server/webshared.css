@@ -402,6 +402,10 @@ label.fld span { display:block; font-size:12px; font-weight:700; color:var(--ink
 }
 .chips button.on { background:#fff4ee; color:var(--red-deep); border-color:var(--red); }
 
+/* keyboard shortcuts hint: only where there is a keyboard and a mouse */
+.kbdhint { display:none; font-size:12px; color:var(--ink3); margin-top:6px; }
+@media (hover:hover) and (pointer:fine) { .kbdhint { display:block; } }
+
 /* split: Cash ⇄ UPI boxes (each fills the other), then save */
 .split { display:grid; grid-template-columns:1fr 1fr auto; gap:8px; align-items:end; margin-top:6px; }
 .split label span { display:block; font-size:12px; font-weight:700; color:var(--ink2); margin-bottom:4px; }

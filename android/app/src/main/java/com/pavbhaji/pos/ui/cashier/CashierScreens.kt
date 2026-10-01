@@ -72,6 +72,7 @@ import com.pavbhaji.pos.ui.rupees
 import com.pavbhaji.pos.ui.waiter.TablesScreen
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.serialization.json.JsonPrimitive
 
 // Cashier's home: two tabs. Tables = the familiar grid (with ₹ totals — the
 // cashier is a money role); tapping an occupied table opens its BILL, not the
@@ -144,6 +145,33 @@ private fun toPaise(s: String): Long? {
     return Math.round(v * 100)
 }
 
+// The PATCH body for "save discount". Money already recorded (💵 all cash,
+// then ＋ discount) would be more than the new total, and the server refuses
+// that with "payment exceeds the bill total" — the cashier was stuck. So the
+// recorded split shrinks in the same PATCH, exactly as the web cashier does:
+// online kept first, the rest cash. It only ever shrinks, so no collection is
+// invented. `subtotal` is the smaller of the bill's and the live order's, in
+// case either copy is a beat behind.
+internal fun discountPatch(b: BillDto, subtotal: Long, discount: Long, note: String): String {
+    val noteJson = JsonPrimitive(note).toString()
+    val newTotal = subtotal - discount
+    if (b.paidCash + b.paidOnline <= newTotal) {
+        return """{"discount":$discount,"discountNote":$noteJson}"""
+    }
+    val online = minOf(b.paidOnline, maxOf(0L, newTotal))
+    val cash = minOf(b.paidCash, maxOf(0L, newTotal - online))
+    return """{"discount":$discount,"discountNote":$noteJson,"paidCash":$cash,"paidOnline":$online}"""
+}
+
+// The server answers bill edits in English; the cashier reads them in her
+// own language. Anything unexpected still shows as the server said it.
+internal fun billErrorText(msg: String): String = when {
+    msg.startsWith("payment exceeds") -> S.payMoreThanBill
+    msg.startsWith("discount must be") -> S.discountTooBig
+    msg.startsWith("order already closed") -> S.billAlreadyClosed
+    else -> msg
+}
+
 @Composable
 fun BillScreen(tableId: Long, tableName: String, onBack: () -> Unit) {
     val scope = rememberCoroutineScope()
@@ -191,7 +219,9 @@ fun BillScreen(tableId: Long, tableName: String, onBack: () -> Unit) {
         scope.launch {
             when (val r = Deps.api.billPatch(o.id, patch)) {
                 is ApiResult.Ok -> bill = r.value
-                is ApiResult.Err -> toast = r.message
+                // Refused: say why in her language, and re-read the bill so
+                // the screen shows what the server actually holds.
+                is ApiResult.Err -> { toast = billErrorText(r.message); refresh() }
             }
         }
     }
@@ -447,6 +477,7 @@ fun BillScreen(tableId: Long, tableName: String, onBack: () -> Unit) {
         val b = bill
         var amtTxt by remember { mutableStateOf(if (b != null && b.discount > 0) (b.discount / 100.0).let { if (it % 1.0 == 0.0) "${it.toLong()}" else "$it" } else "") }
         var noteTxt by remember { mutableStateOf(b?.discountNote ?: "") }
+        var amtErr by remember { mutableStateOf<String?>(null) }
         AlertDialog(
             onDismissRequest = { discountOpen = false },
             title = { Text(S.discountRow) },
@@ -454,9 +485,11 @@ fun BillScreen(tableId: Long, tableName: String, onBack: () -> Unit) {
                 Column {
                     OutlinedTextField(
                         value = amtTxt,
-                        onValueChange = { amtTxt = it.filter { c -> c.isDigit() || c == '.' }.take(9) },
+                        onValueChange = { amtTxt = it.filter { c -> c.isDigit() || c == '.' }.take(9); amtErr = null },
                         label = { Text(S.discountAmt) },
                         singleLine = true,
+                        isError = amtErr != null,
+                        supportingText = amtErr?.let { e -> { Text(e) } },
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                         modifier = Modifier.fillMaxWidth()
                     )
@@ -472,11 +505,11 @@ fun BillScreen(tableId: Long, tableName: String, onBack: () -> Unit) {
             confirmButton = {
                 Button(onClick = {
                     val d = if (amtTxt.isBlank()) 0L else toPaise(amtTxt)
-                    if (d == null) return@Button
-                    val noteJson = Deps.api.json.encodeToString(
-                        kotlinx.serialization.serializer<String>(), noteTxt.trim()
-                    )
-                    patchBill("""{"discount":$d,"discountNote":$noteJson}""")
+                    val cur = bill
+                    if (d == null || cur == null) return@Button
+                    val sub = order?.let { minOf(cur.subtotal, it.total) } ?: cur.subtotal
+                    if (d > sub) { amtErr = S.discountTooBig; return@Button }
+                    patchBill(discountPatch(cur, sub, d, noteTxt.trim()))
                     discountOpen = false
                 }) { Text(S.save) }
             },

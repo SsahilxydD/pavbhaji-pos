@@ -11,7 +11,8 @@ import androidx.compose.runtime.setValue
 //
 // NOT translated on purpose: dish/table/staff names (owner's data), PIN, KOT,
 // QR, WiFi (everyday loanwords), and server error messages (come from the Go
-// side in English; rare, and the owner reads English).
+// side in English; rare, and the owner reads English) — except the bill
+// refusals a cashier meets mid-settlement, mapped in billErrorText.
 object L10n {
     var lang by mutableStateOf("en") // "en" | "hi" | "gu"
 }
@@ -344,6 +345,22 @@ object S {
     val splitApply get() = t("✓ split, rest cash", "✓ बाकी कैश", "✓ બાકી કેશ")
     val paidTick get() = t("PAID ✓", "पेड ✓", "પેડ ✓")
     fun payLeft(amt: String) = t("$amt not assigned yet", "$amt अभी बाकी", "$amt હજી બાકી")
+    // The server's bill refusals, in the cashier's language (billErrorText).
+    val payMoreThanBill get() = t(
+        "The money entered is more than the bill now. Tap 💵 all cash or 📲 all online again.",
+        "डाली गई रकम अब बिल से ज़्यादा है। 💵 पूरा कैश या 📲 पूरा ऑनलाइन फिर से दबाओ।",
+        "નાખેલી રકમ હવે બિલ કરતાં વધારે છે. 💵 આખું કેશ કે 📲 આખું ઓનલાઈન ફરી દબાવો."
+    )
+    val discountTooBig get() = t(
+        "Discount can't be more than the bill.",
+        "छूट बिल से ज़्यादा नहीं हो सकती।",
+        "છૂટ બિલ કરતાં વધારે ન હોઈ શકે."
+    )
+    val billAlreadyClosed get() = t(
+        "This bill is already closed.",
+        "यह बिल पहले ही बंद हो चुका है।",
+        "આ બિલ પહેલેથી બંધ થઈ ગયું છે."
+    )
     val cashierCloses get() = t(
         "The cashier makes the bill and closes this table.",
         "बिल बनाना और टेबल बंद करना कैशियर का काम है।",

@@ -1,5 +1,6 @@
 package com.pavbhaji.pos.ui.waiter
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -80,12 +81,15 @@ fun ManagerHome(onLogout: () -> Unit, onBack: (() -> Unit)? = null) {
         TableOrderScreen(tableId = sel.id, tableName = sel.name, onBack = { selected = null })
         return
     }
+    // A manager on the Ready tab: Back goes to Tables first, like any
+    // bottom-tab app, instead of closing the POS.
+    if (onBack == null) BackHandler(enabled = tab == 1) { tab = 0 }
     Column(Modifier.fillMaxSize()) {
         Box(Modifier.weight(1f)) {
             if (tab == 0) {
                 TablesScreen(onOpenTable = { selected = it }, onLogout = onLogout, onBack = onBack)
             } else {
-                ReadyScreen(onLogout = onLogout, showLogout = onBack == null)
+                ReadyScreen(onLogout = onLogout, showLogout = onBack == null, onBack = onBack)
             }
         }
         NavigationBar(containerColor = Color.White, tonalElevation = 0.dp) {

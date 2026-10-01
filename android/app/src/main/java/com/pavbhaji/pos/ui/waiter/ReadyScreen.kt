@@ -74,7 +74,7 @@ import kotlinx.coroutines.launch
 // screen has no buttons. Counter items (drinks, extra pav) ride the same
 // card tinted amber: nothing was cooked, a waiter just carries them.
 @Composable
-fun ReadyScreen(onLogout: () -> Unit, showLogout: Boolean) {
+fun ReadyScreen(onLogout: () -> Unit, showLogout: Boolean, onBack: (() -> Unit)? = null) {
     val connected by Deps.live.connected.collectAsState()
     var lines by remember { mutableStateOf<List<PickupLineDto>>(emptyList()) }
     var loaded by remember { mutableStateOf(false) }
@@ -105,6 +105,9 @@ fun ReadyScreen(onLogout: () -> Unit, showLogout: Boolean) {
                 groups.size == 1 -> S.toCarryOneTable(lines.size)
                 else -> S.toCarryTables(lines.size, groups.size)
             },
+            // Inside the admin's Floor this is a door like any other: the
+            // arrow (and system back) lead home instead of out of the app.
+            onBack = onBack,
             actions = { if (showLogout) LogoutAction(onLogout) }
         )
         ErrorBanner(loadError)

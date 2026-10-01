@@ -201,7 +201,7 @@ fun TablesScreen(
 private fun GridSection(text: String) {
     Text(
         text,
-        fontSize = 12.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 1.2.sp,
+        fontSize = 12.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = com.pavbhaji.pos.ui.tracking(1.2f),
         color = Pb.ink3,
         modifier = Modifier.padding(top = 6.dp, bottom = 2.dp)
     )

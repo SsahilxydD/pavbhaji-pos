@@ -78,7 +78,11 @@ import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.flow.first
@@ -111,6 +115,12 @@ fun pricesVisible(): Boolean =
     com.pavbhaji.pos.Deps.session.staffRole in setOf("admin", "cashier", "parcel")
 
 fun items(n: Long): String = S.itemsN(n)
+
+// Letter spacing is for Latin type: wide caps on a label, a tight bold title.
+// Devanagari and Gujarati are joined scripts — spacing pulls a word's letter
+// clusters apart ("ટ ે બ લ"), and a negative one cut "टेबल" to "टे…" in the
+// header at a big font. Outside English it is always 0.
+fun tracking(sp: Float): TextUnit = if (L10n.lang == "en") sp.sp else 0.sp
 
 fun ageMinutes(sinceMs: Long): String {
     val m = ((System.currentTimeMillis() - sinceMs) / 60000).coerceAtLeast(0)
@@ -203,18 +213,25 @@ fun AppHeader(
                 IconButton(onClick = onBack, modifier = Modifier.size(48.dp)) {
                     Icon(
                         Icons.AutoMirrored.Filled.ArrowBack,
-                        contentDescription = "Back",
+                        contentDescription = S.back,
                         tint = Color.White
                     )
                 }
             } else {
-                Text("🍛", fontSize = 21.sp, modifier = Modifier.padding(start = 12.dp, end = 4.dp))
+                Text(
+                    "🍛", fontSize = 21.sp,
+                    modifier = Modifier.padding(start = 12.dp, end = 4.dp).clearAndSetSemantics {}
+                )
             }
+            // The title is the screen's name and never gives way: at a big
+            // font it may take a second line. The subtitle is the one that
+            // shortens ("…") when the row is tight.
             Column(Modifier.weight(1f).padding(start = 6.dp)) {
                 Text(
                     title, color = Color.White, fontSize = 19.sp,
-                    fontWeight = FontWeight.ExtraBold, letterSpacing = (-0.3).sp,
-                    maxLines = 1, overflow = TextOverflow.Ellipsis
+                    fontWeight = FontWeight.ExtraBold, letterSpacing = tracking(-0.3f),
+                    lineHeight = 22.sp,
+                    maxLines = 2, overflow = TextOverflow.Ellipsis
                 )
                 if (subtitle != null) {
                     Text(
@@ -778,7 +795,7 @@ fun StatCard(label: String, value: String, modifier: Modifier = Modifier, accent
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 Box(Modifier.size(7.dp).background(accent, CircleShape))
                 Text(
-                    label, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.4.sp,
+                    label, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = tracking(0.4f),
                     color = Pb.ink2, maxLines = 1, overflow = TextOverflow.Ellipsis
                 )
             }
@@ -830,7 +847,7 @@ fun SectionTitle(text: String) {
         text,
         fontSize = 12.sp,
         fontWeight = FontWeight.ExtraBold,
-        letterSpacing = 1.2.sp,
+        letterSpacing = tracking(1.2f),
         color = Pb.ink3,
         modifier = Modifier.padding(top = 16.dp, bottom = 6.dp)
     )

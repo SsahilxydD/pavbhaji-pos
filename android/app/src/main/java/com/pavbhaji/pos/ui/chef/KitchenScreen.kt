@@ -220,7 +220,7 @@ fun KitchenScreen(onLogout: () -> Unit, embedded: Boolean = false, onBack: (() -
         ) {
             if (onBack != null) {
                 IconButton(onClick = onBack, modifier = Modifier.size(48.dp)) {
-                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Kc.ink)
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = S.back, tint = Kc.ink)
                 }
             } else {
                 Text("👨‍🍳", fontSize = 20.sp, modifier = Modifier.padding(start = 10.dp, end = 2.dp))
@@ -373,7 +373,7 @@ private fun StateChip(text: String, bg: Color, fg: Color, dashed: Boolean = fals
     ) {
         Text(
             text, color = fg, fontSize = 10.sp, fontWeight = FontWeight.ExtraBold,
-            letterSpacing = 0.5.sp,
+            letterSpacing = com.pavbhaji.pos.ui.tracking(0.5f),
             modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp)
         )
     }

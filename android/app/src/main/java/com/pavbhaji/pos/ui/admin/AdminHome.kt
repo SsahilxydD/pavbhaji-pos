@@ -131,7 +131,7 @@ private fun Dashboard(onLogout: () -> Unit, onOpen: (AdminScreen) -> Unit) {
                 Column(Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 16.dp)) {
                     Text(
                         S.today, fontSize = 11.sp, fontWeight = FontWeight.ExtraBold,
-                        letterSpacing = 1.2.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
+                        letterSpacing = com.pavbhaji.pos.ui.tracking(1.2f), color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Text(
                         rupees(rep.soldTotal), fontSize = 38.sp, fontWeight = FontWeight.ExtraBold,

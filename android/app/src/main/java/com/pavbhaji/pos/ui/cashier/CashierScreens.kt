@@ -335,7 +335,7 @@ fun BillScreen(tableId: Long, tableName: String, onBack: () -> Unit) {
                             // column headers, invoice style
                             Row {
                                 Text(
-                                    S.billItem.uppercase(), fontSize = 10.sp, letterSpacing = 0.8.sp,
+                                    S.billItem.uppercase(), fontSize = 10.sp, letterSpacing = com.pavbhaji.pos.ui.tracking(0.8f),
                                     fontWeight = FontWeight.Bold,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     modifier = Modifier.weight(1f)
@@ -405,7 +405,7 @@ fun BillScreen(tableId: Long, tableName: String, onBack: () -> Unit) {
                             HorizontalDivider(Modifier.padding(vertical = 10.dp))
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Text(
-                                    S.paymentSection, fontSize = 10.sp, letterSpacing = 0.8.sp,
+                                    S.paymentSection, fontSize = 10.sp, letterSpacing = com.pavbhaji.pos.ui.tracking(0.8f),
                                     fontWeight = FontWeight.Bold,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     modifier = Modifier.weight(1f)
@@ -861,7 +861,7 @@ fun BillHistoryDetail(summary: BillSummaryDto, onBack: () -> Unit) {
                         HorizontalDivider(Modifier.padding(vertical = 10.dp))
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(
-                                S.paymentSection, fontSize = 10.sp, letterSpacing = 0.8.sp,
+                                S.paymentSection, fontSize = 10.sp, letterSpacing = com.pavbhaji.pos.ui.tracking(0.8f),
                                 fontWeight = FontWeight.Bold,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier = Modifier.weight(1f)
@@ -953,7 +953,7 @@ private fun BillCol(text: String, width: androidx.compose.ui.unit.Dp, muted: Boo
     Text(
         text,
         fontSize = if (muted) 10.sp else 13.sp,
-        letterSpacing = if (muted) 0.8.sp else 0.sp,
+        letterSpacing = if (muted) com.pavbhaji.pos.ui.tracking(0.8f) else 0.sp,
         fontWeight = if (bold || muted) FontWeight.Bold else FontWeight.Normal,
         color = if (muted) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface,
         textAlign = TextAlign.End,

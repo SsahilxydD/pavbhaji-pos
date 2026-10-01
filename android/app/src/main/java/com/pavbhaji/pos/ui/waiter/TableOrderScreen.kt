@@ -613,7 +613,7 @@ fun CartStrip(
         Column(Modifier.padding(start = 12.dp, end = 8.dp, top = 6.dp, bottom = 2.dp)) {
             Text(
                 S.newKot, fontSize = 11.sp, fontWeight = FontWeight.ExtraBold,
-                letterSpacing = 0.8.sp, color = WarnAmber
+                letterSpacing = com.pavbhaji.pos.ui.tracking(0.8f), color = WarnAmber
             )
             Column(Modifier.heightIn(max = 168.dp).verticalScroll(scroll)) {
                 cart.forEachIndexed { idx, line ->

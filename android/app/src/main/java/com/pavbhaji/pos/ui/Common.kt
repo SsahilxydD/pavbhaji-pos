@@ -17,6 +17,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
@@ -582,8 +583,11 @@ fun PinBelowHistory(listState: LazyListState, boundary: Int) {
 // 4-digit PIN pad. Submits by itself on the 4th digit — no OK button.
 // Width adapts to the phone (no fixed 88dp buttons that clip small screens);
 // dots pop as they fill; the whole pad shakes sideways on a wrong PIN.
+// An empty dot is a ring (a pale filled dot on cream was 1.1:1, invisible in
+// daylight), and while `busy` (the PIN is on its way to the server) a small
+// spinner says so instead of a silent pause.
 @Composable
-fun PinPad(onSubmit: (String) -> Unit, error: String?) {
+fun PinPad(onSubmit: (String) -> Unit, error: String?, busy: Boolean = false) {
     var pin by remember { mutableStateOf("") }
     val view = LocalView.current
     val shake = remember { androidx.compose.animation.core.Animatable(0f) }
@@ -615,20 +619,27 @@ fun PinPad(onSubmit: (String) -> Unit, error: String?) {
                     Modifier
                         .size(16.dp)
                         .graphicsLayer { scaleX = dotScale; scaleY = dotScale }
-                        .background(
-                            if (filled) MaterialTheme.colorScheme.primary
-                            else MaterialTheme.colorScheme.surfaceVariant,
-                            CircleShape
+                        .then(
+                            if (filled) Modifier.background(MaterialTheme.colorScheme.primary, CircleShape)
+                            else Modifier.border(2.dp, Pb.ink3, CircleShape)
                         )
                 )
             }
         }
-        Text(
-            error ?: " ",
-            color = MaterialTheme.colorScheme.error, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
-            textAlign = TextAlign.Center,
-            modifier = Modifier.padding(top = 10.dp)
-        )
+        Box(Modifier.padding(top = 10.dp).heightIn(min = 20.dp), contentAlignment = Alignment.Center) {
+            if (busy && error == null) {
+                CircularProgressIndicator(
+                    Modifier.size(18.dp).semantics { contentDescription = S.checking },
+                    strokeWidth = 2.dp, color = MaterialTheme.colorScheme.primary
+                )
+            } else {
+                Text(
+                    error ?: " ",
+                    color = MaterialTheme.colorScheme.error, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
+                    textAlign = TextAlign.Center
+                )
+            }
+        }
         Column(
             Modifier.padding(top = 8.dp).fillMaxWidth(),
             verticalArrangement = Arrangement.spacedBy(10.dp)

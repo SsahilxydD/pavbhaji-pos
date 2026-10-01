@@ -384,7 +384,7 @@ private fun HistoryRow(l: PickupLineDto, pending: Boolean = false, modifier: Mod
         ) {
             Text(
                 if (pending) "⏳" else "✓", color = GoodGreen, fontSize = 15.sp, fontWeight = FontWeight.ExtraBold,
-                modifier = Modifier.semantics { contentDescription = if (pending) S.sending else S.servedBtn }
+                modifier = Modifier.semantics { contentDescription = if (pending) S.sending else S.statusLabel("served") }
             )
             Column(Modifier.weight(1f).padding(start = 9.dp)) {
                 Text(

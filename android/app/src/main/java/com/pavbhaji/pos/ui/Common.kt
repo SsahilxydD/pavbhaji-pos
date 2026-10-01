@@ -72,6 +72,8 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -136,6 +138,21 @@ fun HoldUpdates(active: Boolean) {
         onDispose { com.pavbhaji.pos.data.AppUpdater.hold(key, false) }
     }
 }
+
+// For `ms` after `armedAt` (SystemClock.uptimeMillis()) every touch on this
+// subtree is swallowed before its buttons see it. For controls that just
+// appeared or jumped under a finger aimed at something else: the bottom cart
+// bar grows over the lowest menu row the moment the first dish goes in, and
+// a fast double-tap on that row must not land on the bar's "−" or Send.
+fun Modifier.swallowTapsAfter(armedAt: Long, ms: Long = 400): Modifier =
+    pointerInput(armedAt) {
+        awaitPointerEventScope {
+            while (true) {
+                val e = awaitPointerEvent(PointerEventPass.Initial)
+                if (android.os.SystemClock.uptimeMillis() - armedAt < ms) e.changes.forEach { it.consume() }
+            }
+        }
+    }
 
 // Each screen decides its status-bar icon tint: the app is edge-to-edge, so
 // icons sit on whatever the screen paints up there (red header, dark kitchen,

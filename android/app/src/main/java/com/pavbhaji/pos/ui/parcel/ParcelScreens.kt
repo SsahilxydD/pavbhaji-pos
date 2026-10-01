@@ -28,6 +28,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -60,8 +61,10 @@ import com.pavbhaji.pos.ui.ageMinutes
 import com.pavbhaji.pos.ui.dishColour
 import com.pavbhaji.pos.ui.items as itemsLabel
 import com.pavbhaji.pos.ui.rupees
+import com.pavbhaji.pos.ui.swallowTapsAfter
 import com.pavbhaji.pos.ui.waiter.CartLine
 import com.pavbhaji.pos.ui.waiter.CartSaver
+import com.pavbhaji.pos.ui.waiter.cartAddOne
 import com.pavbhaji.pos.ui.waiter.CartStrip
 import com.pavbhaji.pos.ui.waiter.MenuRow
 import com.pavbhaji.pos.ui.waiter.TableOrderScreen
@@ -266,10 +269,11 @@ fun AddParcelScreen(onDone: (Long) -> Unit, onBack: () -> Unit) {
         }
     }
 
+    // Same double-tap guard as the table screen: the send bar grows when a
+    // new line goes in, and ignores touches for a moment after.
+    var barArmedAt by remember { mutableLongStateOf(0L) }
     fun addToCart(id: Long, name: String, price: Long) {
-        val i = cart.indexOfFirst { it.menuItemId == id && it.note.isEmpty() }
-        if (i >= 0) cart[i] = cart[i].copy(qty = cart[i].qty + 1)
-        else cart.add(CartLine(id, name, price, 1, ""))
+        if (cartAddOne(cart, id, name, price)) barArmedAt = android.os.SystemClock.uptimeMillis()
     }
 
     fun send() {
@@ -367,6 +371,7 @@ fun AddParcelScreen(onDone: (Long) -> Unit, onBack: () -> Unit) {
         Surface(shadowElevation = 10.dp) {
             Column(
                 Modifier.fillMaxWidth()
+                    .swallowTapsAfter(barArmedAt)
                     .navigationBarsPadding()
                     .padding(horizontal = 12.dp, vertical = 10.dp)
             ) {

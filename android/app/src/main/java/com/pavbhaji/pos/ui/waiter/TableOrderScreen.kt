@@ -1,9 +1,11 @@
 package com.pavbhaji.pos.ui.waiter
 
+import android.os.SystemClock
 import android.view.HapticFeedbackConstants
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.lazy.LazyListScope
@@ -37,6 +39,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -49,6 +52,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalView
@@ -82,6 +86,7 @@ import com.pavbhaji.pos.ui.dishColour
 import com.pavbhaji.pos.ui.items as itemsLabel
 import com.pavbhaji.pos.ui.pricesVisible
 import com.pavbhaji.pos.ui.rupees
+import com.pavbhaji.pos.ui.swallowTapsAfter
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import java.util.UUID
@@ -92,6 +97,24 @@ data class CartLine(
     val menuItemId: Long, val name: String, val price: Long,
     val qty: Long, val note: String
 )
+
+// One more of a dish: onto its plain (no-note) line, or a new line. Returns
+// true when a NEW line appeared — the cart strip just grew under the finger.
+fun cartAddOne(cart: MutableList<CartLine>, id: Long, name: String, price: Long): Boolean {
+    val i = cart.indexOfFirst { it.menuItemId == id && it.note.isEmpty() }
+    if (i >= 0) { cart[i] = cart[i].copy(qty = cart[i].qty + 1); return false }
+    cart.add(CartLine(id, name, price, 1, ""))
+    return true
+}
+
+// One less of a dish, from its plain line first (a noted "Jain" plate is the
+// deliberate one), dropping the line at zero.
+fun cartRemoveOne(cart: MutableList<CartLine>, id: Long) {
+    val i = cart.indexOfLast { it.menuItemId == id && it.note.isEmpty() }
+        .takeIf { it >= 0 } ?: cart.indexOfLast { it.menuItemId == id }
+    if (i < 0) return
+    if (cart[i].qty <= 1) cart.removeAt(i) else cart[i] = cart[i].copy(qty = cart[i].qty - 1)
+}
 
 // A cart outlives Android killing the app in the background (the cashier on
 // a 3 GB phone flipping to the UPI app): flattened into the saved state and
@@ -159,10 +182,12 @@ fun TableOrderScreen(tableId: Long, tableName: String, onBack: () -> Unit) {
         }
     }
 
+    // When the bottom bar last grew (first dish in, or a new line): for a
+    // moment after that it ignores touches, so the second half of a fast
+    // double-tap on the lowest menu row can't hit the strip's "−" or Send.
+    var barArmedAt by remember { mutableLongStateOf(0L) }
     fun addToCart(id: Long, name: String, price: Long) {
-        val i = cart.indexOfFirst { it.menuItemId == id && it.note.isEmpty() }
-        if (i >= 0) cart[i] = cart[i].copy(qty = cart[i].qty + 1)
-        else cart.add(CartLine(id, name, price, 1, ""))
+        if (cartAddOne(cart, id, name, price)) barArmedAt = SystemClock.uptimeMillis()
     }
 
     fun send() {
@@ -300,6 +325,7 @@ fun TableOrderScreen(tableId: Long, tableName: String, onBack: () -> Unit) {
         Surface(shadowElevation = 10.dp) {
             Column(
                 Modifier.fillMaxWidth()
+                    .swallowTapsAfter(barArmedAt)
                     .navigationBarsPadding()
                     .padding(horizontal = 12.dp, vertical = 10.dp)
             ) {
@@ -499,26 +525,34 @@ fun CartStrip(
                         Modifier.fillMaxWidth().padding(vertical = 3.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Column(Modifier.weight(1f).padding(end = 4.dp)) {
+                        // The dish name gets everything left of the stepper and
+                        // wraps instead of turning into "Cheese Butter Ma…" at a
+                        // big font. The note lives under it: tap the dish to
+                        // write one (the ✎ line says so).
+                        Column(
+                            Modifier.weight(1f).padding(end = 6.dp)
+                                .clip(RoundedCornerShape(8.dp))
+                                .clickable { onNote(idx) }
+                                .padding(vertical = 2.dp)
+                        ) {
                             Text(
                                 line.name, fontSize = 15.sp, fontWeight = FontWeight.Bold,
-                                maxLines = 2, overflow = TextOverflow.Ellipsis
+                                maxLines = 3, overflow = TextOverflow.Ellipsis
                             )
-                            val sub = listOfNotNull(
-                                if (pricesVisible()) rupees(line.price) else null,
-                                if (line.note.isNotEmpty()) "✎ ${line.note}" else null
-                            ).joinToString(" · ")
-                            if (sub.isNotEmpty()) Text(
-                                sub,
-                                fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
-                                color = if (line.note.isEmpty()) MaterialTheme.colorScheme.onSurfaceVariant
-                                else MaterialTheme.colorScheme.error
-                            )
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                if (pricesVisible()) Text(
+                                    rupees(line.price) + " · ",
+                                    fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Text(
+                                    if (line.note.isEmpty()) "✎ ${S.noteBtn}" else "✎ ${line.note}",
+                                    fontSize = 12.sp, fontWeight = FontWeight.SemiBold,
+                                    maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                    color = if (line.note.isEmpty()) MaterialTheme.colorScheme.primary
+                                    else MaterialTheme.colorScheme.error
+                                )
+                            }
                         }
-                        TextButton(
-                            onClick = { onNote(idx) },
-                            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 6.dp)
-                        ) { Text(S.noteBtn, fontSize = 12.sp) }
                         QtyStepper(line.qty) { q -> onQty(idx, q) }
                     }
                 }

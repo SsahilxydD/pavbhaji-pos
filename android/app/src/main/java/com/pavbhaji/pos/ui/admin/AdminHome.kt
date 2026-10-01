@@ -79,8 +79,8 @@ private fun Dashboard(onLogout: () -> Unit, onOpen: (AdminScreen) -> Unit) {
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     var busyBackup by remember { mutableStateOf(false) }
-    // Laptop-vs-phone clock skew in ms. Offline laptops never sync time;
-    // phones usually do — so the admin phone is the drift detector.
+    // Server-vs-phone clock skew in ms. The cloud server keeps exact time,
+    // so a gap here means this phone's clock is off (see S.clockSkew).
     var clockSkewMs by remember { mutableStateOf(0L) }
 
     var loadError by remember { mutableStateOf<String?>(null) }
@@ -131,7 +131,7 @@ private fun Dashboard(onLogout: () -> Unit, onOpen: (AdminScreen) -> Unit) {
                 Column(Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 16.dp)) {
                     Text(
                         S.today, fontSize = 11.sp, fontWeight = FontWeight.ExtraBold,
-                        letterSpacing = 1.2.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
+                        letterSpacing = com.pavbhaji.pos.ui.tracking(1.2f), color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Text(
                         rupees(rep.soldTotal), fontSize = 38.sp, fontWeight = FontWeight.ExtraBold,

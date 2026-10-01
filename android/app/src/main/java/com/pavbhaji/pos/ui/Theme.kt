@@ -101,6 +101,17 @@ private val scheme = lightColorScheme(
     outline = CardLine,
     outlineVariant = CardLine,
     error = Pb.danger,
+    // Dialogs, dropdowns and sheets paint themselves with the surfaceContainer
+    // tokens; left unset they fell back to Material's stock lavender. White
+    // and warm creams instead, and no purple tint on raised surfaces.
+    surfaceTint = Color.Transparent,
+    surfaceBright = CardCream,
+    surfaceDim = Color(0xFFEFE7DD),
+    surfaceContainerLowest = CardCream,
+    surfaceContainerLow = Color(0xFFFFFCF8),
+    surfaceContainer = CardCream,
+    surfaceContainerHigh = CardCream,
+    surfaceContainerHighest = Color(0xFFF7EFE6),
 )
 
 @Composable

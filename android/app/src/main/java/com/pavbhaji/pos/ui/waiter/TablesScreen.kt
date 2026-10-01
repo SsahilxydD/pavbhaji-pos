@@ -25,6 +25,7 @@ import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -34,6 +35,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -101,7 +103,9 @@ fun ManagerHome(onLogout: () -> Unit, onBack: (() -> Unit)? = null) {
         NavigationBar(containerColor = Color.White, tonalElevation = 0.dp) {
             NavigationBarItem(
                 selected = tab == 0, onClick = { tab = 0 },
-                icon = { Text("▦", fontSize = 18.sp) },
+                // The glyph is decoration; the label under it is the name
+                // TalkBack reads (it used to read "▦" literally).
+                icon = { Text("▦", fontSize = 18.sp, modifier = Modifier.clearAndSetSemantics {}) },
                 label = { Text(S.tablesTitle, fontSize = 11.sp, fontWeight = FontWeight.Bold) },
                 colors = NavigationBarItemDefaults.colors(
                     selectedTextColor = BhajiRed, indicatorColor = Color(0xFFFFE0CC)
@@ -114,7 +118,7 @@ fun ManagerHome(onLogout: () -> Unit, onBack: (() -> Unit)? = null) {
                         if (readyCount > 0) Badge(containerColor = Pb.successDeep) {
                             Text("$readyCount", fontSize = 10.sp, color = Color.White)
                         }
-                    }) { Text("🛎", fontSize = 18.sp) }
+                    }) { Text("🛎", fontSize = 18.sp, modifier = Modifier.clearAndSetSemantics {}) }
                 },
                 label = { Text(S.readyTitle, fontSize = 11.sp, fontWeight = FontWeight.Bold) },
                 colors = NavigationBarItemDefaults.colors(
@@ -149,11 +153,22 @@ fun TablesScreen(
         while (true) { delay(25_000); refresh() }
     }
 
-    val busy = tables.count { it.order != null }
+    // The count is dine-in tables only (parcel slots are not seats), it
+    // comes first so a long name is what shortens at a big font, and it is
+    // never "0 of 0" while the list hasn't loaded yet.
+    val connected by Deps.live.connected.collectAsState()
+    val dineIn = tables.filter { it.kind != "parcel" }
+    val busy = dineIn.count { it.order != null }
+    val parcelsOpen = tables.count { it.kind == "parcel" && it.order != null }
+    val who = Deps.session.staffName
     Column(Modifier.fillMaxSize()) {
         AppHeader(
             title = S.tablesTitle,
-            subtitle = S.occupiedSub(Deps.session.staffName, busy, tables.size),
+            subtitle = when {
+                !loaded -> "${if (connected) S.loading else S.offlineShort} · $who"
+                else -> S.tablesBusy(busy, dineIn.size) +
+                    (if (parcelsOpen > 0) " · " + S.parcelsOpenN(parcelsOpen) else "") + " · $who"
+            },
             onBack = onBack,
             actions = { if (onBack == null) LogoutAction(onLogout) }
         )
@@ -201,7 +216,7 @@ fun TablesScreen(
 private fun GridSection(text: String) {
     Text(
         text,
-        fontSize = 12.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 1.2.sp,
+        fontSize = 12.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = com.pavbhaji.pos.ui.tracking(1.2f),
         color = Pb.ink3,
         modifier = Modifier.padding(top = 6.dp, bottom = 2.dp)
     )

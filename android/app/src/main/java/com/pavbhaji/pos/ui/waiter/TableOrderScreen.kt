@@ -543,7 +543,9 @@ fun MenuRow(
             )
             val sub = when {
                 !available -> S.outOfStock
-                counter -> if (pricesVisible()) "${rupees(price)} · ✋" else "✋"
+                // A bare ✋ meant nothing to a new manager: it says "counter"
+                // (the waiter hands it over, it never goes to the kitchen).
+                counter -> if (pricesVisible()) "${rupees(price)} · ${S.counterTag}" else S.counterTag
                 else -> if (pricesVisible()) rupees(price) else ""
             }
             if (sub.isNotEmpty()) Text(
@@ -613,7 +615,7 @@ fun CartStrip(
         Column(Modifier.padding(start = 12.dp, end = 8.dp, top = 6.dp, bottom = 2.dp)) {
             Text(
                 S.newKot, fontSize = 11.sp, fontWeight = FontWeight.ExtraBold,
-                letterSpacing = 0.8.sp, color = WarnAmber
+                letterSpacing = com.pavbhaji.pos.ui.tracking(0.8f), color = WarnAmber
             )
             Column(Modifier.heightIn(max = 168.dp).verticalScroll(scroll)) {
                 cart.forEachIndexed { idx, line ->
@@ -698,7 +700,12 @@ private fun SentItemRow(
         }
         StatusChip(it.status)
         if (canCancel) {
-            TextButton(onClick = onCancel) { Text("✕", color = MaterialTheme.colorScheme.error) }
+            TextButton(
+                onClick = onCancel,
+                modifier = Modifier.semantics { contentDescription = S.cancelItem + " · " + it.name }
+            ) {
+                Text("✕", color = MaterialTheme.colorScheme.error, modifier = Modifier.clearAndSetSemantics {})
+            }
         }
     }
 }

@@ -361,7 +361,7 @@ fun ServeScreen(onLogout: () -> Unit) {
 @Composable
 private fun SectionLabel(text: String) {
     Text(
-        text, fontSize = 11.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 1.sp,
+        text, fontSize = 11.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = com.pavbhaji.pos.ui.tracking(1f),
         color = Pb.ink3,
         modifier = Modifier.padding(top = 2.dp)
     )

@@ -17,6 +17,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
@@ -53,6 +54,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -78,7 +81,11 @@ import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.flow.first
@@ -112,6 +119,12 @@ fun pricesVisible(): Boolean =
 
 fun items(n: Long): String = S.itemsN(n)
 
+// Letter spacing is for Latin type: wide caps on a label, a tight bold title.
+// Devanagari and Gujarati are joined scripts — spacing pulls a word's letter
+// clusters apart ("ટ ે બ લ"), and a negative one cut "टेबल" to "टे…" in the
+// header at a big font. Outside English it is always 0.
+fun tracking(sp: Float): TextUnit = if (L10n.lang == "en") sp.sp else 0.sp
+
 fun ageMinutes(sinceMs: Long): String {
     val m = ((System.currentTimeMillis() - sinceMs) / 60000).coerceAtLeast(0)
     return when {
@@ -121,10 +134,17 @@ fun ageMinutes(sinceMs: Long): String {
     }
 }
 
+// "7:42 pm" — the way the shop reads a clock, and the way the printed bill
+// and the web screens write it. Latin digits and am/pm in every language,
+// same as the web (built by hand: String.format could pick up a phone
+// locale's own digits).
 fun clockTime(ms: Long): String {
     val cal = java.util.Calendar.getInstance()
     cal.timeInMillis = ms
-    return "%02d:%02d".format(cal.get(java.util.Calendar.HOUR_OF_DAY), cal.get(java.util.Calendar.MINUTE))
+    val h = cal.get(java.util.Calendar.HOUR_OF_DAY)
+    val m = cal.get(java.util.Calendar.MINUTE)
+    val h12 = if (h % 12 == 0) 12 else h % 12
+    return "$h12:${m.toString().padStart(2, '0')} ${if (h < 12) "am" else "pm"}"
 }
 
 // While `active`, the silent self-update waits for the next time the phone
@@ -203,18 +223,25 @@ fun AppHeader(
                 IconButton(onClick = onBack, modifier = Modifier.size(48.dp)) {
                     Icon(
                         Icons.AutoMirrored.Filled.ArrowBack,
-                        contentDescription = "Back",
+                        contentDescription = S.back,
                         tint = Color.White
                     )
                 }
             } else {
-                Text("🍛", fontSize = 21.sp, modifier = Modifier.padding(start = 12.dp, end = 4.dp))
+                Text(
+                    "🍛", fontSize = 21.sp,
+                    modifier = Modifier.padding(start = 12.dp, end = 4.dp).clearAndSetSemantics {}
+                )
             }
+            // The title is the screen's name and never gives way: at a big
+            // font it may take a second line. The subtitle is the one that
+            // shortens ("…") when the row is tight.
             Column(Modifier.weight(1f).padding(start = 6.dp)) {
                 Text(
                     title, color = Color.White, fontSize = 19.sp,
-                    fontWeight = FontWeight.ExtraBold, letterSpacing = (-0.3).sp,
-                    maxLines = 1, overflow = TextOverflow.Ellipsis
+                    fontWeight = FontWeight.ExtraBold, letterSpacing = tracking(-0.3f),
+                    lineHeight = 22.sp,
+                    maxLines = 2, overflow = TextOverflow.Ellipsis
                 )
                 if (subtitle != null) {
                     Text(
@@ -298,9 +325,10 @@ fun LogoutAction(onLogout: () -> Unit, tint: Color = Color.White, fontSize: Int 
 // it's "hold on", not "something you did failed". It waits a moment before
 // showing, so the half-second dial at app start (or one dropped packet)
 // doesn't flash "no internet" at a waiter; it goes away on its own the
-// moment the line is back.
+// moment the line is back. `dark`: the kitchen's version — a light strip on
+// the dark kitchen screen glared like a torch.
 @Composable
-fun ConnBanner(connected: Boolean) {
+fun ConnBanner(connected: Boolean, dark: Boolean = false) {
     var down by remember { mutableStateOf(false) }
     LaunchedEffect(connected) {
         if (connected) down = false else { kotlinx.coroutines.delay(1500); down = true }
@@ -313,7 +341,7 @@ fun ConnBanner(connected: Boolean) {
         Row(
             Modifier
                 .fillMaxWidth()
-                .background(Color(0xFFF7E7C8))
+                .background(if (dark) Kc.fullBg else Color(0xFFF7E7C8))
                 .padding(horizontal = 14.dp, vertical = 7.dp),
             horizontalArrangement = Arrangement.Center,
             verticalAlignment = Alignment.CenterVertically
@@ -323,10 +351,10 @@ fun ConnBanner(connected: Boolean) {
                 0.35f, 1f,
                 infiniteRepeatable(tween(650), RepeatMode.Reverse), label = "connA"
             )
-            Box(Modifier.size(8.dp).alpha(a).background(WarnAmber, CircleShape))
+            Box(Modifier.size(8.dp).alpha(a).background(if (dark) Kc.fullFg else WarnAmber, CircleShape))
             Text(
                 S.reconnecting,
-                color = Color(0xFF6B4A00), fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
+                color = if (dark) Kc.fullFg else Color(0xFF6B4A00), fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
                 textAlign = TextAlign.Center,
                 modifier = Modifier.padding(start = 8.dp)
             )
@@ -565,8 +593,11 @@ fun PinBelowHistory(listState: LazyListState, boundary: Int) {
 // 4-digit PIN pad. Submits by itself on the 4th digit — no OK button.
 // Width adapts to the phone (no fixed 88dp buttons that clip small screens);
 // dots pop as they fill; the whole pad shakes sideways on a wrong PIN.
+// An empty dot is a ring (a pale filled dot on cream was 1.1:1, invisible in
+// daylight), and while `busy` (the PIN is on its way to the server) a small
+// spinner says so instead of a silent pause.
 @Composable
-fun PinPad(onSubmit: (String) -> Unit, error: String?) {
+fun PinPad(onSubmit: (String) -> Unit, error: String?, busy: Boolean = false) {
     var pin by remember { mutableStateOf("") }
     val view = LocalView.current
     val shake = remember { androidx.compose.animation.core.Animatable(0f) }
@@ -598,20 +629,32 @@ fun PinPad(onSubmit: (String) -> Unit, error: String?) {
                     Modifier
                         .size(16.dp)
                         .graphicsLayer { scaleX = dotScale; scaleY = dotScale }
-                        .background(
-                            if (filled) MaterialTheme.colorScheme.primary
-                            else MaterialTheme.colorScheme.surfaceVariant,
-                            CircleShape
+                        .then(
+                            if (filled) Modifier.background(MaterialTheme.colorScheme.primary, CircleShape)
+                            else Modifier.border(2.dp, Pb.ink3, CircleShape)
                         )
                 )
             }
         }
-        Text(
-            error ?: " ",
-            color = MaterialTheme.colorScheme.error, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
-            textAlign = TextAlign.Center,
-            modifier = Modifier.padding(top = 10.dp)
-        )
+        Box(Modifier.padding(top = 10.dp).heightIn(min = 20.dp), contentAlignment = Alignment.Center) {
+            if (busy && error == null) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    CircularProgressIndicator(
+                        Modifier.size(16.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.primary
+                    )
+                    Text(
+                        S.checking, color = Pb.ink2, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.padding(start = 8.dp)
+                    )
+                }
+            } else {
+                Text(
+                    error ?: " ",
+                    color = MaterialTheme.colorScheme.error, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
+                    textAlign = TextAlign.Center
+                )
+            }
+        }
         Column(
             Modifier.padding(top = 8.dp).fillMaxWidth(),
             verticalArrangement = Arrangement.spacedBy(10.dp)
@@ -778,7 +821,7 @@ fun StatCard(label: String, value: String, modifier: Modifier = Modifier, accent
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 Box(Modifier.size(7.dp).background(accent, CircleShape))
                 Text(
-                    label, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.4.sp,
+                    label, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = tracking(0.4f),
                     color = Pb.ink2, maxLines = 1, overflow = TextOverflow.Ellipsis
                 )
             }
@@ -824,13 +867,29 @@ fun QtyStepper(qty: Long, onChange: (Long) -> Unit) {
     }
 }
 
+// Every switch says what it switches — TalkBack used to read a bare "switch,
+// on" — and OFF is visible: a grey thumb and ring, not near-white on cream.
+@Composable
+fun PbSwitch(checked: Boolean, onCheckedChange: ((Boolean) -> Unit)?, label: String, modifier: Modifier = Modifier) {
+    Switch(
+        checked = checked,
+        onCheckedChange = onCheckedChange,
+        modifier = modifier.semantics { contentDescription = label },
+        colors = SwitchDefaults.colors(
+            uncheckedThumbColor = Pb.ink3,
+            uncheckedBorderColor = Pb.ink3,
+            uncheckedTrackColor = MaterialTheme.colorScheme.surfaceContainerHighest
+        )
+    )
+}
+
 @Composable
 fun SectionTitle(text: String) {
     Text(
         text,
         fontSize = 12.sp,
         fontWeight = FontWeight.ExtraBold,
-        letterSpacing = 1.2.sp,
+        letterSpacing = tracking(1.2f),
         color = Pb.ink3,
         modifier = Modifier.padding(top = 16.dp, bottom = 6.dp)
     )

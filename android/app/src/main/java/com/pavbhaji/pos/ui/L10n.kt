@@ -44,6 +44,9 @@ fun serverErrText(msg: String): String {
         m.startsWith("menu item not found") -> S.errDishGone
         m.startsWith("can't move ") -> S.errStale
         m.startsWith("server error") -> S.errServer
+        m.startsWith("session expired") || m == "not logged in" -> S.errSession
+        m.startsWith("your role (") && m.endsWith("not allowed to do this") -> S.errRole
+        m.startsWith("only the chef who took this bucket") -> S.errNotYourBucket
         else -> msg
     }
 }
@@ -90,6 +93,7 @@ object S {
         "No internet — try again", "इंटरनेट नहीं है — फिर कोशिश करो", "ઇન્ટરનેટ નથી — ફરી પ્રયત્ન કરો"
     )
     val offlineShort get() = t("offline", "इंटरनेट नहीं", "ઇન્ટરનેટ નથી")
+    val liveOn get() = t("connected", "जुड़ा है", "જોડાયેલું છે")
     val wrongPin get() = t("Wrong PIN", "गलत PIN", "ખોટો PIN")
     fun tooManyPins(secs: String) = t(
         "Too many wrong PINs — wait $secs seconds",
@@ -119,6 +123,21 @@ object S {
         "રસોડાએ આ શરૂ કરી દીધું — હવે ફક્ત એડમિન રદ કરી શકે"
     )
     val errAlreadyCancelled get() = t("Already cancelled", "पहले ही रद्द है", "પહેલેથી રદ છે")
+    val errSession get() = t(
+        "Logged out on this phone — log in again with your PIN",
+        "इस फ़ोन से लॉग आउट हो गए — अपने PIN से फिर अंदर आओ",
+        "આ ફોનમાંથી લોગ આઉટ થયા — તમારા PIN થી ફરી અંદર આવો"
+    )
+    val errRole get() = t(
+        "Your role can't do this",
+        "आपका रोल यह नहीं कर सकता",
+        "તમારો રોલ આ ન કરી શકે"
+    )
+    val errNotYourBucket get() = t(
+        "Only the chef who took this bucket can do that",
+        "यह सिर्फ़ वही शेफ़ कर सकता है जिसने बकेट लिया",
+        "આ ફક્ત એ જ શેફ કરી શકે જેણે બકેટ લીધું"
+    )
     fun errOutOfStock(dish: String) = t(
         "$dish is out of stock — take it out of the cart",
         "$dish खत्म है — कार्ट से हटाओ",
@@ -240,11 +259,13 @@ object S {
 
     // ---- tables / manager ----
     val tablesTitle get() = t("Tables", "टेबल", "ટેબલ")
-    fun occupiedSub(who: String, busy: Int, total: Int) = t(
-        "$who · $busy of $total occupied",
-        "$who · $total में से $busy भरे",
-        "$who · $total માંથી $busy ભરેલા"
+    // Tables header: dine-in tables only, numbers first.
+    fun tablesBusy(busy: Int, total: Int) = t(
+        "$busy/$total tables busy",
+        "$busy/$total टेबल भरी",
+        "$busy/$total ટેબલ ભરેલાં"
     )
+    fun parcelsOpenN(n: Int) = t("$n parcel" + if (n == 1) "" else "s", "$n पार्सल", "$n પાર્સલ")
     val gridTables get() = t("TABLES", "टेबल", "ટેબલ")
     val gridParcel get() = t("🥡 PARCEL — counter orders", "🥡 पार्सल — काउंटर ऑर्डर", "🥡 પાર્સલ — કાઉન્ટર ઓર્ડર")
     val freeTable get() = t("free", "खाली", "ખાલી")
@@ -290,7 +311,6 @@ object S {
     val discardBtn get() = t("Discard", "हटा दो", "કાઢી નાખો")
     fun closeQ(table: String) = t("Close $table?", "$table बंद करें?", "$table બંધ કરવું?")
     fun totalLine(amt: String) = t("Total: $amt", "कुल: $amt", "કુલ: $amt")
-    val collectFirst get() = t("Collect payment before closing.", "बंद करने से पहले पैसे ले लो।", "બંધ કરતાં પહેલાં પૈસા લઈ લો.")
     val notServedYet get() = t("Not served yet:", "अभी तक परोसा नहीं गया:", "હજી પીરસાયું નથી:")
     val closeAnyway get() = t("Close anyway", "फिर भी बंद करो", "તોય બંધ કરો")
     val closeAnywayHint get() = t(
@@ -368,10 +388,12 @@ object S {
     val navMenu get() = t("Menu & colours", "मेनू और रंग", "મેનૂ અને રંગ")
     val navStaff get() = t("Staff", "स्टाफ़", "સ્ટાફ")
     val navReport get() = t("Day report", "दिन की रिपोर्ट", "દિવસનો રિપોર્ટ")
-    fun clockSkew(laptop: String, phone: String) = t(
-        "⚠ Laptop time ($laptop) differs from this phone ($phone). Fix the laptop clock in Windows settings — reports and the day boundary trust it.",
-        "⚠ लैपटॉप का समय ($laptop) इस फ़ोन ($phone) से अलग है। Windows सेटिंग्स में लैपटॉप की घड़ी ठीक करो — रिपोर्ट इसी पर चलती है।",
-        "⚠ લેપટોપનો સમય ($laptop) આ ફોન ($phone) થી અલગ છે. Windows સેટિંગ્સમાં લેપટોપની ઘડિયાળ ઠીક કરો — રિપોર્ટ એના પર ચાલે છે."
+    // There is no laptop any more: the server is in the cloud and keeps
+    // exact time, so a gap almost always means this phone's clock is off.
+    fun clockSkew(server: String, phone: String) = t(
+        "⚠ Shop server time is $server, this phone says $phone. Set this phone to automatic date & time. Reports and the day's start follow the server.",
+        "⚠ दुकान के सर्वर का समय $server है, यह फ़ोन $phone बता रहा है। फ़ोन में ऑटोमैटिक तारीख और समय चालू करो। रिपोर्ट और दिन की शुरुआत सर्वर के समय से चलती है।",
+        "⚠ દુકાનના સર્વરનો સમય $server છે, આ ફોન $phone બતાવે છે. ફોનમાં ઓટોમેટિક તારીખ અને સમય ચાલુ કરો. રિપોર્ટ અને દિવસની શરૂઆત સર્વરના સમય પ્રમાણે ચાલે છે."
     )
     val savingBackup get() = t("saving backup…", "बैकअप सेव हो रहा…", "બેકઅપ સેવ થાય છે…")
     val saveBackup get() = t("save a backup to this phone", "इस फ़ोन में बैकअप सेव करो", "આ ફોનમાં બેકઅપ સેવ કરો")
@@ -428,8 +450,19 @@ object S {
     val addStaff get() = t("+ staff", "+ स्टाफ़", "+ સ્ટાફ")
     val resetPin get() = t("reset PIN", "PIN बदलो", "PIN બદલો")
     val deactivated get() = t("deactivated", "बंद", "બંધ")
+    val activeLbl get() = t("active", "चालू", "ચાલુ")
+    val availableLbl get() = t("available", "उपलब्ध", "ઉપલબ્ધ")
+    fun deactivateQ(who: String) = t("Switch off $who?", "$who को बंद करें?", "$who ને બંધ કરવા?")
+    val deactivateBody get() = t(
+        "They are logged out on every phone at once and their PIN stops working. Switch them back on any time.",
+        "वे तुरंत हर फ़ोन से बाहर हो जाएँगे और उनका PIN काम नहीं करेगा। कभी भी वापस चालू कर सकते हो।",
+        "એ તરત જ દરેક ફોનમાંથી બહાર થઈ જશે અને એમનો PIN કામ નહીં કરે. ક્યારેય પણ પાછા ચાલુ કરી શકો."
+    )
+    val deactivateBtn get() = t("Switch off", "बंद करो", "બંધ કરો")
     val newStaff get() = t("New staff member", "नया स्टाफ़", "નવો સ્ટાફ")
     val pin4 get() = t("PIN (4 digits)", "PIN (4 अंक)", "PIN (4 આંકડા)")
+    val showPin get() = t("show", "दिखाओ", "બતાવો")
+    val hidePin get() = t("hide", "छुपाओ", "છુપાવો")
     val namePinNeeded get() = t("name + 4-digit PIN needed", "नाम + 4 अंकों का PIN चाहिए", "નામ + 4 આંકડાનો PIN જોઈએ")
     val min4digits get() = t("at least 4 digits", "कम से कम 4 अंक", "ઓછામાં ઓછા 4 આંકડા")
     val setPin get() = t("Set PIN", "PIN सेट करो", "PIN સેટ કરો")
@@ -471,6 +504,18 @@ object S {
         "बिल देखने के लिए भरा टेबल दबाओ",
         "બિલ જોવા માટે ભરેલું ટેબલ દબાવો"
     )
+    val noOpenOrder get() = t(
+        "No open order on this table.",
+        "इस टेबल पर कोई खुला ऑर्डर नहीं।",
+        "આ ટેબલ પર કોઈ ખુલ્લો ઓર્ડર નથી."
+    )
+    fun paidHow(how: String) = t("Paid ✓ $how", "पेड ✓ $how", "પેડ ✓ $how")
+    val billLoadFailed get() = t(
+        "Couldn't load this bill's items.",
+        "इस बिल के आइटम नहीं खुले।",
+        "આ બિલની આઈટમ ન ખૂલી."
+    )
+    val retryBtn get() = t("Try again", "फिर कोशिश करो", "ફરી પ્રયત્ન કરો")
     val subtotalRow get() = t("Subtotal", "सबटोटल", "સબટોટલ")
     val discountRow get() = t("Discount", "छूट", "છૂટ")
     val addDiscount get() = t("＋ discount", "＋ छूट", "＋ છૂટ")
@@ -534,6 +579,33 @@ object S {
     fun billsCount(n: Int) = t("$n bills", "$n बिल", "$n બિલ")
     val noBillsDay get() = t("No bills for this day.", "इस दिन का कोई बिल नहीं।", "આ દિવસનું કોઈ બિલ નથી.")
     fun closedLine(t2: String, who: String) = t("closed $t2 · $who", "$t2 बंद · $who", "$t2 બંધ · $who")
+
+    // ---- audit log: the server's action codes, in words ----
+    fun auditAction(code: String) = when (code) {
+        "ticket" -> t("KOT sent", "KOT भेजा", "KOT મોકલ્યો")
+        "parcel" -> t("parcel", "पार्सल", "પાર્સલ")
+        "order:closed" -> t("table closed", "टेबल बंद", "ટેબલ બંધ")
+        "batch:taken" -> t("bucket taken", "बकेट लिया", "બકેટ લીધું")
+        "batch:plate-ready" -> t("plate ready", "प्लेट तैयार", "પ્લેટ તૈયાર")
+        "batch:item-ready" -> t("dish ready", "डिश तैयार", "વાનગી તૈયાર")
+        "batch:ready" -> t("bucket ready", "बकेट तैयार", "બકેટ તૈયાર")
+        "batch:released" -> t("bucket left", "बकेट छोड़ा", "બકેટ છોડ્યું")
+        "batch:sealed" -> t("bucket sealed", "बकेट सील", "બકેટ સીલ")
+        "item:served" -> t("served", "परोसा", "પીરસ્યું")
+        "item:cancelled" -> t("cancelled", "रद्द", "રદ")
+        "bill:discount" -> t("discount", "छूट", "છૂટ")
+        "bill-settings" -> t("bill settings", "बिल सेटिंग", "બિલ સેટિંગ")
+        "login" -> t("logged in", "लॉग इन", "લોગ ઇન")
+        "logout" -> t("logged out", "लॉग आउट", "લોગ આઉટ")
+        "login:blocked" -> t("wrong PINs", "गलत PIN", "ખોટા PIN")
+        "staff" -> t("staff", "स्टाफ़", "સ્ટાફ")
+        "tables" -> t("tables", "टेबल", "ટેબલ")
+        "menu:item" -> t("menu", "मेनू", "મેનૂ")
+        "menu:category" -> t("menu category", "मेनू कैटेगरी", "મેનૂ કેટેગરી")
+        "backup" -> t("backup", "बैकअप", "બેકઅપ")
+        "seed" -> t("setup", "सेटअप", "સેટઅપ")
+        else -> if (code.startsWith("item:")) statusLabel(code.removePrefix("item:")) else code
+    }
 
     // ---- audit filters ----
     fun auditFilter(key: String) = when (key) {

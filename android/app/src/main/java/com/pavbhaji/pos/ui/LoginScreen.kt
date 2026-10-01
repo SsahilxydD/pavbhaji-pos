@@ -35,6 +35,7 @@ import kotlinx.coroutines.launch
 @Composable
 fun LoginScreen(onLoggedIn: () -> Unit, onChangeServer: () -> Unit) {
     var error by remember { mutableStateOf<String?>(null) }
+    var busy by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     StatusBarIcons(darkIcons = true)
 
@@ -73,8 +74,11 @@ fun LoginScreen(onLoggedIn: () -> Unit, onChangeServer: () -> Unit) {
             PinPad(
                 onSubmit = { pin ->
                     error = null
+                    busy = true
                     scope.launch {
-                        when (val r = Deps.api.login(pin)) {
+                        val r = Deps.api.login(pin)
+                        busy = false
+                        when (r) {
                             is ApiResult.Ok -> {
                                 Deps.session.token = r.value.token
                                 Deps.session.staffName = r.value.staff.name
@@ -86,7 +90,8 @@ fun LoginScreen(onLoggedIn: () -> Unit, onChangeServer: () -> Unit) {
                         }
                     }
                 },
-                error = error
+                error = error,
+                busy = busy
             )
         }
         LangAction(

@@ -71,6 +71,11 @@ class Session(context: Context) {
         get() = prefs.getString("staffRole", "") ?: ""
         set(v) { prefs.edit().putString("staffRole", v).apply() }
 
+    // The kitchen's "tap each plate…" hint is for a chef's first bucket on
+    // this phone; once they have ticked a plate it stops repeating.
+    fun tickHintSeen(staffId: Long): Boolean = prefs.getBoolean("tickHintSeen.$staffId", false)
+    fun markTickHintSeen(staffId: Long) { prefs.edit().putBoolean("tickHintSeen.$staffId", true).apply() }
+
     fun clearLogin() {
         prefs.edit().remove("token").remove("staffName").remove("staffRole").remove("staffId").apply()
     }

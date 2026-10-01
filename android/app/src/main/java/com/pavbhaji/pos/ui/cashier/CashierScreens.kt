@@ -48,6 +48,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
@@ -88,6 +89,9 @@ fun CashierHome(onLogout: () -> Unit) {
     var billName by rememberSaveable { mutableStateOf("") }
     var tab by rememberSaveable { mutableIntStateOf(0) }
 
+    // A tap on a free table used to do nothing at all; now it says why.
+    var freeTap by remember { mutableIntStateOf(0) }
+
     val sel = billId
     if (sel != null) {
         BillScreen(tableId = sel, tableName = billName, onBack = { billId = null })
@@ -97,10 +101,25 @@ fun CashierHome(onLogout: () -> Unit) {
         Box(Modifier.weight(1f)) {
             if (tab == 0) {
                 TablesScreen(
-                    onOpenTable = { if (it.order != null) { billName = it.name; billId = it.id } },
+                    onOpenTable = {
+                        if (it.order != null) { billName = it.name; billId = it.id } else freeTap++
+                    },
                     onLogout = onLogout,
                     onBack = null
                 )
+                if (freeTap > 0) {
+                    LaunchedEffect(freeTap) { delay(2500); freeTap = 0 }
+                    Surface(
+                        color = com.pavbhaji.pos.ui.InkDark.copy(alpha = 0.92f),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.align(Alignment.BottomCenter).padding(16.dp)
+                    ) {
+                        Text(
+                            S.tapOccupied, color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold,
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp)
+                        )
+                    }
+                }
             } else {
                 BillsHistoryScreen(onLogout = onLogout, onBack = null)
             }
@@ -108,7 +127,7 @@ fun CashierHome(onLogout: () -> Unit) {
         NavigationBar(containerColor = Color.White, tonalElevation = 0.dp) {
             NavigationBarItem(
                 selected = tab == 0, onClick = { tab = 0 },
-                icon = { Text("▦", fontSize = 17.sp) },
+                icon = { Text("▦", fontSize = 17.sp, modifier = Modifier.clearAndSetSemantics {}) },
                 label = { Text(S.tablesTitle, fontSize = 11.sp, fontWeight = FontWeight.Bold) },
                 colors = NavigationBarItemDefaults.colors(
                     selectedTextColor = BhajiRed, indicatorColor = Color(0xFFFFE0CC)
@@ -116,7 +135,7 @@ fun CashierHome(onLogout: () -> Unit) {
             )
             NavigationBarItem(
                 selected = tab == 1, onClick = { tab = 1 },
-                icon = { Text("🧾", fontSize = 17.sp) },
+                icon = { Text("🧾", fontSize = 17.sp, modifier = Modifier.clearAndSetSemantics {}) },
                 label = { Text(S.navBills, fontSize = 11.sp, fontWeight = FontWeight.Bold) },
                 colors = NavigationBarItemDefaults.colors(
                     selectedTextColor = BhajiRed, indicatorColor = Color(0xFFFFE0CC)
@@ -222,12 +241,14 @@ fun BillScreen(tableId: Long, tableName: String, onBack: () -> Unit) {
     // Every refresh re-generates the bill server-side, so its subtotal always
     // tracks the live items (a KOT punched mid-billing can't sneak past).
     var loadError by remember { mutableStateOf<String?>(null) }
+    var loaded by remember { mutableStateOf(false) }
     suspend fun refresh() {
         when (val r = Deps.api.tableOrder(tableId)) {
             is ApiResult.Ok -> {
                 if (r.value.order == null && order != null) { onBack(); return }
                 order = r.value.order
                 loadError = null
+                loaded = true
             }
             is ApiResult.Err -> loadError = r.message
         }
@@ -301,11 +322,20 @@ fun BillScreen(tableId: Long, tableName: String, onBack: () -> Unit) {
         }
 
         if (o == null) {
-            Spacer(Modifier.weight(1f))
+            // Loading (or offline before the first answer): the shape of a
+            // bill, not a blank page. Loaded and still nothing: say so.
+            Box(Modifier.weight(1f)) {
+                if (!loaded) com.pavbhaji.pos.ui.ListSkeleton(rows = 3, rowHeight = 120.dp)
+                else com.pavbhaji.pos.ui.EmptyState("🍽️", S.noOpenOrder)
+            }
         } else {
             val lines = billLines(o)
-            val pending = o.tickets.sumOf { t -> t.items.filter { it.status == "pending" || it.status == "preparing" }.sumOf { it.qty } }
-            val ready = o.tickets.sumOf { t -> t.items.filter { it.status == "ready" }.sumOf { it.qty } }
+            // "Cooking" is the kitchen's plates only. Drinks and extra pav
+            // never cook — they wait for a waiter to carry them, so they
+            // count with the plates ready to serve.
+            val items = o.tickets.flatMap { it.items }
+            val pending = items.filter { it.station != "counter" && (it.status == "pending" || it.status == "preparing") }.sumOf { it.qty }
+            val ready = items.filter { it.status == "ready" || (it.station == "counter" && it.status == "pending") }.sumOf { it.qty }
             val total = b?.total ?: o.total
             val paid = (b?.paidCash ?: 0) + (b?.paidOnline ?: 0)
             val settled = b != null && paid == total && b.subtotal == o.total
@@ -335,7 +365,7 @@ fun BillScreen(tableId: Long, tableName: String, onBack: () -> Unit) {
                             // column headers, invoice style
                             Row {
                                 Text(
-                                    S.billItem.uppercase(), fontSize = 10.sp, letterSpacing = 0.8.sp,
+                                    S.billItem.uppercase(), fontSize = 10.sp, letterSpacing = com.pavbhaji.pos.ui.tracking(0.8f),
                                     fontWeight = FontWeight.Bold,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     modifier = Modifier.weight(1f)
@@ -405,7 +435,7 @@ fun BillScreen(tableId: Long, tableName: String, onBack: () -> Unit) {
                             HorizontalDivider(Modifier.padding(vertical = 10.dp))
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Text(
-                                    S.paymentSection, fontSize = 10.sp, letterSpacing = 0.8.sp,
+                                    S.paymentSection, fontSize = 10.sp, letterSpacing = com.pavbhaji.pos.ui.tracking(0.8f),
                                     fontWeight = FontWeight.Bold,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     modifier = Modifier.weight(1f)
@@ -573,12 +603,22 @@ fun BillScreen(tableId: Long, tableName: String, onBack: () -> Unit) {
     if (confirmClose) {
         // Unserved plates no longer block the close — the cashier just sees
         // exactly what is going out unserved before they tap it.
+        // One line per dish: a line the kitchen split plate by plate used to
+        // show as "1× Pav Bhaji" twice.
         val left = (order?.tickets ?: emptyList()).flatMap { it.items }
             .filter { it.status != "served" && it.status != "cancelled" }
-            .map { "• ${it.qty}× ${it.name}" }
+            .groupBy { it.name }
+            .map { (name, ls) -> "• ${ls.sumOf { it.qty }}× $name" }
+        // Close is only enabled once the bill is settled, so the dialog
+        // confirms how it was paid instead of saying "collect payment first".
+        val paidHow = listOfNotNull(
+            bill?.paidCash?.takeIf { it > 0 }?.let { "💵 ${rupees(it)}" },
+            bill?.paidOnline?.takeIf { it > 0 }?.let { "📲 ${rupees(it)}" }
+        ).joinToString(" + ")
         ConfirmDialog(
             title = S.closeQ(tableName),
-            body = S.totalLine(rupees(bill?.total ?: order?.total ?: 0)) + "\n" + S.collectFirst +
+            body = S.totalLine(rupees(bill?.total ?: order?.total ?: 0)) +
+                (if (paidHow.isNotEmpty()) "\n" + S.paidHow(paidHow) else "") +
                 if (left.isEmpty()) ""
                 else "\n\n" + S.notServedYet + "\n" + left.joinToString("\n") + "\n" + S.closeAnywayHint,
             confirmLabel = if (left.isEmpty()) S.closeTable else S.closeAnyway,
@@ -777,15 +817,20 @@ fun BillHistoryDetail(summary: BillSummaryDto, onBack: () -> Unit) {
     var order by remember { mutableStateOf<OrderDetailDto?>(null) }
     var bill by remember { mutableStateOf<BillDto?>(null) }
     var printHold by remember { mutableStateOf<WebView?>(null) }
+    // A failed load used to leave "loading…" up forever; now it says so and
+    // offers a retry (the summary numbers below are already known).
+    var loadErr by remember { mutableStateOf<String?>(null) }
+    var attempt by remember { mutableIntStateOf(0) }
 
-    LaunchedEffect(summary.orderId) {
+    LaunchedEffect(summary.orderId, attempt) {
+        loadErr = null
         when (val r = Deps.api.orderDetail(summary.orderId)) {
             is ApiResult.Ok -> order = r.value
-            is ApiResult.Err -> {}
+            is ApiResult.Err -> loadErr = r.message
         }
         when (val b = Deps.api.billGet(summary.orderId)) {
             is ApiResult.Ok -> bill = b.value
-            is ApiResult.Err -> {}
+            is ApiResult.Err -> if (loadErr == null) loadErr = b.message
         }
     }
 
@@ -837,6 +882,14 @@ fun BillHistoryDetail(summary: BillSummaryDto, onBack: () -> Unit) {
                                     BillCol(rupees(l.amt), 76.dp, bold = true)
                                 }
                             }
+                        } else if (loadErr != null) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    S.billLoadFailed, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.error, modifier = Modifier.weight(1f)
+                                )
+                                TextButton(onClick = { attempt++ }) { Text(S.retryBtn, fontSize = 13.sp) }
+                            }
                         } else {
                             Text(S.loading, fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
@@ -861,7 +914,7 @@ fun BillHistoryDetail(summary: BillSummaryDto, onBack: () -> Unit) {
                         HorizontalDivider(Modifier.padding(vertical = 10.dp))
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(
-                                S.paymentSection, fontSize = 10.sp, letterSpacing = 0.8.sp,
+                                S.paymentSection, fontSize = 10.sp, letterSpacing = com.pavbhaji.pos.ui.tracking(0.8f),
                                 fontWeight = FontWeight.Bold,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier = Modifier.weight(1f)
@@ -953,7 +1006,7 @@ private fun BillCol(text: String, width: androidx.compose.ui.unit.Dp, muted: Boo
     Text(
         text,
         fontSize = if (muted) 10.sp else 13.sp,
-        letterSpacing = if (muted) 0.8.sp else 0.sp,
+        letterSpacing = if (muted) com.pavbhaji.pos.ui.tracking(0.8f) else 0.sp,
         fontWeight = if (bold || muted) FontWeight.Bold else FontWeight.Normal,
         color = if (muted) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface,
         textAlign = TextAlign.End,

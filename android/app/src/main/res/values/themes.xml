@@ -1,7 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
-<resources>
+<resources xmlns:tools="http://schemas.android.com/tools">
     <style name="Theme.PBPos" parent="android:Theme.Material.Light.NoActionBar">
         <item name="android:statusBarColor">@android:color/transparent</item>
         <item name="android:windowBackground">#FAF6F0</item>
+        <!-- The app is light by design. Phones that force dark mode on every
+             app (MIUI, ColorOS "dark mode for apps") must leave it alone, or
+             they invert parts of the screens and the dish colours. -->
+        <item name="android:forceDarkAllowed" tools:targetApi="q">false</item>
     </style>
 </resources>

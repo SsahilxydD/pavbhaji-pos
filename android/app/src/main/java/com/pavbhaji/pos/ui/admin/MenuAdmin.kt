@@ -23,7 +23,6 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -39,7 +38,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.pavbhaji.pos.Deps
@@ -68,6 +69,10 @@ fun parseRupees(s: String): Long? {
         if (whole < 0 || parts.size > 2) null else whole * 100 + frac
     } catch (e: Exception) { null }
 }
+
+// Prices get the number pad with a decimal point; caps and minutes plain digits.
+private val PriceKeys = KeyboardOptions(keyboardType = KeyboardType.Decimal)
+private val CountKeys = KeyboardOptions(keyboardType = KeyboardType.Number)
 
 // A dish's colour on every screen; blank falls back the same way dishColour does.
 private fun colourOf(mi: MenuItemDto): String =
@@ -195,10 +200,14 @@ fun MenuAdmin(onBack: () -> Unit) {
             title = { Text(mi.name) },
             text = {
                 Column {
-                    OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text(S.name) })
+                    OutlinedTextField(
+                        value = name, onValueChange = { name = it }, label = { Text(S.name) },
+                        singleLine = true, keyboardOptions = NameKeys
+                    )
                     OutlinedTextField(
                         value = price, onValueChange = { price = it },
-                        label = { Text(S.priceRs) }, modifier = Modifier.padding(top = 8.dp)
+                        label = { Text(S.priceRs) }, modifier = Modifier.padding(top = 8.dp),
+                        singleLine = true, keyboardOptions = PriceKeys
                     )
                     StationPicker(station) { station = it }
                     if (station == "kitchen") {
@@ -210,12 +219,14 @@ fun MenuAdmin(onBack: () -> Unit) {
                                 value = cap,
                                 onValueChange = { cap = it.filter { c -> c.isDigit() }.take(2) },
                                 label = { Text(S.tawaCap) }, placeholder = { Text("15") },
+                                singleLine = true, keyboardOptions = CountKeys,
                                 modifier = Modifier.weight(1f).padding(end = 6.dp)
                             )
                             OutlinedTextField(
                                 value = ageMin,
                                 onValueChange = { ageMin = it.filter { c -> c.isDigit() }.take(3) },
                                 label = { Text(S.sealAfter) }, placeholder = { Text("10") },
+                                singleLine = true, keyboardOptions = CountKeys,
                                 modifier = Modifier.weight(1f)
                             )
                         }
@@ -266,15 +277,22 @@ fun MenuAdmin(onBack: () -> Unit) {
         var withFood by remember(cat.id) { mutableStateOf(false) }
         var morePicker by remember { mutableStateOf(false) }
         var dErr by remember(cat.id) { mutableStateOf<String?>(null) }
-        AlertDialog(
+        // One dialog at a time: the full colour picker REPLACES the new-item
+        // form while it is open (it used to stack on top, with two Back
+        // buttons), and the form comes back with everything still typed in.
+        if (!morePicker) AlertDialog(
             onDismissRequest = { addToCat = null },
             title = { Text(S.newItemIn(cat.name)) },
             text = {
                 Column {
-                    OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text(S.name) })
+                    OutlinedTextField(
+                        value = name, onValueChange = { name = it }, label = { Text(S.name) },
+                        singleLine = true, keyboardOptions = NameKeys
+                    )
                     OutlinedTextField(
                         value = price, onValueChange = { price = it },
-                        label = { Text(S.priceRs) }, modifier = Modifier.padding(top = 8.dp)
+                        label = { Text(S.priceRs) }, modifier = Modifier.padding(top = 8.dp),
+                        singleLine = true, keyboardOptions = PriceKeys
                     )
                     StationPicker(station) { station = it }
                     if (station == "counter") WithFoodToggle(withFood) { withFood = it }
@@ -317,7 +335,10 @@ fun MenuAdmin(onBack: () -> Unit) {
             title = { Text(S.newCategory) },
             text = {
                 Column {
-                    OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text(S.name) })
+                    OutlinedTextField(
+                        value = name, onValueChange = { name = it }, label = { Text(S.name) },
+                        singleLine = true, keyboardOptions = NameKeys
+                    )
                     dErr?.let { Text(it, color = MaterialTheme.colorScheme.error, fontSize = 13.sp, modifier = Modifier.padding(top = 6.dp)) }
                 }
             },
@@ -403,7 +424,7 @@ private fun MenuItemCard(
                     }
                 )
             }
-            Switch(checked = mi.available, onCheckedChange = onToggle)
+            com.pavbhaji.pos.ui.PbSwitch(mi.available, onToggle, label = "${mi.name} · ${S.availableLbl}")
         }
     }
 }
@@ -433,7 +454,7 @@ private fun WithFoodToggle(checked: Boolean, onChange: (Boolean) -> Unit) {
     Column(Modifier.padding(top = 10.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(S.withFoodToggle, fontSize = 14.sp, modifier = Modifier.weight(1f))
-            Switch(checked = checked, onCheckedChange = onChange)
+            com.pavbhaji.pos.ui.PbSwitch(checked, onChange, label = S.withFoodToggle)
         }
         Text(
             S.withFoodHint, fontSize = 11.sp,
@@ -449,10 +470,13 @@ private fun ColourSwatchRow(selected: String, onSelect: (String) -> Unit, onMore
     Column(Modifier.padding(top = 12.dp)) {
         Text(S.bucketColour, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Row(Modifier.padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            DishPaletteHex.forEach { hex ->
+            DishPaletteHex.forEachIndexed { i, hex ->
                 val sel = selected.equals(hex, ignoreCase = true)
                 Box(
                     Modifier
+                        .semantics {
+                            contentDescription = "${S.bucketColour} ${i + 1}" + if (sel) " ✓" else ""
+                        }
                         .size(30.dp)
                         .clip(RoundedCornerShape(9.dp))
                         .background(dishColour(hex, 0))
@@ -467,6 +491,7 @@ private fun ColourSwatchRow(selected: String, onSelect: (String) -> Unit, onMore
             val custom = DishPaletteHex.none { it.equals(selected, ignoreCase = true) }
             Box(
                 Modifier
+                    .semantics { contentDescription = S.orMixOwn + if (custom) " ✓" else "" }
                     .size(30.dp)
                     .clip(RoundedCornerShape(9.dp))
                     .background(if (custom) dishColour(selected, 0) else Color.Transparent)

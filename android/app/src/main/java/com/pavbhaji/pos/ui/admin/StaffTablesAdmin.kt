@@ -259,6 +259,7 @@ fun TablesAdmin(onBack: () -> Unit) {
     if (addOpen) {
         var name by remember { mutableStateOf("") }
         var kind by remember { mutableStateOf("dine") }
+        var dErr by remember { mutableStateOf<String?>(null) }
         AlertDialog(
             onDismissRequest = { addOpen = false },
             title = { Text(S.newTable) },
@@ -277,12 +278,19 @@ fun TablesAdmin(onBack: () -> Unit) {
                             label = { Text(S.parcelTag) }
                         )
                     }
+                    dErr?.let { Text(it, color = MaterialTheme.colorScheme.error, fontSize = 13.sp) }
                 }
             },
             confirmButton = {
                 Button(onClick = {
                     if (name.trim().isNotEmpty()) {
-                        scope.launch { Deps.api.tableCreate(name.trim(), kind); addOpen = false; refresh() }
+                        scope.launch {
+                            // Refused (say, a duplicate name): stay open and say why.
+                            when (val r = Deps.api.tableCreate(name.trim(), kind)) {
+                                is ApiResult.Ok -> { addOpen = false; refresh() }
+                                is ApiResult.Err -> dErr = r.message
+                            }
+                        }
                     }
                 }) { Text(S.add) }
             },
@@ -291,16 +299,24 @@ fun TablesAdmin(onBack: () -> Unit) {
     }
     renameFor?.let { t ->
         var name by remember { mutableStateOf(t.name) }
+        var dErr by remember { mutableStateOf<String?>(null) }
         AlertDialog(
             onDismissRequest = { renameFor = null },
             title = { Text(S.renameX(t.name)) },
-            text = { OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text(S.name) }) },
+            text = {
+                Column {
+                    OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text(S.name) })
+                    dErr?.let { Text(it, color = MaterialTheme.colorScheme.error, fontSize = 13.sp) }
+                }
+            },
             confirmButton = {
                 Button(onClick = {
                     if (name.trim().isNotEmpty()) {
                         scope.launch {
-                            Deps.api.tablePatch(t.id, """{"name":${Deps.api.json.encodeToString(kotlinx.serialization.serializer<String>(), name.trim())}}""")
-                            renameFor = null; refresh()
+                            when (val r = Deps.api.tablePatch(t.id, """{"name":${Deps.api.json.encodeToString(kotlinx.serialization.serializer<String>(), name.trim())}}""")) {
+                                is ApiResult.Ok -> { renameFor = null; refresh() }
+                                is ApiResult.Err -> dErr = r.message
+                            }
                         }
                     }
                 }) { Text(S.save) }

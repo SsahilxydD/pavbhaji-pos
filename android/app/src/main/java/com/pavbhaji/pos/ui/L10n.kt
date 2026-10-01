@@ -383,6 +383,14 @@ object S {
     val tawaCap get() = t("Tawa cap", "तवा कैप", "તવા કેપ")
     val sealAfter get() = t("Seal after (min)", "कितने मिनट में सील", "કેટલી મિનિટે સીલ")
     val archiveItem get() = t("Archive item (hide everywhere)", "आइटम हटाओ (हर जगह छुपेगा)", "આઈટમ હટાવો (બધે છુપાશે)")
+    fun archiveQ(name: String) = t("Archive $name?", "$name हटाएँ?", "$name હટાવવી?")
+    val archiveBody get() = t(
+        "It disappears from every menu and can't be ordered any more. Old bills keep it.",
+        "यह हर मेनू से गायब हो जाएगा और फिर ऑर्डर नहीं हो पाएगा। पुराने बिलों में रहेगा।",
+        "આ દરેક મેનૂમાંથી ગાયબ થઈ જશે અને ફરી ઓર્ડર નહીં થાય. જૂના બિલોમાં રહેશે."
+    )
+    val archiveBtn get() = t("Archive", "हटाओ", "હટાવો")
+    val namePriceNeeded get() = t("Name and a price are needed", "नाम और दाम चाहिए", "નામ અને ભાવ જોઈએ")
     fun newItemIn(cat: String) = t("New item — $cat", "नया आइटम — $cat", "નવી આઈટમ — $cat")
     val newItem get() = t("New item", "नया आइटम", "નવી આઈટમ")
     val newCategory get() = t("New category", "नई कैटेगरी", "નવી કેટેગરી")

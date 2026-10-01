@@ -370,10 +370,12 @@ object S {
     val navMenu get() = t("Menu & colours", "मेनू और रंग", "મેનૂ અને રંગ")
     val navStaff get() = t("Staff", "स्टाफ़", "સ્ટાફ")
     val navReport get() = t("Day report", "दिन की रिपोर्ट", "દિવસનો રિપોર્ટ")
-    fun clockSkew(laptop: String, phone: String) = t(
-        "⚠ Laptop time ($laptop) differs from this phone ($phone). Fix the laptop clock in Windows settings — reports and the day boundary trust it.",
-        "⚠ लैपटॉप का समय ($laptop) इस फ़ोन ($phone) से अलग है। Windows सेटिंग्स में लैपटॉप की घड़ी ठीक करो — रिपोर्ट इसी पर चलती है।",
-        "⚠ લેપટોપનો સમય ($laptop) આ ફોન ($phone) થી અલગ છે. Windows સેટિંગ્સમાં લેપટોપની ઘડિયાળ ઠીક કરો — રિપોર્ટ એના પર ચાલે છે."
+    // There is no laptop any more: the server is in the cloud and keeps
+    // exact time, so a gap almost always means this phone's clock is off.
+    fun clockSkew(server: String, phone: String) = t(
+        "⚠ Shop server time is $server, this phone says $phone. Set this phone to automatic date & time. Reports and the day's start follow the server.",
+        "⚠ दुकान के सर्वर का समय $server है, यह फ़ोन $phone बता रहा है। फ़ोन में ऑटोमैटिक तारीख और समय चालू करो। रिपोर्ट और दिन की शुरुआत सर्वर के समय से चलती है।",
+        "⚠ દુકાનના સર્વરનો સમય $server છે, આ ફોન $phone બતાવે છે. ફોનમાં ઓટોમેટિક તારીખ અને સમય ચાલુ કરો. રિપોર્ટ અને દિવસની શરૂઆત સર્વરના સમય પ્રમાણે ચાલે છે."
     )
     val savingBackup get() = t("saving backup…", "बैकअप सेव हो रहा…", "બેકઅપ સેવ થાય છે…")
     val saveBackup get() = t("save a backup to this phone", "इस फ़ोन में बैकअप सेव करो", "આ ફોનમાં બેકઅપ સેવ કરો")
@@ -550,6 +552,33 @@ object S {
     fun billsCount(n: Int) = t("$n bills", "$n बिल", "$n બિલ")
     val noBillsDay get() = t("No bills for this day.", "इस दिन का कोई बिल नहीं।", "આ દિવસનું કોઈ બિલ નથી.")
     fun closedLine(t2: String, who: String) = t("closed $t2 · $who", "$t2 बंद · $who", "$t2 બંધ · $who")
+
+    // ---- audit log: the server's action codes, in words ----
+    fun auditAction(code: String) = when (code) {
+        "ticket" -> t("KOT sent", "KOT भेजा", "KOT મોકલ્યો")
+        "parcel" -> t("parcel", "पार्सल", "પાર્સલ")
+        "order:closed" -> t("table closed", "टेबल बंद", "ટેબલ બંધ")
+        "batch:taken" -> t("bucket taken", "बकेट लिया", "બકેટ લીધું")
+        "batch:plate-ready" -> t("plate ready", "प्लेट तैयार", "પ્લેટ તૈયાર")
+        "batch:item-ready" -> t("dish ready", "डिश तैयार", "વાનગી તૈયાર")
+        "batch:ready" -> t("bucket ready", "बकेट तैयार", "બકેટ તૈયાર")
+        "batch:released" -> t("bucket left", "बकेट छोड़ा", "બકેટ છોડ્યું")
+        "batch:sealed" -> t("bucket sealed", "बकेट सील", "બકેટ સીલ")
+        "item:served" -> t("served", "परोसा", "પીરસ્યું")
+        "item:cancelled" -> t("cancelled", "रद्द", "રદ")
+        "bill:discount" -> t("discount", "छूट", "છૂટ")
+        "bill-settings" -> t("bill settings", "बिल सेटिंग", "બિલ સેટિંગ")
+        "login" -> t("logged in", "लॉग इन", "લોગ ઇન")
+        "logout" -> t("logged out", "लॉग आउट", "લોગ આઉટ")
+        "login:blocked" -> t("wrong PINs", "गलत PIN", "ખોટા PIN")
+        "staff" -> t("staff", "स्टाफ़", "સ્ટાફ")
+        "tables" -> t("tables", "टेबल", "ટેબલ")
+        "menu:item" -> t("menu", "मेनू", "મેનૂ")
+        "menu:category" -> t("menu category", "मेनू कैटेगरी", "મેનૂ કેટેગરી")
+        "backup" -> t("backup", "बैकअप", "બેકઅપ")
+        "seed" -> t("setup", "सेटअप", "સેટઅપ")
+        else -> if (code.startsWith("item:")) statusLabel(code.removePrefix("item:")) else code
+    }
 
     // ---- audit filters ----
     fun auditFilter(key: String) = when (key) {

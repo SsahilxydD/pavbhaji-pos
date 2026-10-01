@@ -56,11 +56,18 @@ private fun shiftDate(date: String, days: Int): String {
 fun ReportScreen(onBack: () -> Unit, onOpenLog: () -> Unit) {
     var date by remember { mutableStateOf<String?>(null) } // null = today
     var rep by remember { mutableStateOf(ReportDto()) }
+    // Until the day's numbers arrive the page used to show ₹0 everywhere — a
+    // real-looking report of nothing, and the same when offline. Now: a
+    // skeleton while loading, and the reason when it fails.
+    var loaded by remember { mutableStateOf(false) }
+    var err by remember { mutableStateOf<String?>(null) }
+    var attempt by remember { mutableStateOf(0) }
 
-    LaunchedEffect(date) {
+    LaunchedEffect(date, attempt) {
+        loaded = false
         when (val r = Deps.api.report(date)) {
-            is ApiResult.Ok -> rep = r.value
-            is ApiResult.Err -> {}
+            is ApiResult.Ok -> { rep = r.value; loaded = true; err = null }
+            is ApiResult.Err -> err = r.message
         }
     }
 
@@ -70,15 +77,27 @@ fun ReportScreen(onBack: () -> Unit, onOpenLog: () -> Unit) {
             onBack = onBack,
             actions = { com.pavbhaji.pos.ui.HeaderTextAction(S.logBtn, onOpenLog) }
         )
+        com.pavbhaji.pos.ui.ErrorBanner(err)
         Row(
             Modifier.fillMaxWidth().padding(horizontal = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.Center
         ) {
-            TextButton(onClick = { date = shiftDate(rep.date, -1) }) { Text("◀") }
-            Text(rep.date, fontSize = 16.sp, fontWeight = FontWeight.Bold)
-            TextButton(onClick = { date = shiftDate(rep.date, +1) }) { Text("▶") }
+            val known = rep.date.isNotEmpty()
+            TextButton(onClick = { date = shiftDate(rep.date, -1) }, enabled = known) { Text("◀") }
+            Text(rep.date.ifEmpty { "…" }, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+            TextButton(onClick = { date = shiftDate(rep.date, +1) }, enabled = known) { Text("▶") }
             TextButton(onClick = { date = null }) { Text(S.todayBtn, fontSize = 12.sp) }
+        }
+        if (!loaded) {
+            com.pavbhaji.pos.ui.ListSkeleton(rows = 4, rowHeight = 80.dp)
+            if (err != null) {
+                TextButton(
+                    onClick = { attempt++ },
+                    modifier = Modifier.align(Alignment.CenterHorizontally)
+                ) { Text(S.retryBtn) }
+            }
+            return@Column
         }
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(12.dp)) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -160,18 +179,23 @@ fun AuditScreen(onBack: () -> Unit) {
     var events by remember { mutableStateOf<List<AuditEventDto>>(emptyList()) }
     var loadingMore by remember { mutableStateOf(false) }
     var filter by remember { mutableStateOf("") } // "" = all, else an auditGroups key
+    var loaded by remember { mutableStateOf(false) }
+    var err by remember { mutableStateOf<String?>(null) }
+    var attempt by remember { mutableStateOf(0) }
     val scope = androidx.compose.runtime.rememberCoroutineScope()
 
-    LaunchedEffect(filter) {
+    LaunchedEffect(filter, attempt) {
         events = emptyList()
+        loaded = false
         when (val r = Deps.api.audit(type = filter)) {
-            is ApiResult.Ok -> events = r.value.events
-            is ApiResult.Err -> {}
+            is ApiResult.Ok -> { events = r.value.events; loaded = true; err = null }
+            is ApiResult.Err -> err = r.message
         }
     }
 
     Column(Modifier.fillMaxSize()) {
         com.pavbhaji.pos.ui.AppHeader(title = S.auditTitle, onBack = onBack)
+        com.pavbhaji.pos.ui.ErrorBanner(err)
         // Filter by the KIND of event — the "what happened with bills today?"
         // question shouldn't need scrolling past every KOT.
         Row(
@@ -189,6 +213,20 @@ fun AuditScreen(onBack: () -> Unit) {
                 )
             }
         }
+        if (!loaded) {
+            com.pavbhaji.pos.ui.ListSkeleton(rows = 6, rowHeight = 46.dp)
+            if (err != null) {
+                TextButton(
+                    onClick = { attempt++ },
+                    modifier = Modifier.align(Alignment.CenterHorizontally)
+                ) { Text(S.retryBtn) }
+            }
+            return@Column
+        }
+        if (events.isEmpty()) {
+            com.pavbhaji.pos.ui.EmptyState("🗒️", S.nothingYet)
+            return@Column
+        }
         LazyColumn(Modifier.fillMaxSize(), contentPadding = androidx.compose.foundation.layout.PaddingValues(12.dp)) {
             events.forEach { e ->
                 item(key = e.id) {
@@ -199,7 +237,8 @@ fun AuditScreen(onBack: () -> Unit) {
                                 fontSize = 12.sp, fontWeight = FontWeight.SemiBold,
                                 color = MaterialTheme.colorScheme.primary, modifier = Modifier.weight(1f)
                             )
-                            Text(e.action, fontSize = 11.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            // "batch:plate-ready" → "plate ready": words, not codes.
+                            Text(S.auditAction(e.action), fontSize = 11.5.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                         Text(e.detail, fontSize = 13.sp)
                     }
@@ -213,8 +252,8 @@ fun AuditScreen(onBack: () -> Unit) {
                                 loadingMore = true
                                 scope.launch {
                                     when (val r = Deps.api.audit(beforeId = events.last().id, type = filter)) {
-                                        is ApiResult.Ok -> events = events + r.value.events
-                                        is ApiResult.Err -> {}
+                                        is ApiResult.Ok -> { events = events + r.value.events; err = null }
+                                        is ApiResult.Err -> err = r.message
                                     }
                                     loadingMore = false
                                 }

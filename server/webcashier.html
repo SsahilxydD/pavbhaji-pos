@@ -70,8 +70,12 @@ function strings() {
     items: function (n) { return t(n + ' item' + (n === 1 ? '' : 's'), n + ' आइटम', n + ' આઈટમ'); },
     plates: function (n) { return t(n + ' plate', n + ' आइटम', n + ' આઈટમ'); },
     cooking: function (n) { return t(n + ' banna baaki', n + ' बन रहे', n + ' બની રહ્યા'); },
+    now: t('abhi', 'अभी', 'હમણાં'),
     billLoading: t('Bill khul raha hai…', 'बिल खुल रहा है…', 'બિલ ખૂલી રહ્યું છે…'),
     bill: t('Bill', 'बिल', 'બિલ'),
+    billNo: function (n) { return t('Bill #' + n, 'बिल #' + n, 'બિલ #' + n); },
+    prevDay: t('Pichhla din', 'पिछला दिन', 'પાછલો દિવસ'),
+    nextDay: t('Agla din', 'अगला दिन', 'આગલો દિવસ'),
     orderNo: function (n) { return t('order #' + n, 'ऑर्डर #' + n, 'ઓર્ડર #' + n); },
     item: t('Item', 'आइटम', 'આઈટમ'),
     qty: t('Qty', 'मात्रा', 'જથ્થો'),
@@ -81,11 +85,11 @@ function strings() {
     discount: t('Discount', 'छूट', 'છૂટ'),
     total: t('TOTAL', 'कुल', 'કુલ'),
     addDiscount: t('＋ discount', '＋ छूट', '＋ છૂટ'),
-    statusLine: function (p, r) { return t(p + ' cooking · ' + r + ' ready to serve', p + ' बन रहे · ' + r + ' परोसने को तैयार', p + ' બની રહ્યા · ' + r + ' પીરસવા તૈયાર'); },
-    running: t('running bill — order is still open, it can grow', 'चालू बिल — ऑर्डर अभी खुला है, बढ़ सकता है', 'ચાલુ બિલ — ઓર્ડર હજી ખુલ્લો છે, વધી શકે છે'),
+    statusLine: function (p, r) { return t(p + ' banna baaki · ' + r + ' serve ke liye ready', p + ' बन रहे · ' + r + ' परोसने को तैयार', p + ' બની રહ્યા · ' + r + ' પીરસવા તૈયાર'); },
+    running: t('Order abhi chalu hai — bill badh sakta hai', 'चालू बिल — ऑर्डर अभी खुला है, बढ़ सकता है', 'ચાલુ બિલ — ઓર્ડર હજી ખુલ્લો છે, વધી શકે છે'),
     payment: t('Payment', 'पेमेंट', 'પેમેન્ટ'),
     paid: t('PAID ✓', 'पेड ✓', 'પેડ ✓'),
-    payLeft: function (a) { return t(a + ' not assigned yet', a + ' अभी बाकी', a + ' હજી બાકી'); },
+    payLeft: function (a) { return t(a + ' baaki', a + ' अभी बाकी', a + ' હજી બાકી'); },
     cash: t('Cash', 'कैश', 'કેશ'),
     online: t('Online / UPI', 'ऑनलाइन / UPI', 'ઓનલાઈન / UPI'),
     allCash: t('💵 all cash', '💵 पूरा कैश', '💵 આખું કેશ'),
@@ -172,7 +176,17 @@ var rupees = function (p) {
   if (!INR0) return '₹' + (whole ? p / 100 : (p / 100).toFixed(2));
   return '₹' + (whole ? INR0 : INR2).format(p / 100);
 };
-var clock = function (ms) { return new Date(ms).toTimeString().slice(0, 5); };
+// Clock times read the way the printed bill prints them: "7:42 pm", not a
+// 24-hour "19:42". How long a table has been open is age(), as on the
+// manager's tiles and the app's.
+var clock = function (ms) {
+  var d = new Date(ms), h = d.getHours(), m = d.getMinutes();
+  return (h % 12 || 12) + ':' + (m < 10 ? '0' : '') + m + ' ' + (h < 12 ? 'am' : 'pm');
+};
+var age = function (ms) {
+  var m = Math.max(0, Math.floor((Date.now() - ms) / 60000));
+  return m < 1 ? S.now : m < 60 ? m + 'm' : Math.floor(m / 60) + 'h' + (m % 60) + 'm';
+};
 // "1,200" typed (or pasted from the screen) must be 1200, not 1.
 var toPaise = function (s) {
   var t = String(s).replace(/[₹,\s]/g, '');
@@ -413,7 +427,7 @@ async function openOrders() {
       var t = r.t, o = t.order, pay = r.pay;
       return '<button class="tile-btn busy' + (pay && pay.settled ? ' paid' : '') + '" data-order="' + o.orderId + '">' +
         '<span class="nm">' + (t.kind === 'parcel' ? '🥡 ' : '') + esc(t.name) + '</span>' +
-        '<span class="sub">#' + o.orderNo + ' · ' + clock(o.openedAt) + '</span>' +
+        '<span class="sub">#' + o.orderNo + ' · ⏱ ' + esc(age(o.openedAt)) + '</span>' +
         (o.customerName ? '<span class="sub">' + esc(o.customerName) + '</span>' : '') +
         '<span class="sub">' + esc(S.plates(o.itemCount)) +
           (o.pendingCount ? ' · ⏳ ' + esc(S.cooking(o.pendingCount)) : '') + '</span>' +
@@ -530,8 +544,9 @@ function paintBill() {
     });
   });
 
-  setTop('‹', S.bill + ' · ' + o.tableName,
-    cur.history ? cur.sub : S.orderNo(o.orderNo) + ' · ' + clock(o.openedAt) + ' · ' + o.openedByName,
+  // "Bill #4 · T3" — the number the printed bill carries, on a closed bill too
+  setTop('‹', S.billNo(o.orderNo) + ' · ' + o.tableName,
+    cur.history ? cur.sub : clock(o.openedAt) + ' · ' + o.openedByName,
     function () { show(cur.history ? 'bills' : 'open'); });
 
   var h = '<div class="card">';
@@ -906,10 +921,17 @@ async function billsList() {
     });
   if (!d || my !== nav || tab !== 'bills' || cur) return;
   billsDay = d;
+  // The server's business day is "today" (it may start after midnight), so
+  // it is learnt from the first unfiltered answer, not the phone's clock.
+  if (!billsDate) billsToday = d.date;
+  var atToday = !billsDate || (!!billsToday && d.date >= billsToday);
 
+  // "Thu, 1 Oct", not "2026-10-01"; ▶ stops at today instead of walking
+  // into empty future days.
   var h = '<div class="datenav">' +
-    '<button data-day="-1">◀</button><b>' + esc(d.date) + '</b>' +
-    '<button data-day="1">▶</button><button data-day="0">' + esc(S.today) + '</button></div>';
+    '<button data-day="-1" aria-label="' + esc(S.prevDay) + '">◀</button><b>' + esc(dayLabel(d.date)) + '</b>' +
+    '<button data-day="1" aria-label="' + esc(S.nextDay) + '"' + (atToday ? ' disabled' : '') + '>▶</button>' +
+    '<button data-day="0">' + esc(S.today) + '</button></div>';
   // 45–110 bills on a busy night: find one by table, order # or customer,
   // or narrow to cash / UPI / discounted ones.
   h += '<div class="bills-find">' +
@@ -941,7 +963,20 @@ async function billsList() {
   });
 }
 
-var billsDay = null, billsQ = '', billsF = '';
+var billsDay = null, billsQ = '', billsF = '', billsToday = '';
+
+// "2026-10-01" → "Thu, 1 Oct" in the screen's language (Hinglish uses the
+// English names, as the shop says them); the year only when it isn't this one.
+function dayLabel(date) {
+  var p = String(date).split('-');
+  var dt = new Date(Number(p[0]), Number(p[1]) - 1, Number(p[2]));
+  if (isNaN(dt.getTime()) || !window.Intl) return String(date);
+  var o = { weekday: 'short', day: 'numeric', month: 'short' };
+  if (dt.getFullYear() !== new Date().getFullYear()) o.year = 'numeric';
+  try {
+    return new Intl.DateTimeFormat(lang === 'hi' ? 'hi-IN' : lang === 'gu' ? 'gu-IN' : 'en-IN', o).format(dt);
+  } catch (e) { return String(date); }
+}
 
 // The day's rows, filtered; the total for exactly what is listed stays in
 // view in the bottom bar however far down the list you are.

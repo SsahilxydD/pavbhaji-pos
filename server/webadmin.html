@@ -163,6 +163,13 @@
   .pillnav button.on { background:var(--ink); color:#fff; border-color:var(--ink); }
   .datebar { display:flex; align-items:center; justify-content:center; gap:8px; margin-bottom:14px; flex-wrap:wrap; }
   .datebar b { font-size:15px; }
+  /* a closed bill: number · who/when/how paid (wraps inside) · amount and 🖨
+     in a fixed right column, so on a phone they never drop to a line of their own */
+  .row.bill { flex-wrap:nowrap; align-items:center; cursor:pointer; }
+  .row.bill .bno { min-width:40px; flex:0 0 auto; }
+  .row.bill .grow { min-width:0; }
+  .row.bill .bpay { display:block; font-size:12.5px; }
+  .row.bill .bend { display:flex; align-items:center; gap:8px; flex:0 0 auto; white-space:nowrap; }
 
   /* ---------- toasts ---------- */
   #toasts { position:fixed; right:18px; bottom:18px; display:flex; flex-direction:column; gap:8px; z-index:50; }
@@ -223,6 +230,19 @@
   }
   body.dirty #toasts { bottom:80px; }
 
+  /* a small dialog (the masked new-PIN box) */
+  .modal { position:fixed; inset:0; z-index:70; background:rgba(40,22,10,.45);
+    display:flex; align-items:center; justify-content:center; padding:16px; }
+  .modal .box { width:100%; max-width:380px; background:var(--card); border-radius:18px;
+    padding:18px 18px 16px; box-shadow:0 10px 30px rgba(0,0,0,.22); }
+  .modal h3 { font-size:17px; margin-bottom:12px; }
+  .pinrow { display:flex; gap:8px; }
+  .pinrow input { flex:1; min-width:0; min-height:46px; font-size:22px; letter-spacing:.3em; font-variant-numeric:tabular-nums; }
+  .pinrow input::placeholder { font-size:15px; letter-spacing:normal; }
+  .pinrow button { white-space:nowrap; }
+  .btnrow { display:flex; gap:9px; margin-top:14px; }
+  .btnrow > * { flex:1; min-height:44px; }
+
   /* reprint from a hidden frame (see printBill); paper shows only that frame */
   #printFrame { position:fixed; left:-10000px; top:0; width:360px; height:600px; border:0; }
   @media print {
@@ -259,6 +279,13 @@
     input[type=checkbox].sw::after { width:22px; height:22px; }
     input[type=checkbox].sw:checked::after { left:23px; }
     label.ck { min-height:40px; }
+  }
+  /* phone: two stat tiles a row, and an odd one out spans the row instead
+     of sitting alone under the first (the report's 3-up row was 2 + 1) */
+  @media (max-width:560px) {
+    .stats { grid-template-columns:repeat(2, minmax(0, 1fr)); }
+    .stats > .stat:last-child:nth-child(odd) { grid-column:1 / -1; }
+    .stat b { font-size:21px; }
   }
 </style>
 </head>
@@ -301,7 +328,11 @@ const toPaise = s => {
   if (!/^\d*\.?\d+$|^\d+\.$/.test(t)) return null;
   const v = parseFloat(t); return isNaN(v) || v < 0 ? null : Math.round(v*100);
 };
-const clock = ms => new Date(ms).toTimeString().slice(0,5);
+// "7:42 pm", the way the printed bill and the other screens show a time
+const clock = ms => {
+  const d = new Date(ms), h = d.getHours(), m = d.getMinutes();
+  return (h % 12 || 12) + ':' + String(m).padStart(2, '0') + ' ' + (h < 12 ? 'am' : 'pm');
+};
 
 // ---- language ----
 // Hinglish (the default) / हिं / ગુ, the same localStorage choice as the
@@ -383,6 +414,16 @@ function strings() {
     newPinFor: n => t('New 4-digit PIN for ' + n + ':', n + ' का नया 4 अंकों का PIN:', n + ' નો નવો 4 આંકડાનો PIN:'),
     pin4only: t('4 digits, numbers only', 'सिर्फ़ 4 अंक', 'ફક્ત 4 આંકડા'),
     pinChanged: n => t('PIN changed for ' + n, n + ' का PIN बदल गया', n + ' નો PIN બદલાયો'),
+    pinTitle: n => t(n + ' ka naya PIN', n + ' का नया PIN', n + ' નો નવો PIN'),
+    pinHint: t('4 digit. Sirf usi ko batana — PIN uska dastakhat hai.', 'सिर्फ़ 4 अंक। सिर्फ़ उसी को बताना — PIN उसका दस्तख़त है।', 'ફક્ત 4 આંકડા. ફક્ત એને જ કહેવું — PIN એની સહી છે.'),
+    showPin: t('👁 dikhao', '👁 दिखाओ', '👁 બતાવો'), hidePin: t('👁 chhupao', '👁 छुपाओ', '👁 છુપાવો'),
+    setPin: t('PIN set karo', 'PIN सेट करो', 'PIN સેટ કરો'), keep: t('Rehne do', 'रहने दो', 'રહેવા દો'),
+    staffOffQ: n => t(n + ' ko band karein? Unka PIN kaam nahi karega; purana hisaab rahega.',
+                      n + ' को बंद करें? उनका PIN काम नहीं करेगा; पुराना हिसाब रहेगा।',
+                      n + ' ને બંધ કરવા? એમનો PIN કામ નહીં કરે; જૂનો હિસાબ રહેશે.'),
+    tableOffQ: n => t(n + ' band karein? Ye kisi phone pe nahi dikhega.',
+                      n + ' बंद करें? यह किसी फ़ोन पर नहीं दिखेगा।',
+                      n + ' બંધ કરવું? આ કોઈ ફોન પર નહીં દેખાય.'),
     namePinNeeded: t('name + 4-digit PIN needed', 'नाम + 4 अंकों का PIN चाहिए', 'નામ + 4 આંકડાનો PIN જોઈએ'),
     rename: t('rename', 'नाम बदलो', 'નામ બદલો'), parcel: t('parcel', 'पार्सल', 'પાર્સલ'),
     tableNameEg: t('name (T11 or P4)', 'नाम (जैसे T11 या P4)', 'નામ (જેમ કે T11 કે P4)'),
@@ -413,10 +454,11 @@ function strings() {
     soldSection: t('Sold (served items)', 'बिका (परोसे आइटम)', 'વેચાયું (પીરસેલી વસ્તુઓ)'),
     nothing: t('nothing', 'अभी कुछ नहीं', 'હજી કંઈ નથી'),
     total: t('TOTAL', 'कुल', 'કુલ'),
-    byWaiter: t('By waiter', 'वेटर के हिसाब से', 'વેઈટર પ્રમાણે'),
+    // whoever punched the order — often the manager, so not "by waiter"
+    byWaiter: t('Order kisne liya', 'ऑर्डर किसने लिया', 'ઓર્ડર કોણે લીધો'),
     itemsN: n => t(n + ' items', n + ' आइटम', n + ' આઈટમ'),
     cancelledSection: t('Cancelled', 'रद्द', 'રદ'),
-    logTypes: { '': t('All', 'सब', 'બધા'), orders: t('Orders', 'ऑर्डर', 'ઓર્ડર'), kitchen: t('Kitchen', 'किचन', 'રસોડું'),
+    logTypes: { work: t('Sab, login chhod ke', 'सब, लॉगिन छोड़कर', 'બધું, લૉગિન સિવાય'), '': t('All', 'सब', 'બધા'), orders: t('Orders', 'ऑर्डर', 'ઓર્ડર'), kitchen: t('Kitchen', 'किचन', 'રસોડું'),
                 serving: t('Serving', 'परोसना', 'પીરસવું'), cancel: t('Cancelled', 'रद्द', 'રદ'),
                 billing: t('Billing', 'बिलिंग', 'બિલિંગ'), staff: t('Staff & logins', 'स्टाफ़ और लॉगिन', 'સ્ટાફ અને લૉગિન') },
     nothingFilter: t('nothing in this filter', 'इस फ़िल्टर में कुछ नहीं', 'આ ફિલ્ટરમાં કંઈ નથી'),
@@ -703,15 +745,66 @@ async function staff() {
     </div></div>
     <p class="hint">${esc(S.staffHint)}</p>`;
 }
+// Switching someone (or a table) OFF asks first; switching back on doesn't.
+// (The name comes from the row itself, not from an inline string.)
 async function staffActive(id, cb) {
+  const name = cb.closest('.row').querySelector('b').textContent;
+  if (!cb.checked && !confirm(S.staffOffQ(name))) { cb.checked = true; return; }
   try { await api('PATCH','/api/admin/staff/'+id, { active: cb.checked }); }
   catch (e) { toast(e.message, 'bad'); cb.checked = !cb.checked; }
 }
+// A new PIN goes in a masked box (prompt() showed it in clear text to
+// anyone looking at the screen), with 👁 to check it before saving.
 async function resetPin(id, name) {
-  const pin = prompt(S.newPinFor(name)); if (pin === null) return;
-  if (!/^\d{4}$/.test(pin.trim())) { toast(S.pin4only, 'bad'); return; }
-  try { await api('PATCH','/api/admin/staff/'+id, { pin: pin.trim() }); toast(S.pinChanged(name), 'ok'); }
+  const pin = await askPin(name); if (pin === null) return;
+  try { await api('PATCH','/api/admin/staff/'+id, { pin }); toast(S.pinChanged(name), 'ok'); }
   catch (e) { toast(e.message, 'bad'); }
+}
+function askPin(name) {
+  return new Promise(resolve => {
+    const m = document.createElement('div');
+    m.className = 'modal';
+    m.innerHTML = `<div class="box" role="dialog" aria-modal="true" aria-labelledby="mpT">
+      <h3 id="mpT">${esc(S.pinTitle(name))}</h3>
+      <div class="pinrow"><input id="mPin" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="4"
+        autocomplete="new-password" aria-label="${esc(S.pin4)}" placeholder="${esc(S.pin4)}">
+        <button type="button" id="mPinEye" aria-pressed="false">${esc(S.showPin)}</button></div>
+      <p class="hint" id="mPinMsg">${esc(S.pinHint)}</p>
+      <div class="btnrow"><button type="button" id="mPinNo">${esc(S.keep)}</button>
+        <button type="button" class="primary" id="mPinOk">${esc(S.setPin)}</button></div></div>`;
+    document.body.appendChild(m);
+    const inp = m.querySelector('#mPin'), eye = m.querySelector('#mPinEye');
+    const done = v => { document.removeEventListener('keydown', onKey, true); m.remove(); resolve(v); };
+    const go = () => {
+      const v = inp.value.trim();
+      if (!/^\d{4}$/.test(v)) {
+        const msg = m.querySelector('#mPinMsg');
+        msg.textContent = S.pin4only; msg.className = 'hint redtx'; inp.focus(); return;
+      }
+      done(v);
+    };
+    const onKey = e => {
+      if (e.key === 'Escape') { e.preventDefault(); done(null); }
+      else if (e.key === 'Enter' && e.target.tagName !== 'BUTTON') { e.preventDefault(); go(); }
+    };
+    document.addEventListener('keydown', onKey, true);
+    m.addEventListener('click', e => { if (e.target === m) done(null); });
+    inp.addEventListener('input', () => {
+      inp.value = inp.value.replace(/\D/g, '').slice(0, 4);
+      const msg = m.querySelector('#mPinMsg');
+      if (msg.classList.contains('redtx')) { msg.textContent = S.pinHint; msg.className = 'hint'; }
+    });
+    eye.onclick = () => {
+      const show = inp.type === 'password';
+      inp.type = show ? 'text' : 'password';
+      eye.textContent = show ? S.hidePin : S.showPin;
+      eye.setAttribute('aria-pressed', String(show));
+      inp.focus();
+    };
+    m.querySelector('#mPinNo').onclick = () => done(null);
+    m.querySelector('#mPinOk').onclick = go;
+    inp.focus();
+  });
 }
 async function addStaff() {
   const name = $('stn').value.trim(), pin = $('stp').value.trim(), role = $('str').value;
@@ -720,9 +813,13 @@ async function addStaff() {
 }
 
 // ---- tables ----
+// Dine-in tables first, then parcel slots, each in natural order (T2 before
+// T10) — the list used to interleave T10, P1–P3, T11…
+const byKindThenName = (a, b) => ((a.kind === 'parcel') - (b.kind === 'parcel')) ||
+  String(a.name).localeCompare(String(b.name), undefined, { numeric: true, sensitivity: 'base' });
 async function tables() {
   const t = await api('GET','/api/admin/tables');
-  $('view').innerHTML = `<div class="card">` + t.tables.map(x => `
+  $('view').innerHTML = `<div class="card">` + t.tables.slice().sort(byKindThenName).map(x => `
     <div class="row">
       <span>${x.kind==='parcel'?'🥡':'🍽'}</span>
       <b class="grow">${esc(x.name)} ${x.kind==='parcel'?`<span class="mut">${esc(S.parcel)}</span>`:''}</b>
@@ -736,6 +833,8 @@ async function tables() {
     </div></div>`;
 }
 async function tableActive(id, cb) {
+  const name = cb.closest('.row').querySelector('b').firstChild.textContent.trim();
+  if (!cb.checked && !confirm(S.tableOffQ(name))) { cb.checked = true; return; }
   try { await api('PATCH','/api/admin/tables/'+id, { active: cb.checked }); }
   catch (e) { toast(e.message, 'bad'); cb.checked = !cb.checked; }
 }
@@ -781,14 +880,13 @@ async function bills() {
       <span class="mut">${esc(S.billsN(d.bills.length))} · 💵 ${rupees(cashSum)} · 📲 ${rupees(onlineSum)}</span>
     </div>
     <div class="card">` + (d.bills.length ? d.bills.map(b => `
-      <div class="row" style="cursor:pointer" onclick="toggleBill(this, ${b.orderId})" title="${esc(S.forItems)}">
-        <b style="min-width:44px">#${b.orderNo}</b>
+      <div class="row bill" onclick="toggleBill(this, ${b.orderId})" title="${esc(S.forItems)}">
+        <b class="bno">#${b.orderNo}</b>
         <span class="grow">${esc(b.customerName || b.tableName)}
-          <span class="mut">· ${clock(b.closedAt)} · ${esc(b.closedByName)}${b.customerName?' · '+esc(b.tableName):''}</span></span>
-        ${b.discount>0?`<span class="amber" title="${esc(b.discountNote)}">−${rupees(b.discount)}</span>`:''}
-        <span class="mut">${b.paidCash>0?'💵 '+rupees(b.paidCash):''} ${b.paidOnline>0?'📲 '+rupees(b.paidOnline):''}</span>
-        <b>${rupees(b.total)}</b>
-        <button class="icon" title="${esc(S.reprint)}" aria-label="${esc(S.reprint)}" onclick="event.stopPropagation();printBill(${b.orderId})">🖨</button>
+          <span class="mut">· ${clock(b.closedAt)} · ${esc(b.closedByName)}${b.customerName?' · '+esc(b.tableName):''}</span>
+          <span class="bpay">${b.discount>0?`<span class="amber" title="${esc(b.discountNote)}">−${rupees(b.discount)}</span> `:''}<span class="mut">${b.paidCash>0?'💵 '+rupees(b.paidCash):''} ${b.paidOnline>0?'📲 '+rupees(b.paidOnline):''}</span></span></span>
+        <span class="bend"><b>${rupees(b.total)}</b>
+        <button class="icon" title="${esc(S.reprint)}" aria-label="${esc(S.reprint)}" onclick="event.stopPropagation();printBill(${b.orderId})">🖨</button></span>
       </div>
       <div hidden style="padding:4px 8px 10px 52px"></div>`).join('')
     : `<p class="mut">${esc(S.noBills)}</p>`) + `</div>
@@ -884,25 +982,51 @@ function shiftRep(days) {
 }
 
 // ---- audit log ----
-let logEvents = [], logType = '';
-const LOG_TYPES = ['', 'orders', 'kitchen', 'serving', 'cancel', 'billing', 'staff'];
+// Opens on "everything except logins": staff logging in and out was most of
+// the log. That filter is done here (the server's groups have no "not"), so
+// it reads bigger pages and keeps going until it has a screenful. "All"
+// still shows every event, logins included; a blocked-PIN alarm
+// (login:blocked) is never hidden.
+let logEvents = [], logType = 'work', logLast = 0;
+const LOG_TYPES = ['work', '', 'orders', 'kitchen', 'serving', 'cancel', 'billing', 'staff'];
+const LOGIN_NOISE = new Set(['login', 'logout']);
+async function fetchLog(before) {
+  if (logType !== 'work') {
+    const d = await api('GET','/api/admin/audit?' + (before ? 'beforeId=' + before + '&' : '') + (logType ? 'type=' + logType : ''));
+    return { events: d.events, last: d.events.length ? d.events[d.events.length - 1].id : before };
+  }
+  let out = [], last = before;
+  const PAGE = 200;
+  for (let page = 0; page < 5 && out.length < 60; page++) {
+    const d = await api('GET','/api/admin/audit?limit=' + PAGE + (last ? '&beforeId=' + last : ''));
+    if (!d.events.length) break;
+    last = d.events[d.events.length - 1].id;
+    out = out.concat(d.events.filter(e => !LOGIN_NOISE.has(e.action)));
+    if (d.events.length < PAGE) break;
+  }
+  return { events: out, last };
+}
 async function log() {
-  const d = await api('GET','/api/admin/audit' + (logType ? '?type='+logType : ''));
-  logEvents = d.events; paintLog();
+  const asked = logType;
+  const r = await fetchLog(0);
+  if (asked !== logType) return;
+  logEvents = r.events; logLast = r.last; paintLog();
 }
 function paintLog() {
   $('view').innerHTML = `<div class="pillnav">` + LOG_TYPES.map(k =>
     `<button class="${logType===k?'on':''}" onclick="logType='${k}';log()">${esc(S.logTypes[k])}</button>`).join('') +
     `</div><div class="card">` + (logEvents.length ? logEvents.map(e => `
-    <div class="row"><span class="mut" style="min-width:46px">${clock(e.at)}</span>
+    <div class="row"><span class="mut" style="min-width:62px">${clock(e.at)}</span>
       <b>${esc(e.by || S.system)}</b><span class="mut">${esc(e.action)}</span>
       <span class="grow">${esc(e.detail)}</span></div>`).join('') : `<p class="mut">${esc(S.nothingFilter)}</p>`) +
     `</div><button onclick="olderLog()" style="width:100%">${esc(S.loadOlder)}</button>`;
 }
 async function olderLog() {
-  if (!logEvents.length) { log(); return; }
-  const d = await api('GET','/api/admin/audit?beforeId=' + logEvents[logEvents.length-1].id + (logType ? '&type='+logType : ''));
-  logEvents = logEvents.concat(d.events); paintLog();
+  if (!logLast) { log(); return; }
+  const asked = logType;
+  const r = await fetchLog(logLast);
+  if (asked !== logType) return;
+  logEvents = logEvents.concat(r.events); logLast = r.last; paintLog();
 }
 
 // ---- the session from the PIN pad at "/" ---------------------------------

@@ -123,9 +123,14 @@ function strings() {
     total: t('Total', 'कुल', 'કુલ'),
     addItems: t('+ Add items', '+ आइटम जोड़ो', '+ વસ્તુઓ ઉમેરો'),
     pickSub: t('add items', 'आइटम जोड़ो', 'વસ્તુઓ ઉમેરો'),
-    cancelPrompt: function (n) {
-      return t('Cancel "' + n + '" — why? (at least 2 letters)', '"' + n + '" रद्द — क्यों? (कम से कम 2 अक्षर)', '"' + n + '" રદ — કેમ? (ઓછામાં ઓછા 2 અક્ષર)');
-    },
+    cancelQ: function (q, n) { return t('Cancel ' + q + '× ' + n + '?', q + '× ' + n + ' रद्द करें?', q + '× ' + n + ' રદ કરવું?'); },
+    reasonRequired: t('A reason is required — it goes in the audit log.', 'कारण ज़रूरी है — ऑडिट लॉग में जाएगा।', 'કારણ જરૂરી છે — ઓડિટ લોગમાં જશે.'),
+    reason: t('Reason', 'कारण', 'કારણ'),
+    cancelItem: t('Cancel item', 'आइटम रद्द करो', 'આઈટમ રદ કરો'),
+    cancelReasons: [t('Customer said no', 'ग्राहक ने मना किया', 'ગ્રાહકે ના પાડી'),
+                    t('Punched by mistake', 'गलती से पंच हुआ', 'ભૂલથી પંચ થયું'),
+                    t('Ran out', 'खत्म हो गया', 'ખલાસ થઈ ગયું'),
+                    t('Took too long', 'बहुत देर हो गई', 'બહુ મોડું થયું')],
     cancelled: t('Cancelled', 'रद्द हो गया', 'રદ થઈ ગયું'),
     sendKitchen: t('Send to kitchen', 'किचन में भेजो', 'રસોડામાં મોકલો'),
     sentToast: t('Sent to kitchen ✓', 'किचन में भेज दिया ✓', 'રસોડામાં મોકલ્યું ✓'),
@@ -490,17 +495,25 @@ async function openTableView(id, name) {
 
 // Re-reads the order. Offline it falls back to the copy already on screen,
 // so Back from the picker always lands somewhere.
-async function refreshTable() {
+// quiet = the background poll: a miss there shows on the amber net strip,
+// not as a toast every 8 seconds.
+async function refreshTable(quiet) {
   var t = openTable;
   try {
     var d = await api('GET', '/api/dining-tables/' + t.id + '/order');
     t.order = d.order;
-  } catch (e) { oops(e); }
-  if (openTable === t && pane === 'table') paintTable();
+  } catch (e) { if (!quiet) oops(e); return; }
+  if (openTable === t && pane === 'table' && !(quiet && modalUp)) paintTable();
 }
 
 function paintTable() {
   pane = 'table'; clearInterval(timer);   // the picker's menu poll, if we came from there
+  // The order keeps itself fresh while it is on screen: PENDING turns READY
+  // as the kitchen ticks it, without leaving and coming back. (Skips a round
+  // while the cancel sheet is open, so the reason being typed survives.)
+  timer = setInterval(function () {
+    if (pane === 'table' && !modalUp) refreshTable(true);
+  }, 8000);
   var o = openTable.order;
   $('tabs').hidden = true;
   setTop('‹', openTable.name,
@@ -524,8 +537,10 @@ function paintTable() {
           (it.cancelReason ? '<div class="note">✕ ' + esc(it.cancelReason) + '</div>' : '') +
           '</span>' +
           '<span class="pill p-' + it.status + '">' + esc(S.status(it.status)) + '</span>' +
-          (it.status === 'pending'
-            ? '<button class="danger" data-cancel="' + it.id + '" data-nm="' + esc(it.name) + '" style="min-height:38px;padding:8px 11px;font-size:13px">' + esc(S.cancel) + '</button>'
+          // as in the app and the server: a manager cancels a line the
+          // kitchen hasn't started; an admin anything not yet served
+          (it.status === 'pending' || (me.role === 'admin' && (it.status === 'preparing' || it.status === 'ready'))
+            ? '<button class="danger" data-cancel="' + it.id + '" style="min-height:44px;padding:8px 11px;font-size:13px">' + esc(S.cancel) + '</button>'
             : '') +
           '</div>';
       });
@@ -540,15 +555,42 @@ function paintTable() {
   $('addBtn').onclick = function () { picker(openTable.name, sendTicket); };
 
   $('view').querySelectorAll('button[data-cancel]').forEach(function (b) {
-    b.onclick = async function () {
-      var reason = prompt(S.cancelPrompt(b.dataset.nm));
-      if (reason === null) return;
-      try {
-        await api('POST', '/api/items/' + b.dataset.cancel + '/cancel', { reason: reason.trim() });
-        toast(S.cancelled, 'ok');
-        await refreshTable();
-      } catch (e) { toast(e.message, 'bad'); }
-    };
+    b.onclick = function () { askCancel(Number(b.dataset.cancel)); };
+  });
+}
+
+// Cancelling a line: a sheet (the app's ReasonDialog) with one-tap reasons
+// instead of the browser's tiny prompt(). The reason goes in the audit log,
+// so it is required, and checked here the way the server counts it.
+function askCancel(itemId) {
+  var it = null;
+  ((openTable.order || {}).tickets || []).forEach(function (tk) {
+    (tk.items || []).forEach(function (x) { if (x.id === itemId) it = x; });
+  });
+  if (!it) return;
+  var reasons = S.cancelReasons;
+  var m = showModal(S.cancelQ(it.qty, it.name),
+    '<div class="hint" style="margin:0 0 10px">' + esc(S.reasonRequired) + '</div>' +
+    '<div class="nchips">' + reasons.map(function (r, i) {
+      return '<button class="nchip" data-r="' + i + '">' + esc(r) + '</button>';
+    }).join('') + '</div>' +
+    '<input id="mReason" maxlength="120" autocomplete="off" placeholder="' + esc(S.reason) + '">',
+    [{ label: S.back, cls: 'ghost' },
+     { label: S.cancelItem, cls: 'danger', act: async function () {
+        var reason = $('mReason').value.replace(/\s+/g, ' ').trim();
+        if (noteBytes(reason) < 2) { toast(S.reasonRequired, 'bad'); $('mReason').focus(); return; }
+        hideModal();
+        try {
+          await api('POST', '/api/items/' + itemId + '/cancel', { reason: reason });
+          toast(S.cancelled, 'ok');
+          await refreshTable();
+        } catch (e) { toast(e.message, 'bad'); }
+     } }]);
+  m.querySelector('.nchips').addEventListener('click', function (e) {
+    var c = e.target.closest('.nchip');
+    if (!c) return;
+    $('mReason').value = reasons[Number(c.dataset.r)];
+    m.querySelectorAll('.nchip').forEach(function (x) { x.classList.toggle('on', x === c); });
   });
 }
 

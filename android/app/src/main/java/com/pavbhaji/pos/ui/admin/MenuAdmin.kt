@@ -278,7 +278,10 @@ fun MenuAdmin(onBack: () -> Unit) {
         var withFood by remember(cat.id) { mutableStateOf(false) }
         var morePicker by remember { mutableStateOf(false) }
         var dErr by remember(cat.id) { mutableStateOf<String?>(null) }
-        AlertDialog(
+        // One dialog at a time: the full colour picker REPLACES the new-item
+        // form while it is open (it used to stack on top, with two Back
+        // buttons), and the form comes back with everything still typed in.
+        if (!morePicker) AlertDialog(
             onDismissRequest = { addToCat = null },
             title = { Text(S.newItemIn(cat.name)) },
             text = {

@@ -25,6 +25,7 @@ import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -149,11 +150,22 @@ fun TablesScreen(
         while (true) { delay(25_000); refresh() }
     }
 
-    val busy = tables.count { it.order != null }
+    // The count is dine-in tables only (parcel slots are not seats), it
+    // comes first so a long name is what shortens at a big font, and it is
+    // never "0 of 0" while the list hasn't loaded yet.
+    val connected by Deps.live.connected.collectAsState()
+    val dineIn = tables.filter { it.kind != "parcel" }
+    val busy = dineIn.count { it.order != null }
+    val parcelsOpen = tables.count { it.kind == "parcel" && it.order != null }
+    val who = Deps.session.staffName
     Column(Modifier.fillMaxSize()) {
         AppHeader(
             title = S.tablesTitle,
-            subtitle = S.occupiedSub(Deps.session.staffName, busy, tables.size),
+            subtitle = when {
+                !loaded -> "${if (connected) S.loading else S.offlineShort} · $who"
+                else -> S.tablesBusy(busy, dineIn.size) +
+                    (if (parcelsOpen > 0) " · " + S.parcelsOpenN(parcelsOpen) else "") + " · $who"
+            },
             onBack = onBack,
             actions = { if (onBack == null) LogoutAction(onLogout) }
         )

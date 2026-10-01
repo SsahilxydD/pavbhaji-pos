@@ -240,11 +240,13 @@ object S {
 
     // ---- tables / manager ----
     val tablesTitle get() = t("Tables", "टेबल", "ટેબલ")
-    fun occupiedSub(who: String, busy: Int, total: Int) = t(
-        "$who · $busy of $total occupied",
-        "$who · $total में से $busy भरे",
-        "$who · $total માંથી $busy ભરેલા"
+    // Tables header: dine-in tables only, numbers first.
+    fun tablesBusy(busy: Int, total: Int) = t(
+        "$busy/$total tables busy",
+        "$busy/$total टेबल भरी",
+        "$busy/$total ટેબલ ભરેલાં"
     )
+    fun parcelsOpenN(n: Int) = t("$n parcel" + if (n == 1) "" else "s", "$n पार्सल", "$n પાર્સલ")
     val gridTables get() = t("TABLES", "टेबल", "ટેબલ")
     val gridParcel get() = t("🥡 PARCEL — counter orders", "🥡 पार्सल — काउंटर ऑर्डर", "🥡 પાર્સલ — કાઉન્ટર ઓર્ડર")
     val freeTable get() = t("free", "खाली", "ખાલી")

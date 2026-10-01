@@ -320,6 +320,12 @@ fun KitchenScreen(onLogout: () -> Unit, embedded: Boolean = false, onBack: (() -
 private fun minsSince(ms: Long): Long =
     ((System.currentTimeMillis() - ms) / 60_000).coerceAtLeast(0)
 
+// How long the food in this bucket has waited: its oldest plate still on the
+// tawa. Not the bucket's own birth — an open bucket left over from last
+// night took the day's first order and read "526m" in red.
+private fun bucketAge(b: BucketDto): Long =
+    b.lines.filter { !it.done && it.since > 0 }.minOfOrNull { it.since } ?: b.createdAt
+
 @Composable
 private fun AgeChip(sinceMs: Long) {
     val m = minsSince(sinceMs)
@@ -398,7 +404,7 @@ private fun BucketCard(
                         "${b.qty}", color = Kc.ink, fontSize = 15.sp, fontWeight = FontWeight.ExtraBold
                     )
                     Text("/$cap", color = Kc.ink2, fontSize = 11.sp)
-                    if (b.status != "taken") AgeChip(b.createdAt)
+                    if (b.status != "taken") AgeChip(bucketAge(b))
                 }
                 // state chip + fill bar
                 Row(

@@ -983,6 +983,7 @@ type BucketLine struct {
 	Name       string `json:"name"`       // the variety — one colour bucket can hold several
 	MenuItemID int64  `json:"menuItemId"` // the variety's identity, for per-variety ticks
 	Done       bool   `json:"done"`       // already flipped to ready (ticked off mid-bucket)
+	Since      int64  `json:"since"`      // when its KOT was punched — the bucket's age is its oldest live line
 }
 
 type Bucket struct {
@@ -1037,7 +1038,7 @@ func (s *Server) handleKitchen(w http.ResponseWriter, r *http.Request) {
 		// chef sees their tick land. Qty stays live-to-cook only — it drives
 		// the fill bar, the ready-button count and the hide rule below.
 		irows, err := s.db.Query(`
-			SELECT ti.id, dt.name, ti.qty, ti.note, ti.name, ti.menu_item_id, ti.status='ready'
+			SELECT ti.id, dt.name, ti.qty, ti.note, ti.name, ti.menu_item_id, ti.status='ready', tk.created_at
 			FROM ticket_items ti
 			JOIN tickets tk ON tk.id=ti.ticket_id
 			JOIN orders o ON o.id=tk.order_id
@@ -1049,7 +1050,7 @@ func (s *Server) handleKitchen(w http.ResponseWriter, r *http.Request) {
 		}
 		for irows.Next() {
 			var l BucketLine
-			irows.Scan(&l.ID, &l.TableName, &l.Qty, &l.Note, &l.Name, &l.MenuItemID, &l.Done)
+			irows.Scan(&l.ID, &l.TableName, &l.Qty, &l.Note, &l.Name, &l.MenuItemID, &l.Done, &l.Since)
 			buckets[i].Lines = append(buckets[i].Lines, l)
 			if !l.Done {
 				buckets[i].Qty += l.Qty

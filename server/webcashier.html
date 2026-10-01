@@ -131,6 +131,10 @@ function strings() {
                      'ફક્ત વેઈટર જ પ્લેટ પીરસી માર્ક કરે છે, લઈ જતાં એક-એક કરીને. એની રાહ જુઓ — અથવા કારણ આપી આઈટમ રદ કરો.'),
     today: t('today', 'आज', 'આજે'),
     billsN: function (n) { return t(n + ' bill' + (n === 1 ? '' : 's'), n + ' बिल', n + ' બિલ'); },
+    billsOf: function (n, all) { return t(n + ' of ' + all + ' bills', all + ' में से ' + n + ' बिल', all + ' માંથી ' + n + ' બિલ'); },
+    billSearch: t('🔍 T5 · #12 · name', '🔍 T5 · #12 · नाम', '🔍 T5 · #12 · નામ'),
+    discShort: t('− discount', '− छूट', '− છૂટ'),
+    noMatchBills: t('No bill matches.', 'कोई बिल नहीं मिला।', 'કોઈ બિલ ન મળ્યું.'),
     cashSum: t('💵 cash', '💵 कैश', '💵 કેશ'),
     onlineSum: t('📲 online', '📲 ऑनलाइन', '📲 ઓનલાઈન'),
     closedLine: function (tm, who) { return who ? t('closed ' + tm + ' · ' + who, tm + ' बंद · ' + who, tm + ' બંધ · ' + who) : t('closed ' + tm, tm + ' बंद', tm + ' બંધ'); },
@@ -859,36 +863,21 @@ async function billsList() {
       return null;
     });
   if (!d || my !== nav || tab !== 'bills' || cur) return;
-  var bs = d.bills || [];
-  var sum = bs.reduce(function (s, b) { return s + b.total; }, 0);
-  var cash = bs.reduce(function (s, b) { return s + b.paidCash; }, 0);
-  var online = bs.reduce(function (s, b) { return s + b.paidOnline; }, 0);
+  billsDay = d;
 
   var h = '<div class="datenav">' +
     '<button data-day="-1">◀</button><b>' + esc(d.date) + '</b>' +
     '<button data-day="1">▶</button><button data-day="0">' + esc(S.today) + '</button></div>';
-  h += '<div class="card"><div class="row"><b class="grow">' + esc(S.billsN(bs.length)) + '</b>' +
-    '<b class="tnum" style="font-size:19px;color:var(--red-deep)">' + rupees(sum) + '</b></div>' +
-    '<div class="mut tnum" style="margin-top:5px">' + esc(S.cashSum) + ' ' + rupees(cash) + ' · ' + esc(S.onlineSum) + ' ' + rupees(online) + '</div></div>';
-
-  h += bs.length ? bs.map(function (b) {
-    var money = [];
-    if (b.paidCash > 0) money.push('💵 ' + rupees(b.paidCash));
-    if (b.paidOnline > 0) money.push('📲 ' + rupees(b.paidOnline));
-    if (b.discount > 0) money.push('· ' + esc(S.discount) + ' −' + rupees(b.discount));
-    var closed = esc(S.closedLine(clock(b.closedAt), b.closedByName));
-    return '<button class="billrow" data-bill="' + b.orderId + '" data-sub="' + esc(closed) + '">' +
-      '<span class="grow">' +
-        '<span class="row"><span class="no">#' + b.orderNo + '</span>' +
-        '<span class="who">' + esc(b.customerName || b.tableName) + '</span>' +
-        (b.customerName ? '<span class="mut" style="font-size:12px">· ' + esc(b.tableName) + '</span>' : '') + '</span>' +
-        '<span class="sub" style="display:block">' + closed + ' · ' + esc(S.items(b.itemCount)) + '</span>' +
-        (money.length ? '<span class="pay ' + (b.discount > 0 ? 'amber' : 'green') + '" style="display:block">' +
-          money.join('  ') + '</span>' : '') +
-      '</span><b class="amt">' + rupees(b.total) + '</b></button>';
-  }).join('') : '<div class="empty">' + esc(S.noBills) + '</div>';
-
+  // 45–110 bills on a busy night: find one by table, order # or customer,
+  // or narrow to cash / UPI / discounted ones.
+  h += '<div class="bills-find">' +
+    '<input id="bQ" type="search" enterkeyhint="search" autocomplete="off" placeholder="' + esc(S.billSearch) + '" value="' + esc(billsQ) + '">' +
+    '<div class="bchips">' + [['cash', '💵'], ['upi', '📲'], ['disc', S.discShort]].map(function (f) {
+      return '<button class="nchip' + (billsF === f[0] ? ' on' : '') + '" data-f="' + f[0] + '" aria-pressed="' + (billsF === f[0]) + '">' + esc(f[1]) + '</button>';
+    }).join('') + '</div></div>';
+  h += '<div id="bRows"></div>';
   $('view').innerHTML = h;
+  paintBillRows();
   $('view').querySelectorAll('button[data-day]').forEach(function (btn) {
     btn.onclick = function () {
       var n = Number(btn.dataset.day);
@@ -896,6 +885,60 @@ async function billsList() {
       billsList();
     };
   });
+  $('bQ').addEventListener('input', function () { billsQ = this.value; paintBillRows(); });
+  $('bQ').addEventListener('keydown', function (e) { if (e.key === 'Enter') this.blur(); });
+  $('view').querySelector('.bchips').addEventListener('click', function (e) {
+    var c = e.target.closest('button[data-f]');
+    if (!c) return;
+    billsF = billsF === c.dataset.f ? '' : c.dataset.f;
+    $('view').querySelectorAll('.bchips button').forEach(function (x) {
+      x.classList.toggle('on', x.dataset.f === billsF);
+      x.setAttribute('aria-pressed', String(x.dataset.f === billsF));
+    });
+    paintBillRows();
+  });
+}
+
+var billsDay = null, billsQ = '', billsF = '';
+
+// The day's rows, filtered; the total for exactly what is listed stays in
+// view in the bottom bar however far down the list you are.
+function paintBillRows() {
+  var all = (billsDay && billsDay.bills) || [];
+  var words = billsQ.toLowerCase().replace(/#/g, ' ').split(/\s+/).filter(Boolean);
+  var bs = all.filter(function (b) {
+    if (billsF === 'cash' && !(b.paidCash > 0)) return false;
+    if (billsF === 'upi' && !(b.paidOnline > 0)) return false;
+    if (billsF === 'disc' && !(b.discount > 0)) return false;
+    var hay = (b.tableName + ' ' + (b.customerName || '') + ' ' + b.orderNo + ' #' + b.orderNo).toLowerCase();
+    return words.every(function (w) { return hay.indexOf(w) >= 0; });
+  });
+  var sum = bs.reduce(function (s, b) { return s + b.total; }, 0);
+  var cash = bs.reduce(function (s, b) { return s + b.paidCash; }, 0);
+  var online = bs.reduce(function (s, b) { return s + b.paidOnline; }, 0);
+  var filtered = bs.length !== all.length;
+
+  $('bRows').innerHTML = bs.length ? bs.map(function (b) {
+    var money = [];
+    if (b.paidCash > 0) money.push('💵 ' + rupees(b.paidCash));
+    if (b.paidOnline > 0) money.push('📲 ' + rupees(b.paidOnline));
+    if (b.discount > 0) money.push('· ' + esc(S.discount) + ' −' + rupees(b.discount));
+    var closed = S.closedLine(clock(b.closedAt), b.closedByName);
+    return '<button class="billrow" data-bill="' + b.orderId + '" data-sub="' + esc(closed) + '">' +
+      '<span class="grow">' +
+        '<span class="row"><span class="no">#' + b.orderNo + '</span>' +
+        '<span class="who">' + esc(b.customerName || b.tableName) + '</span>' +
+        (b.customerName ? '<span class="mut" style="font-size:12px">· ' + esc(b.tableName) + '</span>' : '') + '</span>' +
+        '<span class="sub" style="display:block">' + esc(closed) + ' · ' + esc(S.items(b.itemCount)) + '</span>' +
+        (money.length ? '<span class="pay ' + (b.discount > 0 ? 'amber' : 'green') + '" style="display:block">' +
+          money.join('  ') + '</span>' : '') +
+      '</span><b class="amt">' + rupees(b.total) + '</b></button>';
+  }).join('') : '<div class="empty">' + esc(all.length ? S.noMatchBills : S.noBills) + '</div>';
+
+  $('bar').className = 'bar sumbar';
+  $('bar').innerHTML = '<div class="grow"><b>' + esc(filtered ? S.billsOf(bs.length, all.length) : S.billsN(bs.length)) + '</b>' +
+    '<div class="mut tnum">' + esc(S.cashSum) + ' ' + rupees(cash) + ' · ' + esc(S.onlineSum) + ' ' + rupees(online) + '</div></div>' +
+    '<b class="tnum sumamt">' + rupees(sum) + '</b>';
 }
 
 paintChrome();

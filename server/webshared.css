@@ -434,6 +434,17 @@ label.fld span { display:block; font-size:12px; font-weight:700; color:var(--ink
   min-height:40px; padding:8px 13px;
 }
 .datenav b { font-size:15px; padding:0 4px; font-variant-numeric:tabular-nums; }
+/* bills: search + Cash / UPI / discount filters; the total of what is
+   listed rides in the bottom bar */
+.bills-find { display:flex; gap:8px; align-items:center; margin-bottom:10px; }
+.bills-find input { flex:1; min-width:0; min-height:44px; padding:9px 11px; -webkit-appearance:none; appearance:none; }
+.bchips { display:flex; gap:6px; flex:0 0 auto; }
+.bchips .nchip { min-height:44px; padding:8px 11px; font-size:14px; white-space:nowrap; }
+.bar.sumbar { gap:12px; }
+.bar.sumbar .grow { flex:1; min-width:0; }
+.bar.sumbar b { font-size:15px; }
+.bar.sumbar .mut { font-size:12.5px; }
+.bar.sumbar .sumamt { font-size:20px; color:var(--red-deep); }
 
 /* ---------- printing a bill without leaving the screen ----------
    The /bill page sits in a hidden frame and is printed from there. Should

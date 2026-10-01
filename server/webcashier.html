@@ -63,6 +63,8 @@ function strings() {
     tabBills: t('Bills', 'बिल', 'બિલ'),
     noOpen: t('No open orders.', 'कोई ऑर्डर खुला नहीं है।', 'કોઈ ઓર્ડર ખુલ્લો નથી.'),
     nOpen: function (n) { return t(n + ' open', n + ' खुले', n + ' ખુલ્લા'); },
+    paidClose: t('PAID ✓ — close it', 'पेड ✓ — बंद करो', 'પેડ ✓ — બંધ કરો'),
+    dueAmt: function (a) { return t(a + ' due', a + ' बाकी', a + ' બાકી'); },
     items: function (n) { return t(n + ' item' + (n === 1 ? '' : 's'), n + ' आइटम', n + ' આઈટમ'); },
     cooking: function (n) { return t(n + ' cooking', n + ' बन रहे', n + ' બની રહ્યા'); },
     billLoading: t('Opening the bill…', 'बिल खुल रहा है…', 'બિલ ખૂલી રહ્યું છે…'),
@@ -117,7 +119,10 @@ function strings() {
     cashSum: t('💵 cash', '💵 कैश', '💵 કેશ'),
     onlineSum: t('📲 online', '📲 ऑनलाइन', '📲 ઓનલાઈન'),
     closedLine: function (tm, who) { return who ? t('closed ' + tm + ' · ' + who, tm + ' बंद · ' + who, tm + ' બંધ · ' + who) : t('closed ' + tm, tm + ' बंद', tm + ' બંધ'); },
-    noBills: t('No bills for this day.', 'इस दिन का कोई बिल नहीं।', 'આ દિવસનું કોઈ બિલ નથી.')
+    noBills: t('No bills for this day.', 'इस दिन का कोई बिल नहीं।', 'આ દિવસનું કોઈ બિલ નથી.'),
+    viewOnly: t('View only — the cashier makes the bill and closes this table.',
+                'सिर्फ़ देखने के लिए — बिल बनाना और टेबल बंद करना कैशियर का काम है।',
+                'ફક્ત જોવા માટે — બિલ બનાવવું અને ટેબલ બંધ કરવું કેશિયરનું કામ છે.')
   };
 }
 strings();
@@ -255,7 +260,7 @@ function printBill(orderId) { window.open('/bill/' + orderId + '?token=' + encod
 // ---------------------------------------------------------------- shell state
 var tab = 'open';      // lit tab in the strip
 var timer = null;      // the one poll that is allowed to be running
-var cur = null;        // { id, readOnly, sub, order, bill, split } while a bill is open
+var cur = null;        // { id, history, readOnly, sub, order, bill, split } while a bill is open
 var modalUp = false;
 var billsDate = null;  // null = today
 
@@ -333,15 +338,32 @@ async function openOrders() {
     if (tab !== 'open' || cur) return;
     var busy = (d.tables || []).filter(function (t) { return t.order; });
     if (!busy.length) { $('view').innerHTML = '<div class="empty">' + esc(S.noOpen) + '</div>'; return; }
-    $('view').innerHTML = '<h2>' + esc(S.nOpen(busy.length)) + '</h2><div class="grid">' + busy.map(function (t) {
-      var o = t.order;
-      return '<button class="tile-btn busy" data-order="' + o.orderId + '">' +
+    // Each tile shows where its money stands, so "paid, just close it" and
+    // "nothing collected yet" can be told apart across a busy room. The
+    // tables list doesn't carry payments, so each open order's bill is read
+    // too (one small GET each; no bill yet = nothing collected).
+    var bills = await Promise.all(busy.map(function (t) {
+      return api('GET', '/api/orders/' + t.order.orderId + '/bill').catch(function (e) {
+        return e.status === 404 ? 'none' : null;    // null: couldn't ask — no badge
+      });
+    }));
+    if (tab !== 'open' || cur) return;
+    var rows = busy.map(function (t, i) { return { t: t, pay: payState(t.order, bills[i]) }; });
+    // paid-but-not-closed first: those are one tap from done
+    rows = rows.filter(function (r) { return r.pay && r.pay.settled; })
+      .concat(rows.filter(function (r) { return !(r.pay && r.pay.settled); }));
+    $('view').innerHTML = '<h2>' + esc(S.nOpen(busy.length)) + '</h2><div class="grid">' + rows.map(function (r) {
+      var t = r.t, o = t.order, pay = r.pay;
+      return '<button class="tile-btn busy' + (pay && pay.settled ? ' paid' : '') + '" data-order="' + o.orderId + '">' +
         '<span class="nm">' + (t.kind === 'parcel' ? '🥡 ' : '') + esc(t.name) + '</span>' +
         '<span class="sub">#' + o.orderNo + ' · ' + clock(o.openedAt) + '</span>' +
         (o.customerName ? '<span class="sub">' + esc(o.customerName) + '</span>' : '') +
         '<span class="sub">' + esc(S.items(o.itemCount)) +
           (o.pendingCount ? ' · ⏳ ' + esc(S.cooking(o.pendingCount)) : '') + '</span>' +
-        '<span class="amt">' + rupees(o.total) + '</span></button>';
+        '<span class="amt">' + rupees(o.total) + '</span>' +
+        (pay ? '<span class="spill ' + (pay.settled ? 'ready' : 'cook') + '" style="align-self:flex-start">' +
+          esc(pay.settled ? S.paidClose : S.dueAmt(rupees(pay.due))) + '</span>' : '') +
+        '</button>';
     }).join('') + '</div>';
   };
   var my = nav;
@@ -350,6 +372,16 @@ async function openOrders() {
     if (my === nav) failView(e, function () { show('open'); });
   });
   if (my === nav) timer = setInterval(function () { paint().catch(function () {}); }, 10000);
+}
+
+// Same test as the bill screen: settled = every rupee assigned AND the bill
+// still matches the live items (a KOT punched after billing re-opens it).
+function payState(o, b) {
+  if (b === null) return null;
+  if (b === 'none') return { settled: false, due: o.total };
+  var paid = b.paidCash + b.paidOnline;
+  var total = o.total - Math.min(b.discount, o.total);
+  return { settled: paid === b.total && b.subtotal === o.total, due: Math.max(0, total - paid) };
 }
 
 $('view').addEventListener('click', function (e) {
@@ -379,30 +411,36 @@ function billLines(o) {
 // punched mid-billing can't sneak past) and hands back the frozen one once the
 // order is closed. Only a cashier may generate — an admin reads instead.
 async function genBill(id) {
-  try { return await api('POST', '/api/orders/' + id + '/bill'); }
-  catch (e) {
-    try { return await api('GET', '/api/orders/' + id + '/bill'); }
-    catch (e2) { return null; }
+  if (me.role === 'cashier') {
+    try { return await api('POST', '/api/orders/' + id + '/bill'); } catch (e) { /* read it instead */ }
   }
+  try { return await api('GET', '/api/orders/' + id + '/bill'); }
+  catch (e2) { return null; }
 }
 
-async function openOrder(id, readOnly, sub) {
+// history = a closed bill from the Bills tab. readOnly = nothing on it can
+// be changed: history, or an admin looking in — the bill, payment and close
+// routes are the cashier's alone on the server, so an admin used to get live
+// chips, split and discount that failed with "your role (admin) is not
+// allowed" on every tap.
+async function openOrder(id, history, sub) {
   stopPoll(); nav++;
   var my = nav;
-  cur = { id:id, readOnly:!!readOnly, sub:sub || '', order:null, bill:null, split:'' };
+  cur = { id:id, history:!!history, readOnly:!!history || me.role !== 'cashier', sub:sub || '',
+          order:null, bill:null, split:'' };
   $('tabs').hidden = true;
   $('bar').className = ''; $('bar').innerHTML = '';
   // The way back works before the bill has loaded, so a dead network can't
-  // strand the cashier on "Bill khul raha hai…".
-  setTop('‹', 'Bill', '', function () { show(readOnly ? 'bills' : 'open'); });
+  // strand the cashier on "Opening the bill…".
+  setTop('‹', S.bill, '', function () { show(history ? 'bills' : 'open'); });
   $('view').innerHTML = '<div class="empty">' + esc(S.billLoading) + '</div>';
   repaint = function () { return loadBill(false); };
   await loadBill(true).catch(function (e) {
     if (my !== nav) return;
-    if (!cur.order) failView(e, function () { openOrder(id, readOnly, sub); });
+    if (!cur.order) failView(e, function () { openOrder(id, history, sub); });
     else toast(e.message, 'bad');
   });
-  if (my === nav && !cur.readOnly) timer = setInterval(function () { loadBill(false).catch(function () {}); }, 15000);
+  if (my === nav && !cur.history) timer = setInterval(function () { loadBill(false).catch(function () {}); }, 15000);
 }
 
 async function loadBill(hard) {
@@ -436,8 +474,8 @@ function paintBill() {
   });
 
   setTop('‹', S.bill + ' · ' + o.tableName,
-    cur.readOnly ? cur.sub : S.orderNo(o.orderNo) + ' · ' + clock(o.openedAt) + ' · ' + o.openedByName,
-    function () { show(cur.readOnly ? 'bills' : 'open'); });
+    cur.history ? cur.sub : S.orderNo(o.orderNo) + ' · ' + clock(o.openedAt) + ' · ' + o.openedByName,
+    function () { show(cur.history ? 'bills' : 'open'); });
 
   var h = '<div class="card">';
   h += '<div style="font-size:18px;font-weight:800">' + esc(o.customerName || o.tableName) + '</div>';
@@ -498,6 +536,7 @@ function paintBill() {
         '<button class="primary" id="splitBtn" style="flex:0 0 auto;font-size:13px;padding:12px 12px">' + esc(S.splitApply) + '</button></div>';
     }
   }
+  if (cur.readOnly && !cur.history) h += '<div class="hint">👁 ' + esc(S.viewOnly) + '</div>';
   h += '</div>';
   $('view').innerHTML = h;
 

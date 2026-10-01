@@ -15,6 +15,7 @@
   <div class="tile">🍽</div>
   <div class="ttl"><b>Manager</b><small id="who"></small></div>
   <button id="logoutBtn">logout</button>
+  <div class="net" id="net" hidden></div>
 </div>
 
 <div class="tabs" id="tabs"></div>
@@ -32,6 +33,46 @@ try { me = JSON.parse(localStorage.getItem(WHO) || 'null'); } catch (e) { me = n
 // hand-types /manager gets sent home instead of staring at dead buttons.
 if (!token || !me || (me.role !== 'manager' && me.role !== 'admin')) location.replace('/');
 
+// New screen text sits here in one place, so a later EN / हिं / ગુ switch only
+// has to swap this table.
+var S = {
+  noNet: 'Network nahi hai — dobara try karo',
+  slowNet: 'Network bahut slow hai — dobara try karo',
+  noServer: 'Server se jawab nahi aaya — dobara try karo',
+  netDown: '⚠ Net nahi hai · last update ',
+  retry: '↻ Dobara try karo',
+  retryShort: '↻ Dobara',
+  sending: 'Bhej rahe…',
+  wait: 'Bhej rahe hain — ek second',
+  resend: '↻ Dobara bhejo',
+  unsureBar: '⚠ Jawab nahi aaya — ho sakta hai KOT kitchen pahunch gaya ho. ' +
+             '"Dobara bhejo" dabao: double KOT nahi banega.',
+  locked: 'Pehle ye KOT bhejo — net aate hi "Dobara bhejo" dabao',
+  leaveTitle: 'KOT ka jawab nahi aaya',
+  leaveBody: 'Ho sakta hai ye KOT kitchen pahunch gaya ho. Chhod ke dobara punch kiya to ' +
+             'kitchen do baar bana dega — pehle table pe check karo.',
+  stay: 'Ruko',
+  leave: 'Chhod do',
+  khatam: 'khatam',
+  isKhatam: function (n) { return n + ' khatam hai'; },
+  wentKhatam: function (n) { return n + ' abhi khatam ho gaya — cart me hai'; },
+  khatamTitle: 'Ye khatam ho gaya',
+  khatamHint: 'Customer ko bata do. Inke saath poora KOT ruk jayega — inhe hata ke baaki bhejo.',
+  khatamHintAll: 'Customer ko bata do. Cart me aur kuch nahi hai.',
+  dropAndSend: 'Hata ke bhejo',
+  drop: 'Hata do',
+  cartHint: '📝 note · cart ›',
+  cartTitle: 'Naya KOT — abhi bheja nahi',
+  addNote: 'note',
+  noteFor: function (n) { return 'Note · ' + n; },
+  notePh: 'kam teekha, bina pyaaz…',
+  noteHint: 'Kitchen ko KOT pe yahi likha dikhega.',
+  noteLong: 'Note bahut lamba hai — chhota likho',
+  save: 'Save',
+  search: '🔍 Dhoondo',
+  noMatch: 'Is naam ki koi dish nahi mili'
+};
+
 var $ = function (id) { return document.getElementById(id); };
 var esc = function (s) {
   return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
@@ -46,6 +87,9 @@ var uid = function () {
 };
 
 function toast(msg, kind) {
+  // A second tap on a dead network shouldn't stack an identical toast.
+  var last = $('toasts').lastElementChild;
+  if (last && last.textContent === msg) return;
   var el = document.createElement('div');
   el.className = 'toast' + (kind ? ' ' + kind : '');
   el.textContent = msg;
@@ -55,27 +99,142 @@ function toast(msg, kind) {
 }
 
 function signOut(silent) {
-  if (token && !silent) fetch('/api/logout', { method:'POST', headers:{ 'Authorization':'Bearer ' + token } });
+  if (token && !silent) fetch('/api/logout', { method:'POST', headers:{ 'Authorization':'Bearer ' + token } }).catch(function () {});
   localStorage.removeItem(TOK); localStorage.removeItem(WHO);
   location.replace('/');
 }
-$('logoutBtn').onclick = function () { signOut(false); };
+$('logoutBtn').onclick = function () { confirmLeave(function () { signOut(false); }); };
 $('who').textContent = me.name;
 
+// ---------------------------------------------------------------- network
+// Phones on shop WiFi or mobile data drop out mid-rush. Every call gives up
+// after NET_TIMEOUT and says so in plain words; two misses in a row raise an
+// amber strip under the header that stays until the server answers again.
+var NET_TIMEOUT = 12000;
+var net = { fails: 0, lastOk: Date.now(), probe: null };
+var repaint = null;   // the on-screen list's paint(); re-run when the net is back
+
+function netError(msg) { var e = new Error(msg); e.network = true; return e; }
+
+function paintNet(on) {
+  $('net').hidden = !on;
+  if (on) {
+    $('net').innerHTML = '<span>' + esc(S.netDown + clock(net.lastOk)) + '</span>' +
+      '<button id="netRetry">' + esc(S.retryShort) + '</button>';
+    $('netRetry').onclick = probeNet;
+  }
+  syncTop();   // the picker's sticky search sits under the (now taller) header
+}
+function netFail() {
+  net.fails++;
+  if (net.fails >= 2 || navigator.onLine === false) paintNet(true);
+  if (!net.probe) net.probe = setInterval(probeNet, 5000);
+}
+function netOk() {
+  net.fails = 0; net.lastOk = Date.now();
+  if (net.probe) { clearInterval(net.probe); net.probe = null; }
+  if (!$('net').hidden) {
+    paintNet(false);
+    if (repaint) repaint().catch(function () {});
+  }
+}
+function probeNet() { api('GET', '/api/ping').catch(function () {}); }
+window.addEventListener('offline', function () { netFail(); paintNet(true); });
+window.addEventListener('online', probeNet);
+
 async function api(method, path, body) {
-  var r = await fetch(path, {
-    method: method,
-    headers: { 'Content-Type':'application/json', 'Authorization':'Bearer ' + token },
-    body: body === undefined ? undefined : JSON.stringify(body)
-  });
+  var ctl = window.AbortController ? new AbortController() : null;
+  var tm = ctl ? setTimeout(function () { ctl.abort(); }, NET_TIMEOUT) : 0;
+  var r;
+  try {
+    r = await fetch(path, {
+      method: method,
+      headers: { 'Content-Type':'application/json', 'Authorization':'Bearer ' + token },
+      body: body === undefined ? undefined : JSON.stringify(body),
+      signal: ctl ? ctl.signal : undefined
+    });
+  } catch (e) {
+    // No HTTP answer at all: offline, a dropped line, or our own timeout.
+    // The server may still have acted on a write — callers allow for that.
+    netFail();
+    throw netError(e && e.name === 'AbortError' ? S.slowNet : S.noNet);
+  } finally { clearTimeout(tm); }
+  // Caddy answers these itself when the POS server behind it is down.
+  if (r.status === 502 || r.status === 503 || r.status === 504) { netFail(); throw netError(S.noServer); }
+  netOk();
   if (r.status === 401) { signOut(true); throw new Error('session expired'); }
   var d = await r.json().catch(function () { return {}; });
-  if (!r.ok) { var e = new Error(d.error || ('server error ' + r.status)); e.blockers = d.blockers; throw e; }
+  if (!r.ok) {
+    var e = new Error(d.error || ('server error ' + r.status));
+    e.status = r.status; e.blockers = d.blockers;
+    throw e;
+  }
   return d;
 }
 
+function oops(e) { toast(e.message, 'bad'); }
+
+// A list that could not load says why, with a retry, instead of staying blank.
+function failView(e, again) {
+  $('view').innerHTML = '<div class="empty err-net">⚠ ' + esc(e.message) +
+    '<br><button class="ghost" id="againBtn">' + esc(S.retry) + '</button></div>';
+  $('againBtn').onclick = again;
+}
+
+// ---------------------------------------------------------------- dialogs
+var modalUp = false;
+function showModal(title, body, buttons) {
+  hideModal();
+  modalUp = true;
+  var m = document.createElement('div');
+  m.className = 'modal';
+  m.innerHTML = '<div class="box"><h3>' + esc(title) + '</h3>' + body +
+    '<div class="btnrow" style="margin-top:14px">' + buttons.map(function (b, i) {
+      return '<button class="' + b.cls + '" data-i="' + i + '">' + esc(b.label) + '</button>';
+    }).join('') + '</div></div>';
+  m.addEventListener('click', function (e) {
+    if (e.target === m) { hideModal(); return; }
+    var b = e.target.closest('button[data-i]');
+    if (!b) return;
+    var a = buttons[Number(b.dataset.i)];
+    if (a.act) a.act(); else hideModal();
+  });
+  document.body.appendChild(m);
+  return m;
+}
+function hideModal() {
+  modalUp = false;
+  var m = document.querySelector('.modal');
+  if (m) m.remove();
+}
+
 // ---------------------------------------------------------------- state
-var tab = 'tables', timer = null, menu = [], cart = [], openTable = null, parcelMode = false;
+var tab = 'tables', timer = null, menu = [], openTable = null, parcelMode = false;
+// The cart and its idempotency key — the app's contract (data/Api.kt
+// sendTicket): cartId is minted with the cart and sent on every retry, the
+// server answers a repeated id with the order it already saved, and a new
+// id only comes with a new cart. So a lost reply can never punch twice.
+// cartLocked = we sent it and never heard back; until a retry gets an
+// answer, the cart can't change (a changed cart under the same id would
+// lose the change, a new id could cook it twice).
+var cart = [], cartId = '', cartLocked = false, sending = false, onSend = null;
+function newCart() { cart = []; cartId = uid(); cartLocked = false; }
+var sleep = function (ms) { return new Promise(function (r) { setTimeout(r, ms); }); };
+
+// Leaving a cart whose KOT may already be in the kitchen is how a table gets
+// cooked twice, so that one case asks first.
+function confirmLeave(go) {
+  if (sending) { toast(S.wait); return; }
+  if (!cartLocked) { go(); return; }
+  showModal(S.leaveTitle, '<div class="mut" style="font-size:14px">' + esc(S.leaveBody) + '</div>',
+    [{ label: S.stay, cls: 'ghost' },
+     { label: S.leave, cls: 'danger', act: function () { hideModal(); newCart(); go(); } }]);
+}
+var pane = '';   // 'table' | 'picker' — a late refresh must not yank the picker away
+// Bumped on every tab switch. A slow load (up to NET_TIMEOUT offline) that
+// finishes after the user has moved on must not start its poll on top of
+// the new tab's.
+var nav = 0;
 
 var TABS = { tables:['🪑','Tables'], parcel:['🥡','Parcel'], kitchen:['🔥','Kitchen'] };
 function paintTabs() {
@@ -86,21 +245,37 @@ function paintTabs() {
 }
 $('tabs').addEventListener('click', function (e) {
   var b = e.target.closest('button[data-tab]');
-  if (b) show(b.dataset.tab);
+  if (b) confirmLeave(function () { show(b.dataset.tab); });
 });
 
 function show(t) {
-  tab = t; clearInterval(timer);
-  openTable = null; cart = []; parcelMode = (t === 'parcel');
-  $('bar').innerHTML = '';
+  tab = t; clearInterval(timer); repaint = null; nav++; pane = '';
+  openTable = null; newCart(); parcelMode = (t === 'parcel');
+  $('bar').className = ''; $('bar').innerHTML = '';
   paintTabs();
   ({ tables:tables, parcel:parcel, kitchen:kitchen })[t]();
 }
 
+// The menu is re-read every time the picker opens (and every 30s while it is
+// open), because "khatam" changes mid-service and one khatam dish in a KOT
+// makes the server refuse the whole KOT. Offline, the last copy is used.
+// A dish that vanished from the menu is kept as unavailable, so a cart line
+// that still points at it can be shown and taken out.
+var menuById = {};
 async function loadMenu() {
-  if (menu.length) return menu;
-  var d = await api('GET', '/api/menu');
-  menu = d.menu || [];
+  try {
+    var d = await api('GET', '/api/menu');
+    menu = d.menu || [];
+  } catch (e) {
+    if (!menu.length) throw e;
+    return menu;
+  }
+  var fresh = {};
+  menu.forEach(function (c) { (c.items || []).forEach(function (it) { fresh[it.id] = it; }); });
+  Object.keys(menuById).forEach(function (k) {
+    if (!fresh[k]) fresh[k] = Object.assign({}, menuById[k], { available: false });
+  });
+  menuById = fresh;
   return menu;
 }
 
@@ -115,8 +290,12 @@ async function tables() {
       '<h2>Tables</h2><div class="grid">' + list.map(tableTile).join('') + '</div>' +
       (parcels.length ? '<h2>Chal rahe parcel</h2><div class="grid">' + parcels.map(tableTile).join('') + '</div>' : '');
   };
-  await paint().catch(function (e) { toast(e.message, 'bad'); });
-  timer = setInterval(function () { paint().catch(function () {}); }, 10000);
+  var my = nav;
+  repaint = paint;
+  await paint().catch(function (e) {
+    if (my === nav && !openTable) failView(e, function () { show('tables'); });
+  });
+  if (my === nav) timer = setInterval(function () { paint().catch(function () {}); }, 10000);
 }
 
 function tableTile(t) {
@@ -134,21 +313,36 @@ function tableTile(t) {
 
 $('view').addEventListener('click', function (e) {
   var t = e.target.closest('button[data-table]');
-  if (t) openTableView(Number(t.dataset.table), t.dataset.name);
+  if (t) openTableView(Number(t.dataset.table), t.dataset.name).catch(oops);
 });
 
 // ------------------------------------------------------- one table's order
+// Load first, switch screens after: with no network the grid stays where it
+// is and the toast says why, instead of a tap that silently does nothing.
 async function openTableView(id, name) {
-  clearInterval(timer);
-  openTable = { id: id, name: name };
-  cart = [];
-  await refreshTable();
+  var my = nav;
+  var d = await api('GET', '/api/dining-tables/' + id + '/order');
+  if (my !== nav) return;   // they switched tabs while it loaded
+  clearInterval(timer); repaint = null;
+  openTable = { id: id, name: name, order: d.order };
+  newCart();
+  paintTable();
 }
 
+// Re-reads the order. Offline it falls back to the copy already on screen,
+// so Back from the picker always lands somewhere.
 async function refreshTable() {
-  var d = await api('GET', '/api/dining-tables/' + openTable.id + '/order');
-  var o = d.order;
-  openTable.order = o;
+  var t = openTable;
+  try {
+    var d = await api('GET', '/api/dining-tables/' + t.id + '/order');
+    t.order = d.order;
+  } catch (e) { oops(e); }
+  if (openTable === t && pane === 'table') paintTable();
+}
+
+function paintTable() {
+  pane = 'table'; clearInterval(timer);   // the picker's menu poll, if we came from there
+  var o = openTable.order;
   var html = '<div class="row" style="margin-bottom:12px">' +
     '<button class="ghost" id="backBtn" style="min-height:42px;padding:9px 14px">‹ Tables</button>' +
     '<b class="grow" style="font-size:17px;text-align:center">' + esc(openTable.name) + '</b>' +
@@ -200,84 +394,419 @@ async function refreshTable() {
 }
 
 // ---------------------------------------------------------------- picker
-async function picker(title, onSend) {
+async function picker(title, send) {
   clearInterval(timer);
+  onSend = send;
+  var my = nav;
   try { await loadMenu(); } catch (e) { toast(e.message, 'bad'); return; }
+  if (my !== nav) return;
+  pane = 'picker';
   var html = '<div class="row" style="margin-bottom:12px">' +
     '<button class="ghost" id="pBack" style="min-height:42px;padding:9px 14px">‹ Back</button>' +
     '<b class="grow" style="font-size:17px;text-align:center">' + esc(title) + '</b>' +
     '<span style="width:86px"></span></div>';
-  menu.forEach(function (c) {
-    html += '<h2>' + esc(c.name) + '</h2><div class="card">';
-    (c.items || []).forEach(function (it) {
-      html += '<div class="line" data-item="' + it.id + '">' +
+  // Finding a dish: a search box and one chip per category, stuck under the
+  // header so they're there at any scroll depth.
+  var cats = menu.filter(function (c) { return (c.items || []).length; });
+  html += '<div class="pk-tools" id="pkTools">' +
+    '<input id="pkQ" type="search" enterkeyhint="search" autocomplete="off" placeholder="' + esc(S.search) + '">' +
+    '<button id="pkClear" hidden aria-label="clear">✕</button>' +
+    '<div class="pk-chips" id="pkChips">' + cats.map(function (c) {
+      return '<button data-cat="' + c.id + '">' + esc(c.name) + '</button>';
+    }).join('') + '</div></div>';
+  html += '<div id="pkList">';
+  cats.forEach(function (c) {
+    // khatam dishes sink to the bottom of their category (order kept otherwise)
+    var items = c.items.filter(function (it) { return it.available; })
+      .concat(c.items.filter(function (it) { return !it.available; }));
+    html += '<section class="pk-cat" data-cat="' + c.id + '"><h2>' + esc(c.name) + '</h2><div class="card pk-card">';
+    items.forEach(function (it) {
+      html += '<div class="line pk-row' + (it.available ? '' : ' off') + '" data-item="' + it.id + '"' +
+        ' data-q="' + esc(normName(it.name)) + '">' +
         '<span class="grow"><span class="nm">' + esc(it.name) + '</span>' +
-        '<div class="mut tnum">' + rupees(it.price) + (it.available ? '' : ' · khatam') + '</div></span>' +
+        '<div class="mut tnum pk-sub">' + rowSub(it) + '</div></span>' +
         '<span class="step">' +
-          '<button data-dec="' + it.id + '">−</button>' +
+          '<button data-dec="' + it.id + '" disabled>−</button>' +
           '<b id="q' + it.id + '">0</b>' +
-          '<button data-inc="' + it.id + '" data-nm="' + esc(it.name) + '" data-pr="' + it.price + '">+</button>' +
+          '<button data-inc="' + it.id + '"' + (it.available ? '' : ' disabled') + '>+</button>' +
         '</span></div>';
     });
-    html += '</div>';
+    html += '</div></section>';
   });
+  html += '<div class="empty" id="pkNone" hidden>' + esc(S.noMatch) + '</div></div>';
   $('view').innerHTML = html;
+  window.scrollTo(0, 0);   // start at the top of the menu, not where the order view was
+  syncTop();
+  markChip(cats.length ? cats[0].id : null);
+  $('pkQ').addEventListener('input', filterMenu);
+  $('pkQ').addEventListener('keydown', function (e) { if (e.key === 'Enter') this.blur(); });
+  $('pkClear').onclick = function () { $('pkQ').value = ''; filterMenu(); };
+  $('pkChips').addEventListener('click', function (e) {
+    var b = e.target.closest('button[data-cat]');
+    if (b) jumpTo(b.dataset.cat);
+  });
+  timer = setInterval(menuPoll, 30000);
   $('pBack').onclick = function () {
-    cart = [];
-    if (parcelMode) show('parcel'); else refreshTable();
+    confirmLeave(function () {
+      newCart(); paintCartBar();
+      if (parcelMode) { show('parcel'); return; }
+      paintTable();     // the copy we have, at once — even with no network
+      refreshTable();
+    });
   };
-  $('view').querySelectorAll('button[data-inc]').forEach(function (b) {
-    b.onclick = function () { bump(Number(b.dataset.inc), 1, b.dataset.nm, Number(b.dataset.pr), onSend); };
+  // − takes one off; + or a tap anywhere else on the row adds one (the app's
+  // MenuRow does the same), so a fat-fingered tap still lands on that dish.
+  $('pkList').addEventListener('click', function (e) {
+    var row = e.target.closest('.pk-row');
+    if (!row) return;
+    if (e.target.closest('button[data-dec]')) bump(Number(row.dataset.item), -1);
+    else bump(Number(row.dataset.item), 1);
   });
-  $('view').querySelectorAll('button[data-dec]').forEach(function (b) {
-    b.onclick = function () { bump(Number(b.dataset.dec), -1, '', 0, onSend); };
-  });
-  paintCartBar(onSend);
+  paintCartBar();
 }
 
-function bump(id, delta, name, price, onSend) {
-  var line = cart.filter(function (l) { return l.menuItemId === id; })[0];
+// "Sp. Pulav" -> "sp pulav", so "sp pul" or "pulav sp" both find it.
+function normName(s) {
+  return String(s).toLowerCase().replace(/[.,()\/&+\-]+/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+// Every word typed must appear somewhere in the dish name.
+function filterMenu() {
+  var q = normName($('pkQ').value), words = q ? q.split(' ') : [];
+  $('pkTools').classList.toggle('q', !!q);
+  $('pkClear').hidden = !q;
+  var any = false;
+  document.querySelectorAll('#pkList .pk-cat').forEach(function (sec) {
+    var shown = 0;
+    sec.querySelectorAll('.pk-row').forEach(function (r) {
+      var hit = words.every(function (w) { return r.dataset.q.indexOf(w) >= 0; });
+      r.hidden = !hit;
+      if (hit) shown++;
+    });
+    sec.hidden = !shown;
+    if (shown) any = true;
+  });
+  $('pkNone').hidden = any;
+  if (q) window.scrollTo(0, 0);
+}
+
+// The sticky bits sit under the header, whose height changes with the
+// offline strip and the phone's safe area.
+function syncTop() {
+  document.documentElement.style.setProperty('--top-h', document.querySelector('.top').offsetHeight + 'px');
+}
+window.addEventListener('resize', syncTop);
+
+function jumpTo(catId) {
+  var sec = document.querySelector('.pk-cat[data-cat="' + catId + '"]');
+  if (!sec) return;
+  var off = document.querySelector('.top').offsetHeight + $('pkTools').offsetHeight + 4;
+  window.scrollTo(0, sec.getBoundingClientRect().top + window.pageYOffset - off);
+  markChip(catId);
+}
+
+function markChip(catId) {
+  var box = $('pkChips');
+  if (!box) return;
+  box.querySelectorAll('button').forEach(function (b) {
+    var on = b.dataset.cat === String(catId);
+    b.classList.toggle('on', on);
+    if (on && (b.offsetLeft < box.scrollLeft || b.offsetLeft + b.offsetWidth > box.scrollLeft + box.clientWidth)) {
+      box.scrollLeft = b.offsetLeft - 8;
+    }
+  });
+}
+
+// Light the chip of the category being looked at.
+var spyQueued = false;
+window.addEventListener('scroll', function () {
+  if (spyQueued || pane !== 'picker' || !$('pkTools')) return;
+  spyQueued = true;
+  requestAnimationFrame(function () {
+    spyQueued = false;
+    if (pane !== 'picker' || !$('pkTools')) return;
+    var line = $('pkTools').getBoundingClientRect().bottom + 12, cur = null;
+    // at the very bottom the last category can't scroll up to the line
+    var atEnd = window.innerHeight + window.pageYOffset >= document.documentElement.scrollHeight - 4;
+    document.querySelectorAll('#pkList .pk-cat').forEach(function (sec) {
+      if (!sec.hidden && (cur === null || atEnd || sec.getBoundingClientRect().top <= line)) cur = sec.dataset.cat;
+    });
+    markChip(cur);
+  });
+}, { passive: true });
+
+function bump(id, delta) {
+  if (sending) { toast(S.wait); return; }
+  if (cartLocked) { toast(S.locked, 'bad'); return; }
+  var it = menuById[id];
+  if (delta > 0 && it && !it.available) { toast(S.isKhatam(it.name), 'bad'); return; }
+  // Like the app, a cart line is one dish + one note. A tap adds to the
+  // dish's plain (no-note) line, so "1 Jain + 1 normal" is: tap, note
+  // "Jain" on that line, tap again. − takes from the plain line first.
+  var mine = cart.filter(function (l) { return l.menuItemId === id; });
+  var line = mine.filter(function (l) { return !l.note; })[0];
+  if (delta < 0) line = line || mine[mine.length - 1];
   if (!line) {
-    if (delta < 0) return;
-    line = { menuItemId: id, name: name, price: price, qty: 0, note: '' };
+    if (delta < 0 || !it) return;
+    line = { menuItemId: id, name: it.name, price: it.price, qty: 0, note: '' };
     cart.push(line);
   }
   line.qty += delta;
-  if (line.qty <= 0) cart = cart.filter(function (l) { return l.menuItemId !== id; });
-  var q = $('q' + id);
-  if (q) q.textContent = String(line.qty > 0 ? line.qty : 0);
-  paintCartBar(onSend);
+  if (line.qty <= 0) cart.splice(cart.indexOf(line), 1);
+  paintRow(id);
+  paintCartBar();
+}
+
+// The line under a dish name: price, KHATAM when out of stock, and the
+// notes already on its cart lines.
+function rowSub(it) {
+  var notes = cart.filter(function (l) { return l.menuItemId === it.id && l.note; })
+    .map(function (l) { return l.qty + '× ' + l.note; });
+  return rupees(it.price) +
+    (it.available ? '' : ' <span class="pill p-off">' + esc(S.khatam) + '</span>') +
+    (notes.length ? ' · <span class="note">📝 ' + esc(notes.join(' · ')) + '</span>' : '');
+}
+
+// Stock changed under an open picker: grey out / bring back rows in place.
+// No re-sort here — a row jumping away under a thumb is worse than an
+// out-of-order one.
+function applyStock() {
+  document.querySelectorAll('.pk-row').forEach(function (row) {
+    var it = menuById[Number(row.dataset.item)];
+    if (!it) return;
+    row.classList.toggle('off', !it.available);
+    row.querySelector('button[data-inc]').disabled = !it.available;
+    row.querySelector('.pk-sub').innerHTML = rowSub(it);
+  });
+}
+
+function menuPoll() {
+  var a = document.activeElement;
+  if (pane !== 'picker' || modalUp || sending || (a && a.tagName === 'INPUT')) return;
+  var before = menuById;
+  loadMenu().then(function () {
+    if (pane !== 'picker') return;
+    applyStock();
+    cart.forEach(function (l) {
+      var was = before[l.menuItemId], now = menuById[l.menuItemId];
+      if (was && was.available && now && !now.available) toast(S.wentKhatam(l.name), 'bad');
+    });
+  }).catch(function () {});
+}
+
+// Cart lines the menu now says are out of stock. The server refuses the
+// WHOLE KOT for any one of them, so offer to take them out and send the rest.
+function offerDropKhatam() {
+  var bad = cart.filter(function (l) { var it = menuById[l.menuItemId]; return !it || !it.available; });
+  if (!bad.length) return false;
+  var left = cart.length > bad.length;
+  showModal(S.khatamTitle,
+    '<div style="font-size:15px;font-weight:700">• ' +
+      bad.map(function (l) { return esc(l.qty + '× ' + l.name); }).join('<br>• ') + '</div>' +
+    '<div class="hint">' + esc(left ? S.khatamHint : S.khatamHintAll) + '</div>',
+    [{ label: 'Back', cls: 'ghost' },
+     { label: left ? S.dropAndSend : S.drop, cls: 'primary', act: function () {
+        hideModal();
+        cart = cart.filter(function (l) { return bad.indexOf(l) < 0; });
+        bad.forEach(function (l) { paintRow(l.menuItemId); });
+        paintCartBar();
+        if (cart.length && onSend) onSend();
+     } }]);
+  return true;
+}
+
+// One menu row's count, highlight, − state and note line, from the cart.
+function paintRow(id) {
+  var row = document.querySelector('.pk-row[data-item="' + id + '"]');
+  if (!row) return;
+  var n = cart.reduce(function (s, l) { return s + (l.menuItemId === id ? l.qty : 0); }, 0);
+  $('q' + id).textContent = String(n);
+  row.classList.toggle('in', n > 0);
+  row.querySelector('button[data-dec]').disabled = n === 0;
+  if (menuById[id]) row.querySelector('.pk-sub').innerHTML = rowSub(menuById[id]);
 }
 
 function cartTotal() {
   return cart.reduce(function (s, l) { return s + l.qty * l.price; }, 0);
 }
+function cartPlates() {
+  return cart.reduce(function (s, l) { return s + l.qty; }, 0);
+}
 
-function paintCartBar(onSend) {
-  if (!cart.length) { $('bar').innerHTML = ''; return; }
-  var n = cart.reduce(function (s, l) { return s + l.qty; }, 0);
-  $('bar').className = 'bar';
-  $('bar').innerHTML =
-    '<span class="tot">' + n + ' plate · ' + rupees(cartTotal()) + '</span>' +
-    '<button class="primary" id="sendBtn">Kitchen bhejo</button>';
-  $('sendBtn').onclick = function () { onSend(); };
+function paintCartBar() {
+  var bar = $('bar');
+  if (!cart.length) { bar.className = ''; bar.innerHTML = ''; return; }
+  var n = cartPlates();
+  var btn = '<button class="primary" id="sendBtn"' + (sending ? ' disabled' : '') + '>';
+  if (cartLocked) {
+    bar.className = 'bar stack';
+    bar.innerHTML = '<div class="unsure">' + esc(S.unsureBar) + '</div>' +
+      btn + esc(sending ? S.sending : S.resend + ' · ' + n + ' plate') + '</button>';
+  } else {
+    // The left half opens the cart: every line, its note, its count.
+    bar.className = 'bar';
+    bar.innerHTML = '<button class="ghost cartbtn" id="cartBtn">' +
+        '<b>' + n + ' plate · ' + rupees(cartTotal()) + '</b><small>' + esc(S.cartHint) + '</small></button>' +
+      btn + (sending ? esc(S.sending) : 'Kitchen bhejo') + '</button>';
+    $('cartBtn').onclick = openCart;
+  }
+  $('sendBtn').onclick = function () { if (onSend) onSend(); };
+}
+
+// ---------------------------------------------------------------- cart + notes
+// The cart sheet: one row per cart line with its own count and note, the
+// app's "NEW KOT — NOT SENT YET" block (TableOrderScreen.kt). The note is
+// what the kitchen sees on the KOT: "Jain", "kam teekha", "बिना प्याज़"…
+function openCart() {
+  if (!cart.length) { hideModal(); return; }
+  var body = '<div class="cart-ls">' + cart.map(function (l, i) {
+    var it = menuById[l.menuItemId], off = !it || !it.available;
+    return '<div class="line">' +
+      '<span class="grow"><span class="nm">' + esc(l.name) + '</span>' +
+        '<div class="mut tnum">' + rupees(l.price) +
+          (off ? ' <span class="pill p-off">' + esc(S.khatam) + '</span>' : '') + '</div>' +
+        '<button class="notebtn' + (l.note ? ' has' : '') + '" data-note="' + i + '">📝 ' +
+          esc(l.note || S.addNote) + '</button></span>' +
+      '<span class="step"><button data-cdec="' + i + '">−</button><b>' + l.qty + '</b>' +
+        '<button data-cinc="' + i + '"' + (off ? ' disabled' : '') + '>+</button></span>' +
+      '</div>';
+  }).join('') + '</div>';
+  var m = showModal(S.cartTitle, body,
+    [{ label: 'Back', cls: 'ghost' },
+     { label: (cartLocked ? S.resend : 'Kitchen bhejo') + ' · ' + cartPlates() + ' plate', cls: 'primary',
+       act: function () { hideModal(); if (onSend) onSend(); } }]);
+  m.querySelector('.cart-ls').addEventListener('click', function (e) {
+    var b = e.target.closest('button');
+    if (!b) return;
+    if (b.dataset.note) editNote(Number(b.dataset.note));
+    else if (b.dataset.cdec) stepLine(Number(b.dataset.cdec), -1);
+    else if (b.dataset.cinc) stepLine(Number(b.dataset.cinc), 1);
+  });
+}
+
+function cartBusy() {
+  if (sending) { toast(S.wait); return true; }
+  if (cartLocked) { toast(S.locked, 'bad'); return true; }
+  return false;
+}
+
+function stepLine(i, d) {
+  var l = cart[i];
+  if (!l || cartBusy()) return;
+  var it = menuById[l.menuItemId];
+  if (d > 0 && (!it || !it.available)) { toast(S.isKhatam(l.name), 'bad'); return; }
+  l.qty += d;
+  if (l.qty <= 0) cart.splice(i, 1);
+  paintRow(l.menuItemId); paintCartBar();
+  openCart();
+}
+
+var NOTE_CHIPS = ['Jain', 'Kam teekha', 'Extra teekha', 'Bina pyaaz', 'Bina lasan', 'Extra butter', 'Parcel'];
+
+// The server caps a note at 200 BYTES; Hindi/Gujarati letters take 3 each.
+function noteBytes(s) {
+  return window.TextEncoder ? new TextEncoder().encode(s).length : s.length * 3;
+}
+
+function editNote(i) {
+  var l = cart[i];
+  if (!l || cartBusy()) return;
+  var m = showModal(S.noteFor(l.name),
+    '<div class="nchips">' + NOTE_CHIPS.map(function (c) {
+      return '<button class="nchip" data-chip="' + esc(c) + '">' + esc(c) + '</button>';
+    }).join('') + '</div>' +
+    '<input id="mNote" maxlength="120" autocomplete="off" placeholder="' + esc(S.notePh) + '" value="' + esc(l.note) + '">' +
+    '<div class="hint">' + esc(S.noteHint) + '</div>',
+    [{ label: 'Back', cls: 'ghost', act: openCart },
+     { label: S.save, cls: 'primary', act: function () {
+        var v = $('mNote').value.replace(/\s+/g, ' ').trim();
+        if (noteBytes(v) > 200) { toast(S.noteLong, 'bad'); return; }
+        setNote(l, v);
+        openCart();
+     } }]);
+  // Chips add/remove their word in the text box; the box is the note.
+  var parts = function () {
+    return $('mNote').value.split(',').map(function (s) { return s.trim(); }).filter(Boolean);
+  };
+  var sync = function () {
+    var have = parts().map(function (p) { return p.toLowerCase(); });
+    m.querySelectorAll('.nchip').forEach(function (b) {
+      b.classList.toggle('on', have.indexOf(b.dataset.chip.toLowerCase()) >= 0);
+    });
+  };
+  m.querySelector('.nchips').addEventListener('click', function (e) {
+    var b = e.target.closest('.nchip');
+    if (!b) return;
+    var p = parts(), k = -1;
+    p.forEach(function (x, j) { if (x.toLowerCase() === b.dataset.chip.toLowerCase()) k = j; });
+    if (k >= 0) p.splice(k, 1); else p.push(b.dataset.chip);
+    $('mNote').value = p.join(', ');
+    sync();
+  });
+  $('mNote').addEventListener('input', sync);
+  sync();
+}
+
+// Two lines of the same dish with the same note are one line.
+function setNote(l, v) {
+  if (cart.indexOf(l) < 0) return;
+  l.note = v;
+  var twin = cart.filter(function (x) { return x !== l && x.menuItemId === l.menuItemId && x.note === v; })[0];
+  if (twin) { twin.qty += l.qty; cart.splice(cart.indexOf(l), 1); }
+  paintRow(l.menuItemId); paintCartBar();
+}
+
+// Sends the cart under its cartId. No answer, or a 5xx, means the server may
+// have saved it: the same id is always safe to send again, so it retries by
+// itself twice, then locks the cart and asks for "Dobara bhejo". A 4xx is a
+// real "no" (nothing was saved), so the cart stays editable — and the same
+// id stays valid, because the server never stored it.
+async function sendCart(post, done) {
+  if (sending || !cart.length) return;
+  // A khatam dish we already know about: ask now, don't let the KOT bounce.
+  // (Not for a locked cart — that one must go out exactly as first sent.)
+  if (!cartLocked && offerDropKhatam()) return;
+  sending = true; paintCartBar();
+  var id = cartId;
+  var items = cart.map(function (l) { return { menuItemId: l.menuItemId, qty: l.qty, note: l.note }; });
+  var t0 = Date.now();
+  for (var attempt = 1; ; attempt++) {
+    try {
+      var d = await post(id, items);
+      sending = false; newCart(); paintCartBar();
+      hideModal();   // a cart sheet opened while it was sending is now stale
+      done(d);
+      return;
+    } catch (e) {
+      var unsure = !!e.network || e.status >= 500;
+      if (unsure && attempt < 3 && Date.now() - t0 < 8000) { await sleep(1000 * attempt); continue; }
+      sending = false; cartLocked = unsure;
+      paintCartBar();
+      // Locked: the bar itself explains, and a toast would sit on its button.
+      if (unsure) return;
+      // 409 is how the server says "X is marked out of stock" (it went khatam
+      // after the picker loaded): re-read the menu and offer to drop it.
+      if (e.status === 409) {
+        await loadMenu().catch(function () {});
+        applyStock();
+        if (offerDropKhatam()) return;
+      }
+      toast(e.message, 'bad');
+      return;
+    }
+  }
 }
 
 async function sendTicket() {
-  var btn = $('sendBtn'); if (btn) btn.disabled = true;
-  try {
-    await api('POST', '/api/dining-tables/' + openTable.id + '/tickets', {
-      clientTicketId: uid(),
-      items: cart.map(function (l) { return { menuItemId: l.menuItemId, qty: l.qty, note: l.note }; })
-    });
-    cart = [];
-    $('bar').innerHTML = '';
+  var t = openTable;
+  await sendCart(function (id, items) {
+    return api('POST', '/api/dining-tables/' + t.id + '/tickets', { clientTicketId: id, items: items });
+  }, function (d) {
     toast('Kitchen ko bhej diya ✓', 'ok');
-    await refreshTable();
-  } catch (e) {
-    toast(e.message, 'bad');
-    if (btn) btn.disabled = false;
-  }
+    if (openTable !== t) return;
+    if (d && d.tickets) { t.order = d; paintTable(); }   // the reply is the saved order
+    else { paintTable(); refreshTable(); }
+  });
 }
 
 // ---------------------------------------------------------------- parcel
@@ -292,27 +821,21 @@ function parcel() {
     var nm = $('pcName').value.trim();
     if (!nm) { toast('Customer ka naam chahiye', 'bad'); return; }
     openTable = { parcelName: nm, parcelPhone: $('pcPhone').value.trim() };
-    cart = [];
+    newCart();
     picker('🥡 ' + nm, sendParcel);
   };
 }
 
 async function sendParcel() {
-  var btn = $('sendBtn'); if (btn) btn.disabled = true;
-  try {
-    await api('POST', '/api/parcels', {
-      customerName: openTable.parcelName,
-      customerPhone: openTable.parcelPhone,
-      clientTicketId: uid(),
-      items: cart.map(function (l) { return { menuItemId: l.menuItemId, qty: l.qty, note: l.note }; })
+  var t = openTable;
+  await sendCart(function (id, items) {
+    return api('POST', '/api/parcels', {
+      customerName: t.parcelName, customerPhone: t.parcelPhone, clientTicketId: id, items: items
     });
-    cart = [];
+  }, function () {
     toast('Parcel ban gaya ✓', 'ok');
     show('tables');
-  } catch (e) {
-    toast(e.message, 'bad');
-    if (btn) btn.disabled = false;
-  }
+  });
 }
 
 // ---------------------------------------------------------------- kitchen
@@ -336,8 +859,12 @@ async function kitchen() {
         }).join('') + '</div>';
     }).join('');
   };
-  await paint().catch(function (e) { toast(e.message, 'bad'); });
-  timer = setInterval(function () { paint().catch(function () {}); }, 8000);
+  var my = nav;
+  repaint = paint;
+  await paint().catch(function (e) {
+    if (my === nav) failView(e, function () { show('kitchen'); });
+  });
+  if (my === nav) timer = setInterval(function () { paint().catch(function () {}); }, 8000);
 }
 
 show('tables');

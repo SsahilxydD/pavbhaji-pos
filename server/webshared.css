@@ -49,6 +49,19 @@ body {
 }
 .top button:active { background:rgba(255,255,255,.26); }
 
+/* offline strip: lives inside .top so it stays on screen while scrolling */
+.top { flex-wrap:wrap; row-gap:9px; }
+.top .net {
+  flex:0 0 calc(100% + 28px); margin:0 -14px -11px; padding:7px 14px;
+  background:#fff3e2; color:#7a4300; font-size:13px; font-weight:700;
+  display:flex; align-items:center; gap:10px;
+}
+.top .net span { flex:1; min-width:0; }
+.top .net button {
+  background:#fff; color:#7a4300; border-color:#f0c48a;
+  min-height:36px; padding:6px 12px; flex:0 0 auto;
+}
+
 /* ---------- tab strip ---------- */
 .tabs {
   position:sticky; top:0; z-index:15;
@@ -139,18 +152,90 @@ label.fld span { display:block; font-size:12px; font-weight:700; color:var(--ink
   padding:11px 0; border-bottom:1px solid var(--line);
 }
 .line:last-child { border-bottom:0; }
-.line .nm { font-weight:700; }
+/* .grow used to flex only inside .row, so in a .line every pill and stepper
+   sat right after the name, at a different x on every row */
+.line .grow { flex:1; min-width:0; }
+.line .nm { font-weight:700; overflow-wrap:anywhere; }
 .line .note { font-size:12px; color:var(--amber); }
 .line .qty { font-weight:800; font-variant-numeric:tabular-nums; min-width:30px; }
 
-/* stepper for picking quantities */
-.step { display:flex; align-items:center; gap:8px; }
+/* stepper for picking quantities — fixed width, so − and + sit in one
+   column down the whole menu and the thumb learns where they are */
+.step { display:flex; align-items:center; gap:8px; flex:0 0 auto; }
 .step button {
-  width:40px; height:40px; border-radius:12px; font-size:20px; font-weight:700;
+  width:48px; height:48px; border-radius:12px; font-size:22px; font-weight:700;
   background:var(--card); border:1px solid var(--line); color:var(--ink); cursor:pointer;
 }
 .step button:active { background:var(--line); }
-.step b { min-width:26px; text-align:center; font-variant-numeric:tabular-nums; }
+.step b { width:28px; text-align:center; font-variant-numeric:tabular-nums; }
+
+/* picker rows: the whole row is a +1 tap target, as in the app */
+.pk-card { padding-top:2px; padding-bottom:2px; overflow:hidden; }
+.pk-row { cursor:pointer; margin:0 -14px; padding:10px 14px; }
+.pk-row:active { background:#f6efe6; }
+.pk-row.in { background:#fff4ee; }
+.pk-row.in .step b { color:var(--red-deep); font-size:17px; }
+/* out of stock: greyed, + disabled, KHATAM pill; − stays live so a dish
+   that ran out while it sat in the cart can still be taken out */
+.pk-row.off, .pk-row.off.in { background:#f4efe9; cursor:default; }
+.pk-row.off .nm { color:var(--ink2); }
+.p-off { background:var(--danger-bg); color:var(--danger); vertical-align:1px; margin-left:4px; }
+
+/* picker: search + category chips, stuck just under the header */
+.pk-tools {
+  position:sticky; top:var(--top-h, 61px); z-index:16;
+  display:flex; gap:8px; align-items:center;
+  margin:0 -12px 4px; padding:8px 12px;
+  background:var(--bg); border-bottom:1px solid var(--line);
+}
+.pk-tools input {
+  flex:0 0 37%; min-width:0; min-height:44px; padding:9px 8px;
+  -webkit-appearance:none; appearance:none;
+}
+.pk-tools.q input { flex:1; }
+.pk-tools.q .pk-chips { display:none; }
+#pkClear {
+  flex:0 0 46px; min-height:44px; font:inherit; font-size:16px; font-weight:800; cursor:pointer;
+  background:var(--card); color:var(--ink2); border:1px solid var(--line); border-radius:12px;
+}
+.pk-chips {
+  position:relative; flex:1; min-width:0; display:flex; gap:6px;
+  overflow-x:auto; -webkit-overflow-scrolling:touch; scrollbar-width:none;
+}
+.pk-chips::-webkit-scrollbar { display:none; }
+.pk-chips button {
+  font:inherit; font-weight:700; font-size:13.5px; white-space:nowrap; cursor:pointer;
+  min-height:44px; padding:9px 12px; border-radius:99px; flex:0 0 auto;
+  background:var(--card); color:var(--ink2); border:1px solid var(--line);
+}
+.pk-chips button.on { background:var(--red); color:#fff; border-color:var(--red); }
+.pk-cat h2 { margin-top:16px; }
+
+/* bar: the left half opens the cart sheet (lines + notes) */
+.bar .cartbtn {
+  display:flex; flex-direction:column; align-items:flex-start; justify-content:center;
+  text-align:left; padding:6px 12px; min-height:52px; min-width:0;
+}
+.bar .cartbtn b { font-size:16px; font-variant-numeric:tabular-nums; white-space:nowrap; }
+.bar .cartbtn small { font-size:12px; font-weight:700; color:var(--red-deep); white-space:nowrap; }
+
+/* cart sheet + note sheet */
+.modal .box { max-height:92vh; overflow-y:auto; }
+.cart-ls .line { align-items:flex-start; }
+.cart-ls .step { margin-top:2px; }
+.notebtn {
+  font:inherit; font-size:13px; font-weight:700; cursor:pointer; text-align:left;
+  color:var(--red); background:var(--card); border:1px dashed #f0c2a8; border-radius:10px;
+  padding:6px 10px; min-height:36px; margin-top:6px; max-width:100%; overflow-wrap:anywhere;
+}
+.notebtn.has { color:var(--amber); background:var(--amber-bg); border-style:solid; border-color:#f3d6a8; }
+.nchips { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:12px; }
+.nchip {
+  font:inherit; font-size:14px; font-weight:700; cursor:pointer;
+  min-height:44px; padding:9px 14px; border-radius:99px;
+  background:var(--card); color:var(--ink); border:1px solid var(--line);
+}
+.nchip.on { background:#fff4ee; color:var(--red-deep); border-color:var(--red); }
 
 /* ---------- sticky action bar ---------- */
 .bar {
@@ -162,6 +247,11 @@ label.fld span { display:block; font-size:12px; font-weight:700; color:var(--ink
 }
 .bar .tot { font-weight:800; font-size:17px; font-variant-numeric:tabular-nums; }
 .bar button { flex:1; }
+/* a KOT that was sent but never answered — see sendCart in webmanager.html */
+.bar .unsure {
+  font-size:13px; font-weight:700; color:#7a4300; background:#fff3e2;
+  border:1px solid #f0c48a; border-radius:12px; padding:9px 12px;
+}
 
 /* ---------- login ---------- */
 #login { max-width:340px; margin:11vh auto 0; padding:0 16px; text-align:center; }
@@ -194,6 +284,8 @@ label.fld span { display:block; font-size:12px; font-weight:700; color:var(--ink
 .toast.bad { background:var(--danger); }
 
 .empty { text-align:center; color:var(--ink3); padding:34px 12px; font-size:14px; }
+.empty.err-net { color:var(--ink2); }
+.empty.err-net button { margin-top:14px; }
 
 /* ---------- invoice card (cashier bill = the phone app's bill screen) ----------
    Same four columns the app prints: Item | Qty | Rate | Amount, identical

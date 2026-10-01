@@ -15,6 +15,7 @@
   <div class="tile" id="tile">🧾</div>
   <div class="ttl"><b id="ttlT">Cashier</b><small id="ttlS"></small></div>
   <button id="logoutBtn">logout</button>
+  <div class="net" id="net" hidden></div>
 </div>
 
 <div class="tabs" id="tabs"></div>
@@ -29,6 +30,17 @@ var token = localStorage.getItem(TOK) || '';
 var me = null;
 try { me = JSON.parse(localStorage.getItem(WHO) || 'null'); } catch (e) { me = null; }
 if (!token || !me || (me.role !== 'cashier' && me.role !== 'admin')) location.replace('/');
+
+// New screen text sits here in one place, so a later EN / हिं / ગુ switch only
+// has to swap this table.
+var S = {
+  noNet: 'Network nahi hai — dobara try karo',
+  slowNet: 'Network bahut slow hai — dobara try karo',
+  noServer: 'Server se jawab nahi aaya — dobara try karo',
+  netDown: '⚠ Net nahi hai · last update ',
+  retry: '↻ Dobara try karo',
+  retryShort: '↻ Dobara'
+};
 
 var $ = function (id) { return document.getElementById(id); };
 var esc = function (s) {
@@ -45,6 +57,9 @@ var toPaise = function (s) {
 var plural = function (n, w) { return n + ' ' + w + (n === 1 ? '' : 's'); };
 
 function toast(msg, kind) {
+  // A second tap on a dead network shouldn't stack an identical toast.
+  var last = $('toasts').lastElementChild;
+  if (last && last.textContent === msg) return;
   var el = document.createElement('div');
   el.className = 'toast' + (kind ? ' ' + kind : '');
   el.textContent = msg;
@@ -54,22 +69,81 @@ function toast(msg, kind) {
 }
 
 function signOut(silent) {
-  if (token && !silent) fetch('/api/logout', { method:'POST', headers:{ 'Authorization':'Bearer ' + token } });
+  if (token && !silent) fetch('/api/logout', { method:'POST', headers:{ 'Authorization':'Bearer ' + token } }).catch(function () {});
   localStorage.removeItem(TOK); localStorage.removeItem(WHO);
   location.replace('/');
 }
 $('logoutBtn').onclick = function () { signOut(false); };
 
+// ---------------------------------------------------------------- network
+// Same as the manager screen: every call gives up after NET_TIMEOUT and says
+// so in plain words; two misses in a row raise an amber strip under the
+// header that stays until the server answers again.
+var NET_TIMEOUT = 12000;
+var net = { fails: 0, lastOk: Date.now(), probe: null };
+var repaint = null;   // what is on screen; re-run when the net is back
+
+function netError(msg) { var e = new Error(msg); e.network = true; return e; }
+
+function paintNet(on) {
+  $('net').hidden = !on;
+  if (on) {
+    $('net').innerHTML = '<span>' + esc(S.netDown + clock(net.lastOk)) + '</span>' +
+      '<button id="netRetry">' + esc(S.retryShort) + '</button>';
+    $('netRetry').onclick = probeNet;
+  }
+}
+function netFail() {
+  net.fails++;
+  if (net.fails >= 2 || navigator.onLine === false) paintNet(true);
+  if (!net.probe) net.probe = setInterval(probeNet, 5000);
+}
+function netOk() {
+  net.fails = 0; net.lastOk = Date.now();
+  if (net.probe) { clearInterval(net.probe); net.probe = null; }
+  if (!$('net').hidden) {
+    paintNet(false);
+    if (repaint) repaint().catch(function () {});
+  }
+}
+function probeNet() { api('GET', '/api/ping').catch(function () {}); }
+window.addEventListener('offline', function () { netFail(); paintNet(true); });
+window.addEventListener('online', probeNet);
+
 async function api(method, path, body) {
-  var r = await fetch(path, {
-    method: method,
-    headers: { 'Content-Type':'application/json', 'Authorization':'Bearer ' + token },
-    body: body === undefined ? undefined : JSON.stringify(body)
-  });
+  var ctl = window.AbortController ? new AbortController() : null;
+  var tm = ctl ? setTimeout(function () { ctl.abort(); }, NET_TIMEOUT) : 0;
+  var r;
+  try {
+    r = await fetch(path, {
+      method: method,
+      headers: { 'Content-Type':'application/json', 'Authorization':'Bearer ' + token },
+      body: body === undefined ? undefined : JSON.stringify(body),
+      signal: ctl ? ctl.signal : undefined
+    });
+  } catch (e) {
+    netFail();
+    throw netError(e && e.name === 'AbortError' ? S.slowNet : S.noNet);
+  } finally { clearTimeout(tm); }
+  // Caddy answers these itself when the POS server behind it is down.
+  if (r.status === 502 || r.status === 503 || r.status === 504) { netFail(); throw netError(S.noServer); }
+  netOk();
   if (r.status === 401) { signOut(true); throw new Error('session expired'); }
   var d = await r.json().catch(function () { return {}; });
-  if (!r.ok) { var e = new Error(d.error || ('server error ' + r.status)); e.blockers = d.blockers; throw e; }
+  if (!r.ok) {
+    var e = new Error(d.error || ('server error ' + r.status));
+    e.status = r.status; e.blockers = d.blockers;
+    throw e;
+  }
   return d;
+}
+
+// A screen that could not load says why, with a retry, instead of hanging on
+// a spinner line or showing the previous screen's data.
+function failView(e, again) {
+  $('view').innerHTML = '<div class="empty err-net">⚠ ' + esc(e.message) +
+    '<br><button class="ghost" id="againBtn">' + esc(S.retry) + '</button></div>';
+  $('againBtn').onclick = again;
 }
 
 // The printable bill is a plain GET the browser navigates to, and a navigation
@@ -84,7 +158,10 @@ var cur = null;        // { id, readOnly, sub, order, bill, split } while a bill
 var modalUp = false;
 var billsDate = null;  // null = today
 
-function stopPoll() { clearInterval(timer); timer = null; }
+function stopPoll() { clearInterval(timer); timer = null; repaint = null; }
+// Bumped on every screen switch. A slow load (up to NET_TIMEOUT offline) that
+// finishes after the cashier has moved on must not paint or start a poll.
+var nav = 0;
 
 function setTop(icon, title, sub, onIcon) {
   $('tile').textContent = icon;
@@ -107,7 +184,7 @@ $('tabs').addEventListener('click', function (e) {
 });
 
 function show(t) {
-  tab = t; cur = null; stopPoll();
+  tab = t; cur = null; stopPoll(); nav++;
   $('tabs').hidden = false;
   $('bar').className = ''; $('bar').innerHTML = '';
   setTop('🧾', 'Cashier', me.name, null);
@@ -133,8 +210,12 @@ async function openOrders() {
         '<span class="amt">' + rupees(o.total) + '</span></button>';
     }).join('') + '</div>';
   };
-  await paint().catch(function (e) { toast(e.message, 'bad'); });
-  timer = setInterval(function () { paint().catch(function () {}); }, 10000);
+  var my = nav;
+  repaint = paint;
+  await paint().catch(function (e) {
+    if (my === nav) failView(e, function () { show('open'); });
+  });
+  if (my === nav) timer = setInterval(function () { paint().catch(function () {}); }, 10000);
 }
 
 $('view').addEventListener('click', function (e) {
@@ -172,13 +253,22 @@ async function genBill(id) {
 }
 
 async function openOrder(id, readOnly, sub) {
-  stopPoll();
+  stopPoll(); nav++;
+  var my = nav;
   cur = { id:id, readOnly:!!readOnly, sub:sub || '', order:null, bill:null, split:'' };
   $('tabs').hidden = true;
   $('bar').className = ''; $('bar').innerHTML = '';
+  // The way back works before the bill has loaded, so a dead network can't
+  // strand the cashier on "Bill khul raha hai…".
+  setTop('‹', 'Bill', '', function () { show(readOnly ? 'bills' : 'open'); });
   $('view').innerHTML = '<div class="empty">Bill khul raha hai…</div>';
-  await loadBill(true).catch(function (e) { toast(e.message, 'bad'); });
-  if (!cur.readOnly) timer = setInterval(function () { loadBill(false).catch(function () {}); }, 15000);
+  repaint = function () { return loadBill(false); };
+  await loadBill(true).catch(function (e) {
+    if (my !== nav) return;
+    if (!cur.order) failView(e, function () { openOrder(id, readOnly, sub); });
+    else toast(e.message, 'bad');
+  });
+  if (my === nav && !cur.readOnly) timer = setInterval(function () { loadBill(false).catch(function () {}); }, 15000);
 }
 
 async function loadBill(hard) {
@@ -411,9 +501,14 @@ function shiftDate(date, days) {
 }
 
 async function billsList() {
+  var my = nav;
+  repaint = billsList;
   var d = await api('GET', '/api/bills' + (billsDate ? '?date=' + encodeURIComponent(billsDate) : ''))
-    .catch(function (e) { toast(e.message, 'bad'); return null; });
-  if (!d || tab !== 'bills' || cur) return;
+    .catch(function (e) {
+      if (my === nav) failView(e, billsList);
+      return null;
+    });
+  if (!d || my !== nav || tab !== 'bills' || cur) return;
   var bs = d.bills || [];
   var sum = bs.reduce(function (s, b) { return s + b.total; }, 0);
   var cash = bs.reduce(function (s, b) { return s + b.paidCash; }, 0);

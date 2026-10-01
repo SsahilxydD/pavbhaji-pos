@@ -79,9 +79,25 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.flow.first
 
-fun rupees(paise: Long): String =
-    if (paise % 100 == 0L) "₹${paise / 100}"
-    else "₹${paise / 100}.${(paise % 100).toString().padStart(2, '0')}"
+// The one money formatter (server amounts are paise). Indian grouping, the
+// way the shop writes it — ₹13,660 · ₹1,23,456 — and paise only when there
+// are some: ₹120.50. The web screens print exactly the same.
+fun rupees(paise: Long): String {
+    val p = kotlin.math.abs(paise)
+    val frac = p % 100
+    val s = "₹" + indianDigits(p / 100) +
+        if (frac == 0L) "" else "." + frac.toString().padStart(2, '0')
+    return if (paise < 0) "-$s" else s
+}
+
+// 1234567 → "12,34,567": the last three digits, then pairs.
+fun indianDigits(n: Long): String {
+    val s = n.toString()
+    if (s.length <= 3) return s
+    val head = s.dropLast(3)
+    val pairs = head.reversed().chunked(2).joinToString(",").reversed()
+    return "$pairs,${s.takeLast(3)}"
+}
 
 // Money stays with money-facing roles: chef and waiter screens never show
 // prices. Admin sees them everywhere (including the Floor view, which reuses

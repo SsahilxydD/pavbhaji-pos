@@ -64,7 +64,11 @@ async function login() {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ pin: pin })
+    }).catch(function () {
+      // No answer at all — say so instead of the browser's "Failed to fetch".
+      throw new Error('Network nahi hai — dobara try karo');
     });
+    if (r.status === 502 || r.status === 503 || r.status === 504) throw new Error('Server se jawab nahi aaya — dobara try karo');
     var d = await r.json().catch(function () { return {}; });
     if (!r.ok) throw new Error(d.error || ('server error ' + r.status));
 

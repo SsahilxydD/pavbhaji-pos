@@ -49,6 +49,19 @@ body {
 }
 .top button:active { background:rgba(255,255,255,.26); }
 
+/* offline strip: lives inside .top so it stays on screen while scrolling */
+.top { flex-wrap:wrap; row-gap:9px; }
+.top .net {
+  flex:0 0 calc(100% + 28px); margin:0 -14px -11px; padding:7px 14px;
+  background:#fff3e2; color:#7a4300; font-size:13px; font-weight:700;
+  display:flex; align-items:center; gap:10px;
+}
+.top .net span { flex:1; min-width:0; }
+.top .net button {
+  background:#fff; color:#7a4300; border-color:#f0c48a;
+  min-height:36px; padding:6px 12px; flex:0 0 auto;
+}
+
 /* ---------- tab strip ---------- */
 .tabs {
   position:sticky; top:0; z-index:15;
@@ -194,6 +207,8 @@ label.fld span { display:block; font-size:12px; font-weight:700; color:var(--ink
 .toast.bad { background:var(--danger); }
 
 .empty { text-align:center; color:var(--ink3); padding:34px 12px; font-size:14px; }
+.empty.err-net { color:var(--ink2); }
+.empty.err-net button { margin-top:14px; }
 
 /* ---------- invoice card (cashier bill = the phone app's bill screen) ----------
    Same four columns the app prints: Item | Qty | Rate | Amount, identical

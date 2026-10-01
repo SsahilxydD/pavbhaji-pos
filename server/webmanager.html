@@ -15,6 +15,7 @@
   <div class="tile">🍽</div>
   <div class="ttl"><b>Manager</b><small id="who"></small></div>
   <button id="logoutBtn">logout</button>
+  <div class="net" id="net" hidden></div>
 </div>
 
 <div class="tabs" id="tabs"></div>
@@ -32,6 +33,17 @@ try { me = JSON.parse(localStorage.getItem(WHO) || 'null'); } catch (e) { me = n
 // hand-types /manager gets sent home instead of staring at dead buttons.
 if (!token || !me || (me.role !== 'manager' && me.role !== 'admin')) location.replace('/');
 
+// New screen text sits here in one place, so a later EN / हिं / ગુ switch only
+// has to swap this table.
+var S = {
+  noNet: 'Network nahi hai — dobara try karo',
+  slowNet: 'Network bahut slow hai — dobara try karo',
+  noServer: 'Server se jawab nahi aaya — dobara try karo',
+  netDown: '⚠ Net nahi hai · last update ',
+  retry: '↻ Dobara try karo',
+  retryShort: '↻ Dobara'
+};
+
 var $ = function (id) { return document.getElementById(id); };
 var esc = function (s) {
   return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
@@ -46,6 +58,9 @@ var uid = function () {
 };
 
 function toast(msg, kind) {
+  // A second tap on a dead network shouldn't stack an identical toast.
+  var last = $('toasts').lastElementChild;
+  if (last && last.textContent === msg) return;
   var el = document.createElement('div');
   el.className = 'toast' + (kind ? ' ' + kind : '');
   el.textContent = msg;
@@ -55,27 +70,94 @@ function toast(msg, kind) {
 }
 
 function signOut(silent) {
-  if (token && !silent) fetch('/api/logout', { method:'POST', headers:{ 'Authorization':'Bearer ' + token } });
+  if (token && !silent) fetch('/api/logout', { method:'POST', headers:{ 'Authorization':'Bearer ' + token } }).catch(function () {});
   localStorage.removeItem(TOK); localStorage.removeItem(WHO);
   location.replace('/');
 }
 $('logoutBtn').onclick = function () { signOut(false); };
 $('who').textContent = me.name;
 
+// ---------------------------------------------------------------- network
+// Phones on shop WiFi or mobile data drop out mid-rush. Every call gives up
+// after NET_TIMEOUT and says so in plain words; two misses in a row raise an
+// amber strip under the header that stays until the server answers again.
+var NET_TIMEOUT = 12000;
+var net = { fails: 0, lastOk: Date.now(), probe: null };
+var repaint = null;   // the on-screen list's paint(); re-run when the net is back
+
+function netError(msg) { var e = new Error(msg); e.network = true; return e; }
+
+function paintNet(on) {
+  $('net').hidden = !on;
+  if (on) {
+    $('net').innerHTML = '<span>' + esc(S.netDown + clock(net.lastOk)) + '</span>' +
+      '<button id="netRetry">' + esc(S.retryShort) + '</button>';
+    $('netRetry').onclick = probeNet;
+  }
+}
+function netFail() {
+  net.fails++;
+  if (net.fails >= 2 || navigator.onLine === false) paintNet(true);
+  if (!net.probe) net.probe = setInterval(probeNet, 5000);
+}
+function netOk() {
+  net.fails = 0; net.lastOk = Date.now();
+  if (net.probe) { clearInterval(net.probe); net.probe = null; }
+  if (!$('net').hidden) {
+    paintNet(false);
+    if (repaint) repaint().catch(function () {});
+  }
+}
+function probeNet() { api('GET', '/api/ping').catch(function () {}); }
+window.addEventListener('offline', function () { netFail(); paintNet(true); });
+window.addEventListener('online', probeNet);
+
 async function api(method, path, body) {
-  var r = await fetch(path, {
-    method: method,
-    headers: { 'Content-Type':'application/json', 'Authorization':'Bearer ' + token },
-    body: body === undefined ? undefined : JSON.stringify(body)
-  });
+  var ctl = window.AbortController ? new AbortController() : null;
+  var tm = ctl ? setTimeout(function () { ctl.abort(); }, NET_TIMEOUT) : 0;
+  var r;
+  try {
+    r = await fetch(path, {
+      method: method,
+      headers: { 'Content-Type':'application/json', 'Authorization':'Bearer ' + token },
+      body: body === undefined ? undefined : JSON.stringify(body),
+      signal: ctl ? ctl.signal : undefined
+    });
+  } catch (e) {
+    // No HTTP answer at all: offline, a dropped line, or our own timeout.
+    // The server may still have acted on a write — callers allow for that.
+    netFail();
+    throw netError(e && e.name === 'AbortError' ? S.slowNet : S.noNet);
+  } finally { clearTimeout(tm); }
+  // Caddy answers these itself when the POS server behind it is down.
+  if (r.status === 502 || r.status === 503 || r.status === 504) { netFail(); throw netError(S.noServer); }
+  netOk();
   if (r.status === 401) { signOut(true); throw new Error('session expired'); }
   var d = await r.json().catch(function () { return {}; });
-  if (!r.ok) { var e = new Error(d.error || ('server error ' + r.status)); e.blockers = d.blockers; throw e; }
+  if (!r.ok) {
+    var e = new Error(d.error || ('server error ' + r.status));
+    e.status = r.status; e.blockers = d.blockers;
+    throw e;
+  }
   return d;
+}
+
+function oops(e) { toast(e.message, 'bad'); }
+
+// A list that could not load says why, with a retry, instead of staying blank.
+function failView(e, again) {
+  $('view').innerHTML = '<div class="empty err-net">⚠ ' + esc(e.message) +
+    '<br><button class="ghost" id="againBtn">' + esc(S.retry) + '</button></div>';
+  $('againBtn').onclick = again;
 }
 
 // ---------------------------------------------------------------- state
 var tab = 'tables', timer = null, menu = [], cart = [], openTable = null, parcelMode = false;
+var pane = '';   // 'table' | 'picker' — a late refresh must not yank the picker away
+// Bumped on every tab switch. A slow load (up to NET_TIMEOUT offline) that
+// finishes after the user has moved on must not start its poll on top of
+// the new tab's.
+var nav = 0;
 
 var TABS = { tables:['🪑','Tables'], parcel:['🥡','Parcel'], kitchen:['🔥','Kitchen'] };
 function paintTabs() {
@@ -90,7 +172,7 @@ $('tabs').addEventListener('click', function (e) {
 });
 
 function show(t) {
-  tab = t; clearInterval(timer);
+  tab = t; clearInterval(timer); repaint = null; nav++; pane = '';
   openTable = null; cart = []; parcelMode = (t === 'parcel');
   $('bar').innerHTML = '';
   paintTabs();
@@ -115,8 +197,12 @@ async function tables() {
       '<h2>Tables</h2><div class="grid">' + list.map(tableTile).join('') + '</div>' +
       (parcels.length ? '<h2>Chal rahe parcel</h2><div class="grid">' + parcels.map(tableTile).join('') + '</div>' : '');
   };
-  await paint().catch(function (e) { toast(e.message, 'bad'); });
-  timer = setInterval(function () { paint().catch(function () {}); }, 10000);
+  var my = nav;
+  repaint = paint;
+  await paint().catch(function (e) {
+    if (my === nav && !openTable) failView(e, function () { show('tables'); });
+  });
+  if (my === nav) timer = setInterval(function () { paint().catch(function () {}); }, 10000);
 }
 
 function tableTile(t) {
@@ -134,21 +220,36 @@ function tableTile(t) {
 
 $('view').addEventListener('click', function (e) {
   var t = e.target.closest('button[data-table]');
-  if (t) openTableView(Number(t.dataset.table), t.dataset.name);
+  if (t) openTableView(Number(t.dataset.table), t.dataset.name).catch(oops);
 });
 
 // ------------------------------------------------------- one table's order
+// Load first, switch screens after: with no network the grid stays where it
+// is and the toast says why, instead of a tap that silently does nothing.
 async function openTableView(id, name) {
-  clearInterval(timer);
-  openTable = { id: id, name: name };
+  var my = nav;
+  var d = await api('GET', '/api/dining-tables/' + id + '/order');
+  if (my !== nav) return;   // they switched tabs while it loaded
+  clearInterval(timer); repaint = null;
+  openTable = { id: id, name: name, order: d.order };
   cart = [];
-  await refreshTable();
+  paintTable();
 }
 
+// Re-reads the order. Offline it falls back to the copy already on screen,
+// so Back from the picker always lands somewhere.
 async function refreshTable() {
-  var d = await api('GET', '/api/dining-tables/' + openTable.id + '/order');
-  var o = d.order;
-  openTable.order = o;
+  var t = openTable;
+  try {
+    var d = await api('GET', '/api/dining-tables/' + t.id + '/order');
+    t.order = d.order;
+  } catch (e) { oops(e); }
+  if (openTable === t && pane === 'table') paintTable();
+}
+
+function paintTable() {
+  pane = 'table';
+  var o = openTable.order;
   var html = '<div class="row" style="margin-bottom:12px">' +
     '<button class="ghost" id="backBtn" style="min-height:42px;padding:9px 14px">‹ Tables</button>' +
     '<b class="grow" style="font-size:17px;text-align:center">' + esc(openTable.name) + '</b>' +
@@ -202,7 +303,10 @@ async function refreshTable() {
 // ---------------------------------------------------------------- picker
 async function picker(title, onSend) {
   clearInterval(timer);
+  var my = nav;
   try { await loadMenu(); } catch (e) { toast(e.message, 'bad'); return; }
+  if (my !== nav) return;
+  pane = 'picker';
   var html = '<div class="row" style="margin-bottom:12px">' +
     '<button class="ghost" id="pBack" style="min-height:42px;padding:9px 14px">‹ Back</button>' +
     '<b class="grow" style="font-size:17px;text-align:center">' + esc(title) + '</b>' +
@@ -224,7 +328,9 @@ async function picker(title, onSend) {
   $('view').innerHTML = html;
   $('pBack').onclick = function () {
     cart = [];
-    if (parcelMode) show('parcel'); else refreshTable();
+    if (parcelMode) { show('parcel'); return; }
+    paintTable();     // the copy we have, at once — even with no network
+    refreshTable();
   };
   $('view').querySelectorAll('button[data-inc]').forEach(function (b) {
     b.onclick = function () { bump(Number(b.dataset.inc), 1, b.dataset.nm, Number(b.dataset.pr), onSend); };
@@ -336,8 +442,12 @@ async function kitchen() {
         }).join('') + '</div>';
     }).join('');
   };
-  await paint().catch(function (e) { toast(e.message, 'bad'); });
-  timer = setInterval(function () { paint().catch(function () {}); }, 8000);
+  var my = nav;
+  repaint = paint;
+  await paint().catch(function (e) {
+    if (my === nav) failView(e, function () { show('kitchen'); });
+  });
+  if (my === nav) timer = setInterval(function () { paint().catch(function () {}); }, 8000);
 }
 
 show('tables');

@@ -41,7 +41,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -361,6 +365,10 @@ fun AddParcelScreen(onDone: (Long) -> Unit, onBack: () -> Unit) {
                             singleLine = true,
                             isError = nameError,
                             supportingText = if (nameError) { { Text(S.nameNeeded) } } else null,
+                            // Names start capitalised; Next jumps to the phone.
+                            keyboardOptions = KeyboardOptions(
+                                capitalization = KeyboardCapitalization.Words, imeAction = ImeAction.Next
+                            ),
                             shape = RoundedCornerShape(12.dp),
                             modifier = Modifier.fillMaxWidth().focusRequester(nameFocus)
                         )
@@ -369,6 +377,8 @@ fun AddParcelScreen(onDone: (Long) -> Unit, onBack: () -> Unit) {
                             onValueChange = { v -> custPhone = v.filter { it.isDigit() || it == '+' || it == ' ' }.take(20) },
                             label = { Text(S.customerPhone) },
                             singleLine = true,
+                            // The dial pad, not the full keyboard.
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone, imeAction = ImeAction.Done),
                             shape = RoundedCornerShape(12.dp),
                             modifier = Modifier.fillMaxWidth()
                         )

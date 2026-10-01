@@ -20,6 +20,9 @@
     --r:16px;
   }
   * { box-sizing:border-box; margin:0; }
+  /* .shell{display:flex} used to beat the hidden attribute, so the sidebar
+     (with live backup / logout) showed before anyone was signed in */
+  [hidden] { display:none !important; }
   html { -webkit-text-size-adjust:100%; }
   body {
     font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
@@ -148,16 +151,6 @@
   .datebar { display:flex; align-items:center; justify-content:center; gap:8px; margin-bottom:14px; flex-wrap:wrap; }
   .datebar b { font-size:15px; }
 
-  /* ---------- login ---------- */
-  #login { max-width:340px; margin:14vh auto 0; text-align:center; animation:fadein .25s ease; }
-  #login .tile { width:76px; height:76px; margin:0 auto 14px; border-radius:24px;
-    background:linear-gradient(140deg,#ffe3c2,#ffd1a6); display:grid; place-items:center; font-size:40px; }
-  #login h1 { font-size:22px; letter-spacing:-.5px; margin-bottom:2px; }
-  #login p.sub { color:var(--ink2); font-size:13.5px; margin-bottom:18px; }
-  #login .card { padding:22px; }
-  #login input { font-size:26px; letter-spacing:.5em; text-align:center; width:100%; margin-bottom:12px; }
-  .err { color:var(--danger); font-size:13px; min-height:18px; margin-bottom:8px; }
-
   /* ---------- toasts ---------- */
   #toasts { position:fixed; right:18px; bottom:18px; display:flex; flex-direction:column; gap:8px; z-index:50; }
   .toast { background:var(--ink); color:#fff; padding:10px 15px; border-radius:12px; font-size:13px;
@@ -187,18 +180,6 @@
 </style>
 </head>
 <body>
-
-<div id="login">
-  <div class="tile">🍛</div>
-  <h1>PavBhaji POS</h1>
-  <p class="sub">Admin panel — enter the admin PIN</p>
-  <div class="card">
-    <input id="pin" type="password" inputmode="numeric" maxlength="8" autofocus placeholder="••••">
-    <div class="err" id="loginErr"></div>
-    <button class="primary" onclick="doLogin()" style="width:100%">Log in</button>
-  </div>
-  <p class="mut" style="margin-top:14px">Same PIN as the admin uses in the phone app.</p>
-</div>
 
 <div id="app" class="shell" hidden>
   <aside>
@@ -258,27 +239,16 @@ async function api(method, path, body) {
   return data;
 }
 
-async function doLogin() {
-  $('loginErr').textContent = '';
-  try {
-    const r = await api('POST', '/api/login', { pin: $('pin').value.trim() });
-    if (r.staff.role !== 'admin') {
-      token = r.token; await api('POST','/api/logout',{}).catch(()=>{}); token = '';
-      $('loginErr').textContent = 'That PIN works, but it is not an admin PIN.';
-      return;
-    }
-    token = r.token; me = r.staff;
-    $('login').hidden = true; $('app').hidden = false;
-    $('who').textContent = me.name;
-    show('dashboard');
-  } catch (e) { $('loginErr').textContent = e.message; $('pin').value = ''; }
-}
-$('pin').addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
+// One front door for the whole shop: the PIN pad at "/". This page used to
+// carry its own second login (another icon, English copy, and the app shell
+// leaking under it); now it only adopts the session "/" made, and without
+// an admin session it sends the browser to "/".
+const TOK = 'pbpos.token', WHO = 'pbpos.staff';
 function logout() {
-  if (token) api('POST','/api/logout',{}).catch(()=>{});
+  if (token) fetch('/api/logout', { method:'POST', headers:{ 'Authorization':'Bearer ' + token } }).catch(()=>{});
   token = ''; me = null; clearInterval(dashTimer);
-  $('app').hidden = true;
-  $('login').hidden = false; $('pin').value = ''; $('who').textContent = '';
+  localStorage.removeItem(TOK); localStorage.removeItem(WHO);
+  location.replace('/');
 }
 $('logoutBtn').onclick = logout;
 $('backupBtn').onclick = async () => {
@@ -611,37 +581,17 @@ async function olderLog() {
   logEvents = logEvents.concat(d.events); paintLog();
 }
 
-// ---- handoff from the PIN gate at "/" ----------------------------------
-// The shop has one link. When someone types the admin PIN there, the gate
-// already holds a live session — adopting it here means the admin isn't
-// asked for the same PIN twice. Typing /admin directly still shows the
-// login box below, so this page keeps working on its own.
-const TOK = 'pbpos.token', WHO = 'pbpos.staff';
+// ---- the session from the PIN pad at "/" ---------------------------------
 (function adopt() {
-  let t, s;
+  let t = null, s = null;
   try { t = localStorage.getItem(TOK); s = JSON.parse(localStorage.getItem(WHO) || 'null'); }
-  catch (e) { return; }
-  if (!t || !s || s.role !== 'admin') return;
+  catch (e) { /* corrupt storage: treat as logged out */ }
+  if (!t || !s || s.role !== 'admin') { location.replace('/'); return; }
   token = t; me = s;
-  $('login').hidden = true; $('app').hidden = false;
+  $('app').hidden = false;
   $('who').textContent = me.name;
   show('dashboard');
 })();
-
-// Keep the shared session in step: a PIN typed here should also unlock a jump
-// to /manager, and logging out here must not leave a stale token behind.
-const _doLogin = doLogin;
-doLogin = async function () {
-  await _doLogin();
-  if (token) { localStorage.setItem(TOK, token); localStorage.setItem(WHO, JSON.stringify(me)); }
-};
-const _logout = logout;
-logout = function () {
-  _logout();
-  localStorage.removeItem(TOK); localStorage.removeItem(WHO);
-  location.replace('/');
-};
-$('logoutBtn').onclick = logout;
 </script>
 </body>
 </html>

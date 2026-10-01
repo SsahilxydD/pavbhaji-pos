@@ -301,7 +301,11 @@ const toPaise = s => {
   if (!/^\d*\.?\d+$|^\d+\.$/.test(t)) return null;
   const v = parseFloat(t); return isNaN(v) || v < 0 ? null : Math.round(v*100);
 };
-const clock = ms => new Date(ms).toTimeString().slice(0,5);
+// "7:42 pm", the way the printed bill and the other screens show a time
+const clock = ms => {
+  const d = new Date(ms), h = d.getHours(), m = d.getMinutes();
+  return (h % 12 || 12) + ':' + String(m).padStart(2, '0') + ' ' + (h < 12 ? 'am' : 'pm');
+};
 
 // ---- language ----
 // Hinglish (the default) / हिं / ગુ, the same localStorage choice as the
@@ -894,7 +898,7 @@ function paintLog() {
   $('view').innerHTML = `<div class="pillnav">` + LOG_TYPES.map(k =>
     `<button class="${logType===k?'on':''}" onclick="logType='${k}';log()">${esc(S.logTypes[k])}</button>`).join('') +
     `</div><div class="card">` + (logEvents.length ? logEvents.map(e => `
-    <div class="row"><span class="mut" style="min-width:46px">${clock(e.at)}</span>
+    <div class="row"><span class="mut" style="min-width:62px">${clock(e.at)}</span>
       <b>${esc(e.by || S.system)}</b><span class="mut">${esc(e.action)}</span>
       <span class="grow">${esc(e.detail)}</span></div>`).join('') : `<p class="mut">${esc(S.nothingFilter)}</p>`) +
     `</div><button onclick="olderLog()" style="width:100%">${esc(S.loadOlder)}</button>`;

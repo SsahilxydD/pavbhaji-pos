@@ -180,7 +180,12 @@ var rupees = function (p) {
   if (!INR0) return '₹' + (whole ? p / 100 : (p / 100).toFixed(2));
   return '₹' + (whole ? INR0 : INR2).format(p / 100);
 };
-var clock = function (ms) { return new Date(ms).toTimeString().slice(0, 5); };
+// Clock times read the way the printed bill prints them: "7:42 pm", not a
+// 24-hour "19:42". (How long a table has waited is age(), not a clock.)
+var clock = function (ms) {
+  var d = new Date(ms), h = d.getHours(), m = d.getMinutes();
+  return (h % 12 || 12) + ':' + (m < 10 ? '0' : '') + m + ' ' + (h < 12 ? 'am' : 'pm');
+};
 var uid = function () {
   if (window.crypto && crypto.randomUUID) return crypto.randomUUID();
   return 'w' + Date.now() + Math.random().toString(16).slice(2, 12);
@@ -536,7 +541,7 @@ function tableTile(t) {
     '<span class="hd"><span class="nm">' + (t.kind === 'parcel' ? '🥡 ' : '') + esc(t.name) + '</span>' +
       '<span class="no">#' + o.orderNo + '</span></span>' +
     '<span class="money">' + rupees(o.total) + ' · ' + esc(S.items(o.itemCount)) + '</span>' +
-    '<span class="meta"><span class="who">' + esc(age(o.openedAt) + ' · ' + (o.customerName || o.openedByName)) + '</span>' +
+    '<span class="meta"><span class="who">' + esc('⏱ ' + age(o.openedAt) + ' · ' + (o.customerName || o.openedByName)) + '</span>' +
       '<span class="spill ' + state + '">' + esc(pill) + '</span></span>' +
     '</button>';
 }

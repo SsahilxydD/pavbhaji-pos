@@ -70,6 +70,7 @@ function strings() {
     items: function (n) { return t(n + ' item' + (n === 1 ? '' : 's'), n + ' आइटम', n + ' આઈટમ'); },
     plates: function (n) { return t(n + ' plate', n + ' आइटम', n + ' આઈટમ'); },
     cooking: function (n) { return t(n + ' banna baaki', n + ' बन रहे', n + ' બની રહ્યા'); },
+    now: t('abhi', 'अभी', 'હમણાં'),
     billLoading: t('Bill khul raha hai…', 'बिल खुल रहा है…', 'બિલ ખૂલી રહ્યું છે…'),
     bill: t('Bill', 'बिल', 'બિલ'),
     orderNo: function (n) { return t('order #' + n, 'ऑर्डर #' + n, 'ઓર્ડર #' + n); },
@@ -172,7 +173,17 @@ var rupees = function (p) {
   if (!INR0) return '₹' + (whole ? p / 100 : (p / 100).toFixed(2));
   return '₹' + (whole ? INR0 : INR2).format(p / 100);
 };
-var clock = function (ms) { return new Date(ms).toTimeString().slice(0, 5); };
+// Clock times read the way the printed bill prints them: "7:42 pm", not a
+// 24-hour "19:42". How long a table has been open is age(), as on the
+// manager's tiles and the app's.
+var clock = function (ms) {
+  var d = new Date(ms), h = d.getHours(), m = d.getMinutes();
+  return (h % 12 || 12) + ':' + (m < 10 ? '0' : '') + m + ' ' + (h < 12 ? 'am' : 'pm');
+};
+var age = function (ms) {
+  var m = Math.max(0, Math.floor((Date.now() - ms) / 60000));
+  return m < 1 ? S.now : m < 60 ? m + 'm' : Math.floor(m / 60) + 'h' + (m % 60) + 'm';
+};
 // "1,200" typed (or pasted from the screen) must be 1200, not 1.
 var toPaise = function (s) {
   var t = String(s).replace(/[₹,\s]/g, '');
@@ -413,7 +424,7 @@ async function openOrders() {
       var t = r.t, o = t.order, pay = r.pay;
       return '<button class="tile-btn busy' + (pay && pay.settled ? ' paid' : '') + '" data-order="' + o.orderId + '">' +
         '<span class="nm">' + (t.kind === 'parcel' ? '🥡 ' : '') + esc(t.name) + '</span>' +
-        '<span class="sub">#' + o.orderNo + ' · ' + clock(o.openedAt) + '</span>' +
+        '<span class="sub">#' + o.orderNo + ' · ⏱ ' + esc(age(o.openedAt)) + '</span>' +
         (o.customerName ? '<span class="sub">' + esc(o.customerName) + '</span>' : '') +
         '<span class="sub">' + esc(S.plates(o.itemCount)) +
           (o.pendingCount ? ' · ⏳ ' + esc(S.cooking(o.pendingCount)) : '') + '</span>' +

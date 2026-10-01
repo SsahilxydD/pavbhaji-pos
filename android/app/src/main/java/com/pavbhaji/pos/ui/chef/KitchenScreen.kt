@@ -96,6 +96,7 @@ fun KitchenScreen(onLogout: () -> Unit, embedded: Boolean = false, onBack: (() -
     var toast by remember { mutableStateOf<String?>(null) }
     val context = LocalContext.current
     val myId = Deps.session.staffId
+    var showTickHint by remember { mutableStateOf(!Deps.session.tickHintSeen(myId)) }
     com.pavbhaji.pos.ui.StatusBarIcons(darkIcons = false)
 
     // Kitchen phone should never dim mid-rush.
@@ -300,6 +301,7 @@ fun KitchenScreen(onLogout: () -> Unit, embedded: Boolean = false, onBack: (() -
                         b = b, cap = if (b.cap > 0) b.cap else data.cap, myId = myId, myBusy = myBusy,
                         expanded = expandedId == b.id,
                         ticking = ticking,
+                        showTickHint = showTickHint,
                         onTap = { expandedId = if (expandedId == b.id) null else b.id },
                         onTake = {
                             bucketAction {
@@ -321,6 +323,7 @@ fun KitchenScreen(onLogout: () -> Unit, embedded: Boolean = false, onBack: (() -
                             // One tap = that bhaji is done. It goes straight to
                             // the pass; whatever is still on the tawa stays in
                             // the bucket, cooking.
+                            if (showTickHint) { showTickHint = false; Deps.session.markTickHintSeen(myId) }
                             bucketAction {
                                 when (val r = Deps.api.readyBatch(b.id, menuItemId)) {
                                     is ApiResult.Ok -> {}
@@ -335,6 +338,7 @@ fun KitchenScreen(onLogout: () -> Unit, embedded: Boolean = false, onBack: (() -
                             // stay on the tawa. The row ticks now; the queue
                             // sends it as soon as the taps before it are in.
                             ticking[key] = (ticking[key] ?: 0) + 1
+                            if (showTickHint) { showTickHint = false; Deps.session.markTickHintSeen(myId) }
                             enqueue {
                                 sendPlate(b.id, key)
                                 // Same step as sendPlate's last fetch: from here
@@ -404,7 +408,7 @@ private fun StateChip(text: String, bg: Color, fg: Color, dashed: Boolean = fals
 @Composable
 private fun BucketCard(
     b: BucketDto, cap: Long, myId: Long, myBusy: Boolean,
-    expanded: Boolean, ticking: Map<String, Int>,
+    expanded: Boolean, ticking: Map<String, Int>, showTickHint: Boolean,
     onTap: () -> Unit, onTake: () -> Unit, onReady: () -> Unit,
     onReadyVariety: (Long) -> Unit, onReadyPlate: (String) -> Unit, onLeave: () -> Unit,
     modifier: Modifier = Modifier
@@ -491,7 +495,7 @@ private fun BucketCard(
                         // Capped, so a long hint at a big font can't squeeze
                         // the fill bar out beside the state chip.
                         Text(
-                            hint, color = Kc.ink2, fontSize = 10.5.sp,
+                            hint, color = Kc.ink2, fontSize = 12.sp, lineHeight = 15.sp,
                             maxLines = 2, overflow = TextOverflow.Ellipsis,
                             textAlign = androidx.compose.ui.text.style.TextAlign.End,
                             modifier = Modifier.widthIn(max = 150.dp)
@@ -518,8 +522,10 @@ private fun BucketCard(
                         // fall back to whole-variety ticks, then to one button.)
                         val perPlate = mine && b.lines.isNotEmpty() && b.lines.all { it.id != 0L }
                         val perVariety = mine && !perPlate && b.lines.all { it.menuItemId != 0L }
+                        // The how-to line shows until this chef's first tick
+                        // on this phone, not on every bucket they open.
                         if (perPlate) {
-                            Text(S.tickHint, color = Kc.ink2, fontSize = 11.sp)
+                            if (showTickHint) Text(S.tickHint, color = Kc.ink2, fontSize = 12.5.sp)
                             platesOf(b, ticking).groupBy { it.variety }.forEach { (variety, plates) ->
                                 PlateGroupHeader(
                                     name = variety,
@@ -541,7 +547,7 @@ private fun BucketCard(
                             // the lock so another colour can be started now.
                             BigAction(S.leaveBucket, Kc.lockBg, Kc.lockFg, onLeave)
                         } else if (perVariety) {
-                            Text(S.tickHint, color = Kc.ink2, fontSize = 11.sp)
+                            if (showTickHint) Text(S.tickHint, color = Kc.ink2, fontSize = 12.5.sp)
                             b.lines.groupBy { it.menuItemId to it.name.ifEmpty { b.name } }
                                 .forEach { (key, ls) ->
                                     VarietyTickRow(

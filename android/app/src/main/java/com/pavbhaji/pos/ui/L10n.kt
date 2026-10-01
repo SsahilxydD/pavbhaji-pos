@@ -467,7 +467,17 @@ object S {
         "ઓનલાઈન રકમ બિલ કરતાં વધારે ન હોઈ શકે"
     )
     val paidTick get() = t("PAID ✓", "पेड ✓", "પેડ ✓")
-    fun payLeft(amt: String) = t("$amt not assigned yet", "$amt अभी बाकी", "$amt હજી બાકી")
+    fun payLeft(amt: String) = t("$amt still to collect", "$amt अभी लेने बाकी", "$amt હજી લેવાના બાકી")
+    val pickPayFirst get() = t(
+        "Tap 💵 all cash or 📲 all online first",
+        "पहले 💵 पूरा कैश या 📲 पूरा ऑनलाइन दबाओ",
+        "પહેલાં 💵 આખું કેશ કે 📲 આખું ઓનલાઈન દબાવો"
+    )
+    val billCatchingUp get() = t(
+        "New items just came in — the bill is updating…",
+        "नए आइटम आए हैं — बिल अपडेट हो रहा है…",
+        "નવી આઈટમ આવી — બિલ અપડેટ થાય છે…"
+    )
     // The server's bill refusals, in the cashier's language (billErrorText).
     val payMoreThanBill get() = t(
         "The money entered is more than the bill now. Tap 💵 all cash or 📲 all online again.",

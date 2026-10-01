@@ -471,6 +471,18 @@ fun BillScreen(tableId: Long, tableName: String, onBack: () -> Unit) {
                         bg = Pb.successDeep,
                         fontSize = 14
                     )
+                    // A faded Close says nothing by itself: say why, right
+                    // under it, in plain words.
+                    val closeWhy = when {
+                        settled || b == null -> null
+                        b.subtotal != o.total -> S.billCatchingUp
+                        paid == 0L -> S.pickPayFirst
+                        else -> S.payLeft(rupees(total - paid))
+                    }
+                    if (closeWhy != null) Text(
+                        closeWhy, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = WarnAmber,
+                        textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth()
+                    )
                 }
             }
         }

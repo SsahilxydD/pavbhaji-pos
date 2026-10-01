@@ -303,7 +303,6 @@ label.fld span { display:block; font-size:12px; font-weight:700; color:var(--ink
 .bar .cartbtn small { font-size:12px; font-weight:700; color:var(--red-deep); white-space:nowrap; }
 
 /* cart sheet + note sheet */
-.modal .box { max-height:92vh; overflow-y:auto; }
 .cart-ls .line { align-items:flex-start; }
 .cart-ls .step { margin-top:2px; }
 .notebtn {
@@ -447,11 +446,15 @@ label.fld span { display:block; font-size:12px; font-weight:700; color:var(--ink
 }
 
 /* ---------- dialog (discount, confirm close, blockers) ---------- */
+/* --kb / --vvh come from visualViewport (see fitKeyboard): when the phone
+   keyboard opens, the sheet rises above it instead of hiding Save under it. */
 .modal {
   position:fixed; inset:0; z-index:70; background:rgba(40,22,10,.45);
   display:flex; align-items:flex-end; justify-content:center;
+  padding-bottom:var(--kb, 0px);
 }
 .modal .box {
+  max-height:calc(var(--vvh, 100vh) - 16px); overflow-y:auto;
   width:100%; max-width:460px; background:var(--card);
   border-radius:20px 20px 0 0; padding:18px 16px calc(var(--safe-b) + 16px);
   box-shadow:0 -10px 30px rgba(0,0,0,.22);

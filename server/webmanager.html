@@ -310,6 +310,23 @@ function failView(e, again) {
 }
 
 // ---------------------------------------------------------------- dialogs
+// The sheets sit at the bottom of the screen, which is exactly where an
+// iPhone's keyboard opens — over the Save button. visualViewport shrinks by
+// the keyboard's height; the sheet is lifted by the same amount (pos.css
+// --kb) and never grows taller than what is still visible (--vvh).
+function fitKeyboard() {
+  var vv = window.visualViewport;
+  if (!vv) return;
+  var kb = Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop));
+  document.documentElement.style.setProperty('--kb', kb + 'px');
+  document.documentElement.style.setProperty('--vvh', Math.round(vv.height) + 'px');
+}
+if (window.visualViewport) {
+  window.visualViewport.addEventListener('resize', fitKeyboard);
+  window.visualViewport.addEventListener('scroll', fitKeyboard);
+  fitKeyboard();
+}
+
 var modalUp = false;
 function showModal(title, body, buttons) {
   hideModal();

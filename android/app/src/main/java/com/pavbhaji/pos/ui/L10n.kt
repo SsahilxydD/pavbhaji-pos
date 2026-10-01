@@ -457,7 +457,15 @@ object S {
     val allCashChip get() = t("💵 all cash", "💵 पूरा कैश", "💵 આખું કેશ")
     val allOnlineChip get() = t("📲 all online", "📲 पूरा ऑनलाइन", "📲 આખું ઓનલાઈન")
     val onlineAmtLbl get() = t("Online amount (₹)", "ऑनलाइन रकम (₹)", "ઓનલાઈન રકમ (₹)")
-    val splitApply get() = t("✓ split, rest cash", "✓ बाकी कैश", "✓ બાકી કેશ")
+    val splitApply get() = t("split, rest cash", "बाँटो, बाकी कैश", "વહેંચો, બાકી કેશ")
+    val splitEnterAmount get() = t(
+        "Type the online amount first", "पहले ऑनलाइन रकम लिखो", "પહેલાં ઓનલાઈન રકમ લખો"
+    )
+    val splitTooBig get() = t(
+        "Online amount can't be more than the bill",
+        "ऑनलाइन रकम बिल से ज़्यादा नहीं हो सकती",
+        "ઓનલાઈન રકમ બિલ કરતાં વધારે ન હોઈ શકે"
+    )
     val paidTick get() = t("PAID ✓", "पेड ✓", "પેડ ✓")
     fun payLeft(amt: String) = t("$amt not assigned yet", "$amt अभी बाकी", "$amt હજી બાકી")
     // The server's bill refusals, in the cashier's language (billErrorText).

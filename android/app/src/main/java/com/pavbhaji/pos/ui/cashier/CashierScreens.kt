@@ -395,22 +395,23 @@ fun BillScreen(tableId: Long, tableName: String, onBack: () -> Unit) {
                                     Text("📲 ${S.onlineLbl}", fontSize = 13.5.sp, modifier = Modifier.weight(1f))
                                     Text(rupees(b.paidOnline), fontSize = 13.5.sp, fontWeight = FontWeight.Bold)
                                 }
+                                // How it was settled, so the choice shows: after
+                                // '💵 all cash' that button turns green with a ✓
+                                // instead of looking exactly as before.
+                                val mode = when {
+                                    total <= 0L || paid != total -> null
+                                    b.paidOnline == 0L -> "cash"
+                                    b.paidCash == 0L -> "online"
+                                    else -> "split"
+                                }
+                                // The two common answers are the two big buttons;
+                                // a split is the quieter row under them.
                                 Row(
-                                    Modifier.padding(top = 8.dp),
+                                    Modifier.padding(top = 10.dp),
                                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                                 ) {
-                                    OutlinedButton(
-                                        onClick = { setPayment(total, 0) },
-                                        modifier = Modifier.weight(1f),
-                                        shape = RoundedCornerShape(10.dp),
-                                        contentPadding = androidx.compose.foundation.layout.PaddingValues(vertical = 8.dp)
-                                    ) { Text(S.allCashChip, fontSize = 12.5.sp, fontWeight = FontWeight.Bold) }
-                                    OutlinedButton(
-                                        onClick = { setPayment(0, total) },
-                                        modifier = Modifier.weight(1f),
-                                        shape = RoundedCornerShape(10.dp),
-                                        contentPadding = androidx.compose.foundation.layout.PaddingValues(vertical = 8.dp)
-                                    ) { Text(S.allOnlineChip, fontSize = 12.5.sp, fontWeight = FontWeight.Bold) }
+                                    PayChoice(S.allCashChip, mode == "cash", Modifier.weight(1f)) { setPayment(total, 0) }
+                                    PayChoice(S.allOnlineChip, mode == "online", Modifier.weight(1f)) { setPayment(0, total) }
                                 }
                                 Row(
                                     Modifier.padding(top = 8.dp),
@@ -425,14 +426,23 @@ fun BillScreen(tableId: Long, tableName: String, onBack: () -> Unit) {
                                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                                         modifier = Modifier.weight(1f)
                                     )
-                                    Button(
+                                    OutlinedButton(
                                         onClick = {
                                             val p = toPaise(onlineTxt)
-                                            if (p == null || p > total) { toast = S.payLeft(rupees(total)) }
-                                            else { setPayment(total - p, p); onlineTxt = "" }
+                                            when {
+                                                p == null -> toast = S.splitEnterAmount
+                                                p > total -> toast = S.splitTooBig
+                                                else -> { setPayment(total - p, p); onlineTxt = "" }
+                                            }
                                         },
-                                        shape = RoundedCornerShape(10.dp)
-                                    ) { Text(S.splitApply, fontSize = 12.5.sp, fontWeight = FontWeight.Bold) }
+                                        shape = RoundedCornerShape(10.dp),
+                                        colors = if (mode == "split") ButtonDefaults.outlinedButtonColors(containerColor = Pb.successBg) else ButtonDefaults.outlinedButtonColors()
+                                    ) {
+                                        Text(
+                                            (if (mode == "split") "✓ " else "") + S.splitApply,
+                                            fontSize = 12.5.sp, fontWeight = FontWeight.Bold
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -788,6 +798,25 @@ fun BillHistoryDetail(summary: BillSummaryDto, onBack: () -> Unit) {
                 )
             }
         }
+    }
+}
+
+// One of the two big payment answers. Chosen = filled green with a ✓;
+// otherwise an outlined red button that is still clearly the main choice.
+@Composable
+private fun PayChoice(label: String, selected: Boolean, modifier: Modifier, onClick: () -> Unit) {
+    val shape = RoundedCornerShape(12.dp)
+    val pad = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 12.dp)
+    if (selected) {
+        Button(
+            onClick = onClick, modifier = modifier, shape = shape, contentPadding = pad,
+            colors = ButtonDefaults.buttonColors(containerColor = Pb.successDeep)
+        ) { Text("✓ $label", fontSize = 14.sp, fontWeight = FontWeight.ExtraBold, textAlign = TextAlign.Center) }
+    } else {
+        OutlinedButton(
+            onClick = onClick, modifier = modifier, shape = shape, contentPadding = pad,
+            border = androidx.compose.foundation.BorderStroke(1.5.dp, BhajiRed)
+        ) { Text(label, fontSize = 14.sp, fontWeight = FontWeight.ExtraBold, color = BhajiRed, textAlign = TextAlign.Center) }
     }
 }
 

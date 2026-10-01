@@ -15,32 +15,35 @@ import com.pavbhaji.pos.R
 
 // One warm, high-contrast light theme for everyone — restaurants are bright
 // places and cheap phones have washed-out screens, so we skip dark mode.
+// Every colour that carries TEXT clears WCAG AA (4.5:1) on the grounds it is
+// used on — white, cream, its own pill — so small grey and amber words stay
+// readable under a tube light or in the sun at the door.
 val Saffron = Color(0xFFF57F17)
 val BhajiRed = Color(0xFFC63C0A)
 val BhajiRedDark = Color(0xFF7A2E0E)
 val Cream = Color(0xFFFAF6F0)
 val CardCream = Color(0xFFFFFFFF)
 val CardLine = Color(0xFFEFE6DA)
-val GoodGreen = Color(0xFF1E8F53)
-val WarnAmber = Color(0xFFB26A00)
+val GoodGreen = Color(0xFF187A46)          // 5.4:1 on white, white on it 5.4:1
+val WarnAmber = Color(0xFF8F5500)          // 4.8:1 on its #F5E3C2 pill, 6:1 under white
 val InkDark = Color(0xFF221A12)
 
 // Extra semantic tones shared by the light screens, so nobody hand-mixes hex.
 object Pb {
-    val headerTop = Color(0xFFD4450F)      // AppHeader gradient, top-left
+    val headerTop = Color(0xFFC23E0C)      // AppHeader gradient, top-left
     val headerBottom = Color(0xFFA93307)   // AppHeader gradient, bottom-right
-    val headerSub = Color(0xFFFFD9C4)
+    val headerSub = Color(0xFFFFF0E8)      // ≥ 4.7:1 anywhere on the header
     val ink2 = Color(0xFF6E6055)           // secondary text on cream
-    val ink3 = Color(0xFF9C8D80)           // tertiary / hints
+    val ink3 = Color(0xFF76675B)           // tertiary / hints — 5:1 on cream
     val successBg = Color(0xFFE4F6EA)
     val successLine = Color(0xFF59B87E)
-    val successDeep = Color(0xFF1E8F53)
+    val successDeep = Color(0xFF187A46)
     val warnBg = Color(0xFFFFF3E2)
     val warnLine = Color(0xFFF2C88F)
     val infoBg = Color(0xFFE9F0FB)
     val infoLine = Color(0xFF8FB2E4)
     val infoDeep = Color(0xFF2F6FCC)
-    val danger = Color(0xFFD23B2E)
+    val danger = Color(0xFFC0392B)         // 4.8:1 on dangerBg, 5:1 on cream
     val dangerBg = Color(0xFFFDECEA)
     val counterBg = Color(0xFFFFFBF2)      // "just carry" counter tint
     val counterSpine = Color(0xFFF2A33C)

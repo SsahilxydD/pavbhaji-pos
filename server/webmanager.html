@@ -68,7 +68,9 @@ var S = {
   notePh: 'kam teekha, bina pyaaz…',
   noteHint: 'Kitchen ko KOT pe yahi likha dikhega.',
   noteLong: 'Note bahut lamba hai — chhota likho',
-  save: 'Save'
+  save: 'Save',
+  search: '🔍 Dhoondo',
+  noMatch: 'Is naam ki koi dish nahi mili'
 };
 
 var $ = function (id) { return document.getElementById(id); };
@@ -121,6 +123,7 @@ function paintNet(on) {
       '<button id="netRetry">' + esc(S.retryShort) + '</button>';
     $('netRetry').onclick = probeNet;
   }
+  syncTop();   // the picker's sticky search sits under the (now taller) header
 }
 function netFail() {
   net.fails++;
@@ -402,16 +405,24 @@ async function picker(title, send) {
     '<button class="ghost" id="pBack" style="min-height:42px;padding:9px 14px">‹ Back</button>' +
     '<b class="grow" style="font-size:17px;text-align:center">' + esc(title) + '</b>' +
     '<span style="width:86px"></span></div>';
+  // Finding a dish: a search box and one chip per category, stuck under the
+  // header so they're there at any scroll depth.
+  var cats = menu.filter(function (c) { return (c.items || []).length; });
+  html += '<div class="pk-tools" id="pkTools">' +
+    '<input id="pkQ" type="search" enterkeyhint="search" autocomplete="off" placeholder="' + esc(S.search) + '">' +
+    '<button id="pkClear" hidden aria-label="clear">✕</button>' +
+    '<div class="pk-chips" id="pkChips">' + cats.map(function (c) {
+      return '<button data-cat="' + c.id + '">' + esc(c.name) + '</button>';
+    }).join('') + '</div></div>';
   html += '<div id="pkList">';
-  menu.forEach(function (c) {
-    var items = c.items || [];
-    if (!items.length) return;
+  cats.forEach(function (c) {
     // khatam dishes sink to the bottom of their category (order kept otherwise)
-    items = items.filter(function (it) { return it.available; })
-      .concat(items.filter(function (it) { return !it.available; }));
-    html += '<h2>' + esc(c.name) + '</h2><div class="card pk-card">';
+    var items = c.items.filter(function (it) { return it.available; })
+      .concat(c.items.filter(function (it) { return !it.available; }));
+    html += '<section class="pk-cat" data-cat="' + c.id + '"><h2>' + esc(c.name) + '</h2><div class="card pk-card">';
     items.forEach(function (it) {
-      html += '<div class="line pk-row' + (it.available ? '' : ' off') + '" data-item="' + it.id + '">' +
+      html += '<div class="line pk-row' + (it.available ? '' : ' off') + '" data-item="' + it.id + '"' +
+        ' data-q="' + esc(normName(it.name)) + '">' +
         '<span class="grow"><span class="nm">' + esc(it.name) + '</span>' +
         '<div class="mut tnum pk-sub">' + rowSub(it) + '</div></span>' +
         '<span class="step">' +
@@ -420,10 +431,20 @@ async function picker(title, send) {
           '<button data-inc="' + it.id + '"' + (it.available ? '' : ' disabled') + '>+</button>' +
         '</span></div>';
     });
-    html += '</div>';
+    html += '</div></section>';
   });
-  html += '</div>';
+  html += '<div class="empty" id="pkNone" hidden>' + esc(S.noMatch) + '</div></div>';
   $('view').innerHTML = html;
+  window.scrollTo(0, 0);   // start at the top of the menu, not where the order view was
+  syncTop();
+  markChip(cats.length ? cats[0].id : null);
+  $('pkQ').addEventListener('input', filterMenu);
+  $('pkQ').addEventListener('keydown', function (e) { if (e.key === 'Enter') this.blur(); });
+  $('pkClear').onclick = function () { $('pkQ').value = ''; filterMenu(); };
+  $('pkChips').addEventListener('click', function (e) {
+    var b = e.target.closest('button[data-cat]');
+    if (b) jumpTo(b.dataset.cat);
+  });
   timer = setInterval(menuPoll, 30000);
   $('pBack').onclick = function () {
     confirmLeave(function () {
@@ -443,6 +464,76 @@ async function picker(title, send) {
   });
   paintCartBar();
 }
+
+// "Sp. Pulav" -> "sp pulav", so "sp pul" or "pulav sp" both find it.
+function normName(s) {
+  return String(s).toLowerCase().replace(/[.,()\/&+\-]+/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+// Every word typed must appear somewhere in the dish name.
+function filterMenu() {
+  var q = normName($('pkQ').value), words = q ? q.split(' ') : [];
+  $('pkTools').classList.toggle('q', !!q);
+  $('pkClear').hidden = !q;
+  var any = false;
+  document.querySelectorAll('#pkList .pk-cat').forEach(function (sec) {
+    var shown = 0;
+    sec.querySelectorAll('.pk-row').forEach(function (r) {
+      var hit = words.every(function (w) { return r.dataset.q.indexOf(w) >= 0; });
+      r.hidden = !hit;
+      if (hit) shown++;
+    });
+    sec.hidden = !shown;
+    if (shown) any = true;
+  });
+  $('pkNone').hidden = any;
+  if (q) window.scrollTo(0, 0);
+}
+
+// The sticky bits sit under the header, whose height changes with the
+// offline strip and the phone's safe area.
+function syncTop() {
+  document.documentElement.style.setProperty('--top-h', document.querySelector('.top').offsetHeight + 'px');
+}
+window.addEventListener('resize', syncTop);
+
+function jumpTo(catId) {
+  var sec = document.querySelector('.pk-cat[data-cat="' + catId + '"]');
+  if (!sec) return;
+  var off = document.querySelector('.top').offsetHeight + $('pkTools').offsetHeight + 4;
+  window.scrollTo(0, sec.getBoundingClientRect().top + window.pageYOffset - off);
+  markChip(catId);
+}
+
+function markChip(catId) {
+  var box = $('pkChips');
+  if (!box) return;
+  box.querySelectorAll('button').forEach(function (b) {
+    var on = b.dataset.cat === String(catId);
+    b.classList.toggle('on', on);
+    if (on && (b.offsetLeft < box.scrollLeft || b.offsetLeft + b.offsetWidth > box.scrollLeft + box.clientWidth)) {
+      box.scrollLeft = b.offsetLeft - 8;
+    }
+  });
+}
+
+// Light the chip of the category being looked at.
+var spyQueued = false;
+window.addEventListener('scroll', function () {
+  if (spyQueued || pane !== 'picker' || !$('pkTools')) return;
+  spyQueued = true;
+  requestAnimationFrame(function () {
+    spyQueued = false;
+    if (pane !== 'picker' || !$('pkTools')) return;
+    var line = $('pkTools').getBoundingClientRect().bottom + 12, cur = null;
+    // at the very bottom the last category can't scroll up to the line
+    var atEnd = window.innerHeight + window.pageYOffset >= document.documentElement.scrollHeight - 4;
+    document.querySelectorAll('#pkList .pk-cat').forEach(function (sec) {
+      if (!sec.hidden && (cur === null || atEnd || sec.getBoundingClientRect().top <= line)) cur = sec.dataset.cat;
+    });
+    markChip(cur);
+  });
+}, { passive: true });
 
 function bump(id, delta) {
   if (sending) { toast(S.wait); return; }

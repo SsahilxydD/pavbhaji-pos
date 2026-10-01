@@ -181,6 +181,36 @@ label.fld span { display:block; font-size:12px; font-weight:700; color:var(--ink
 .pk-row.off .nm { color:var(--ink2); }
 .p-off { background:var(--danger-bg); color:var(--danger); vertical-align:1px; margin-left:4px; }
 
+/* picker: search + category chips, stuck just under the header */
+.pk-tools {
+  position:sticky; top:var(--top-h, 61px); z-index:16;
+  display:flex; gap:8px; align-items:center;
+  margin:0 -12px 4px; padding:8px 12px;
+  background:var(--bg); border-bottom:1px solid var(--line);
+}
+.pk-tools input {
+  flex:0 0 37%; min-width:0; min-height:44px; padding:9px 8px;
+  -webkit-appearance:none; appearance:none;
+}
+.pk-tools.q input { flex:1; }
+.pk-tools.q .pk-chips { display:none; }
+#pkClear {
+  flex:0 0 46px; min-height:44px; font:inherit; font-size:16px; font-weight:800; cursor:pointer;
+  background:var(--card); color:var(--ink2); border:1px solid var(--line); border-radius:12px;
+}
+.pk-chips {
+  position:relative; flex:1; min-width:0; display:flex; gap:6px;
+  overflow-x:auto; -webkit-overflow-scrolling:touch; scrollbar-width:none;
+}
+.pk-chips::-webkit-scrollbar { display:none; }
+.pk-chips button {
+  font:inherit; font-weight:700; font-size:13.5px; white-space:nowrap; cursor:pointer;
+  min-height:44px; padding:9px 12px; border-radius:99px; flex:0 0 auto;
+  background:var(--card); color:var(--ink2); border:1px solid var(--line);
+}
+.pk-chips button.on { background:var(--red); color:#fff; border-color:var(--red); }
+.pk-cat h2 { margin-top:16px; }
+
 /* bar: the left half opens the cart sheet (lines + notes) */
 .bar .cartbtn {
   display:flex; flex-direction:column; align-items:flex-start; justify-content:center;

@@ -102,9 +102,20 @@ fun KitchenScreen(onLogout: () -> Unit, embedded: Boolean = false, onBack: (() -
         onDispose { window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON) }
     }
 
-    // Beep when a bucket we've never seen shows up.
+    // Beep when a bucket we've never seen shows up, or plates join one we
+    // have. One generator for the screen's life, released when it goes (a
+    // new one per beep leaked audio tracks over a night). ALARM stream, so
+    // it rings with the media volume at zero, plus a buzz for a phone lying
+    // on the steel counter.
     val seenBuckets = remember { mutableSetOf<Long>() }
+    val lastQty = remember { mutableMapOf<Long, Long>() }
     var firstLoad by remember { mutableStateOf(true) }
+    val beeper = remember {
+        if (embedded) null
+        else try { ToneGenerator(AudioManager.STREAM_ALARM, 90) } catch (_: Exception) { null }
+    }
+    DisposableEffect(beeper) { onDispose { beeper?.release() } }
+    val view = LocalView.current
 
     // Every chef action reaches the server through ONE queue, one request at
     // a time, in tap order. Nothing is dropped because an earlier request is
@@ -137,13 +148,14 @@ fun KitchenScreen(onLogout: () -> Unit, embedded: Boolean = false, onBack: (() -
         when (r) {
             is ApiResult.Ok -> {
                 val fresh = r.value.buckets.map { it.id }.filter { it !in seenBuckets }
-                if (fresh.isNotEmpty() && !firstLoad && !embedded) {
-                    try {
-                        ToneGenerator(AudioManager.STREAM_MUSIC, 90)
-                            .startTone(ToneGenerator.TONE_PROP_BEEP2, 500)
-                    } catch (_: Exception) {}
+                val grew = r.value.buckets.any { b -> b.id in seenBuckets && b.qty > (lastQty[b.id] ?: 0L) }
+                if ((fresh.isNotEmpty() || grew) && !firstLoad && !embedded) {
+                    try { beeper?.startTone(ToneGenerator.TONE_PROP_BEEP2, 500) } catch (_: Exception) {}
+                    view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
                 }
                 seenBuckets.addAll(fresh)
+                lastQty.clear()
+                r.value.buckets.forEach { lastQty[it.id] = it.qty }
                 firstLoad = false
                 data = r.value
                 loaded = true

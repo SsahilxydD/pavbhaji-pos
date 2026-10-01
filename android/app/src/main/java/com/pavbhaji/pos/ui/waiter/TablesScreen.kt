@@ -24,7 +24,6 @@ import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -42,7 +41,6 @@ import com.pavbhaji.pos.data.ApiResult
 import com.pavbhaji.pos.data.TableStateDto
 import com.pavbhaji.pos.ui.AppHeader
 import com.pavbhaji.pos.ui.BhajiRed
-import com.pavbhaji.pos.ui.ConnBanner
 import com.pavbhaji.pos.ui.ErrorBanner
 import com.pavbhaji.pos.ui.HeaderTextAction
 import com.pavbhaji.pos.ui.ListSkeleton
@@ -126,7 +124,6 @@ fun TablesScreen(
     var tables by remember { mutableStateOf<List<TableStateDto>>(emptyList()) }
     var loaded by remember { mutableStateOf(false) }
     var loadError by remember { mutableStateOf<String?>(null) }
-    val connected by Deps.live.connected.collectAsState()
 
     suspend fun refresh() {
         when (val r = Deps.api.tables()) {
@@ -150,7 +147,6 @@ fun TablesScreen(
             onBack = onBack,
             actions = { if (onBack == null) HeaderTextAction(S.logout, onLogout) }
         )
-        ConnBanner(connected)
         ErrorBanner(loadError)
         if (!loaded) {
             ListSkeleton(rows = 4, rowHeight = 118.dp)

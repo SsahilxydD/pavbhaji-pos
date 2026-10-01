@@ -10,15 +10,43 @@ import androidx.compose.runtime.setValue
 // language changes — no restart, no Android locale plumbing.
 //
 // NOT translated on purpose: dish/table/staff names (owner's data), PIN, KOT,
-// QR, WiFi (everyday loanwords), and server error messages (come from the Go
-// side in English; rare, and the owner reads English) — except the bill
-// refusals a cashier meets mid-settlement, mapped in billErrorText.
+// QR (everyday loanwords). Server error messages come from the Go side in
+// English; the ones floor staff actually meet are mapped in serverErrText,
+// anything rarer (mostly admin) shows as the server said it.
 object L10n {
     var lang by mutableStateOf("en") // "en" | "hi" | "gu"
 }
 
 fun t(en: String, hi: String, gu: String): String =
     when (L10n.lang) { "hi" -> hi; "gu" -> gu; else -> en }
+
+// Every API refusal passes through here on its way to a banner or a toast
+// (Api.call), so a waiter never reads "can't move X from ready to served as
+// waiter" in English. Unknown messages are left exactly as the server sent
+// them — better English than a wrong translation.
+fun serverErrText(msg: String): String {
+    val m = msg.trim()
+    return when {
+        m.startsWith("payment exceeds") -> S.payMoreThanBill
+        m.startsWith("discount must be") -> S.discountTooBig
+        m.startsWith("order already closed") -> S.billAlreadyClosed
+        m == "wrong PIN" -> S.wrongPin
+        m.startsWith("too many wrong PINs") ->
+            S.tooManyPins(m.substringAfterLast("wait ").removeSuffix("s").ifEmpty { "30" })
+        m.startsWith("db busy") -> S.errBusy
+        m.startsWith("item not found on any open order") -> S.errItemGone
+        m.contains(" already took this bucket") -> S.cookingThis(m.substringBefore(" already took"))
+        m.startsWith("finish your ") && m.contains("bucket first") -> S.oneBucketRule
+        m.contains("goes out with the bhaji") -> S.errWithBhaji
+        m.startsWith("only admin can cancel") -> S.errAdminCancel
+        m == "already cancelled" -> S.errAlreadyCancelled
+        m.endsWith(" is marked out of stock") -> S.errOutOfStock(m.removeSuffix(" is marked out of stock"))
+        m.startsWith("menu item not found") -> S.errDishGone
+        m.startsWith("can't move ") -> S.errStale
+        m.startsWith("server error") -> S.errServer
+        else -> msg
+    }
+}
 
 object S {
     // ---- shared ----
@@ -38,10 +66,61 @@ object S {
         "કોઈ પણ એપ પોતાના અપડેટ લગાવે એ પહેલાં Android એક વાર પૂછે છે. PavBhaji POS માટે ચાલુ કરો — પછી દર નવું વર્ઝન જાતે આવી જશે, ફરી નહીં પૂછે."
     )
     val updateOpenSettings get() = t("Open settings", "सेटिंग खोलो", "સેટિંગ ખોલો")
+    // The one offline banner. The server is on the internet, so WiFi or
+    // mobile data both work — the words name the problem, not a cure.
     val reconnecting get() = t(
-        "reconnecting to server… check WiFi",
-        "सर्वर से दोबारा जुड़ रहे हैं… WiFi देखो",
-        "સર્વર સાથે ફરી જોડાઈ રહ્યાં છીએ… WiFi જુઓ"
+        "No internet — orders won't go through. Reconnecting by itself…",
+        "इंटरनेट नहीं है — ऑर्डर आगे नहीं जाएँगे। अपने आप दोबारा जुड़ रहा है…",
+        "ઇન્ટરનેટ નથી — ઓર્ડર આગળ નહીં જાય. જાતે ફરી જોડાઈ રહ્યું છે…"
+    )
+    // What a request that never reached the server says (toast / banner).
+    val noNetwork get() = t(
+        "No internet — try again",
+        "इंटरनेट नहीं है — फिर कोशिश करो",
+        "ઇન્ટરનેટ નથી — ફરી પ્રયત્ન કરો"
+    )
+    val noNetworkAll = setOf(
+        "No internet — try again", "इंटरनेट नहीं है — फिर कोशिश करो", "ઇન્ટરનેટ નથી — ફરી પ્રયત્ન કરો"
+    )
+    val offlineShort get() = t("offline", "इंटरनेट नहीं", "ઇન્ટરનેટ નથી")
+    val wrongPin get() = t("Wrong PIN", "गलत PIN", "ખોટો PIN")
+    fun tooManyPins(secs: String) = t(
+        "Too many wrong PINs — wait $secs seconds",
+        "बहुत बार गलत PIN — $secs सेकंड रुको",
+        "ઘણી વાર ખોટો PIN — $secs સેકન્ડ રાહ જુઓ"
+    )
+    val errBusy get() = t("Server is busy — try again", "सर्वर व्यस्त है — फिर कोशिश करो", "સર્વર વ્યસ્ત છે — ફરી પ્રયત્ન કરો")
+    val errServer get() = t("Server problem — try again", "सर्वर में दिक्कत — फिर कोशिश करो", "સર્વરમાં તકલીફ — ફરી પ્રયત્ન કરો")
+    val errItemGone get() = t(
+        "That plate is no longer on an open order — the list will refresh",
+        "यह प्लेट अब किसी खुले ऑर्डर में नहीं — लिस्ट ताज़ा हो रही है",
+        "આ પ્લેટ હવે કોઈ ખુલ્લા ઓર્ડરમાં નથી — લિસ્ટ તાજી થાય છે"
+    )
+    val errStale get() = t(
+        "Someone already changed this — the list will refresh",
+        "किसी ने पहले ही बदल दिया — लिस्ट ताज़ा हो रही है",
+        "કોઈએ પહેલેથી બદલી દીધું — લિસ્ટ તાજી થાય છે"
+    )
+    val errWithBhaji get() = t(
+        "This goes out with the bhaji — nothing for this table is ready yet",
+        "यह भाजी के साथ जाएगा — इस टेबल का अभी कुछ तैयार नहीं",
+        "આ ભાજી સાથે જશે — આ ટેબલનું હજી કંઈ તૈયાર નથી"
+    )
+    val errAdminCancel get() = t(
+        "The kitchen already started this — only admin can cancel it now",
+        "किचन ने यह शुरू कर दिया — अब सिर्फ़ एडमिन रद्द कर सकता है",
+        "રસોડાએ આ શરૂ કરી દીધું — હવે ફક્ત એડમિન રદ કરી શકે"
+    )
+    val errAlreadyCancelled get() = t("Already cancelled", "पहले ही रद्द है", "પહેલેથી રદ છે")
+    fun errOutOfStock(dish: String) = t(
+        "$dish is out of stock — take it out of the cart",
+        "$dish खत्म है — कार्ट से हटाओ",
+        "$dish ખલાસ છે — કાર્ટમાંથી કાઢો"
+    )
+    val errDishGone get() = t(
+        "A dish in the cart was just removed from the menu",
+        "कार्ट की एक डिश अभी मेनू से हटाई गई है",
+        "કાર્ટની એક વાનગી હમણાં જ મેનૂમાંથી હટાવાઈ"
     )
     fun itemsN(n: Long) = t("$n item" + if (n == 1L) "" else "s", "$n आइटम", "$n આઈટમ")
     val now get() = t("now", "अभी", "હમણાં")

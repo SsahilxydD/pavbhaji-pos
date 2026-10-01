@@ -54,7 +54,6 @@ import com.pavbhaji.pos.data.ApiResult
 import com.pavbhaji.pos.data.PickupLineDto
 import com.pavbhaji.pos.ui.AppHeader
 import com.pavbhaji.pos.ui.CardLine
-import com.pavbhaji.pos.ui.ConnBanner
 import com.pavbhaji.pos.ui.EmptyState
 import com.pavbhaji.pos.ui.ErrorBanner
 import com.pavbhaji.pos.ui.GoodGreen
@@ -108,7 +107,6 @@ fun ReadyScreen(onLogout: () -> Unit, showLogout: Boolean) {
             },
             actions = { if (showLogout) HeaderTextAction(S.logout, onLogout) }
         )
-        ConnBanner(connected)
         ErrorBanner(loadError)
         when {
             !loaded -> ListSkeleton(rows = 4, rowHeight = 86.dp)
@@ -240,7 +238,6 @@ fun ServeScreen(onLogout: () -> Unit) {
             subtitle = if (lines.isEmpty()) S.nothingToCarry else S.toCarry(lines.size),
             actions = { HeaderTextAction(S.logout, onLogout) }
         )
-        ConnBanner(connected)
         ErrorBanner(loadError)
         when {
             !loaded -> ListSkeleton(rows = 5, rowHeight = 72.dp)

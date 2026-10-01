@@ -10,6 +10,8 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+import com.pavbhaji.pos.ui.S
+import com.pavbhaji.pos.ui.serverErrText
 import java.io.IOException
 import java.util.concurrent.TimeUnit
 
@@ -61,11 +63,12 @@ class Api(private val session: Session) {
                 } else {
                     if (resp.code == 401 && auth) onAuthFail?.invoke()
                     val e = try { json.decodeFromString<ErrBody>(text) } catch (_: Exception) { ErrBody("server error ${resp.code}") }
-                    ApiResult.Err(e.error.ifEmpty { "server error ${resp.code}" }, resp.code, e.blockers)
+                    // In the reader's language: every banner and toast shows this.
+                    ApiResult.Err(serverErrText(e.error.ifEmpty { "server error ${resp.code}" }), resp.code, e.blockers)
                 }
             }
         } catch (e: IOException) {
-            ApiResult.Err("can't reach server — check WiFi", 0)
+            ApiResult.Err(S.noNetwork, 0)
         } catch (e: Exception) {
             ApiResult.Err("unexpected: ${e.message}", -1)
         }
@@ -260,7 +263,7 @@ class Api(private val session: Session) {
                 else ApiResult.Err("backup failed (${resp.code})", resp.code)
             }
         } catch (e: Exception) {
-            ApiResult.Err("can't reach server — check WiFi", 0)
+            ApiResult.Err(S.noNetwork, 0)
         }
     }
 }

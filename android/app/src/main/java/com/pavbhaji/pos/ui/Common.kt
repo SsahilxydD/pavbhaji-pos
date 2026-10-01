@@ -57,6 +57,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -149,6 +150,7 @@ fun AppHeader(
 ) {
     if (onBack != null) BackHandler(onBack = onBack)
     StatusBarIcons(darkIcons = false)
+    Column {
     Box(
         Modifier.background(
             Brush.linearGradient(listOf(Pb.headerTop, Pb.headerBottom))
@@ -195,6 +197,11 @@ fun AppHeader(
             actions()
         }
     }
+    // Every screen with this header gets the one offline banner under it —
+    // no screen can forget it, and none shows it twice.
+    val connected by com.pavbhaji.pos.Deps.live.connected.collectAsState()
+    ConnBanner(connected)
+    }
 }
 
 // Compact language switcher living in every screen's top-right corner:
@@ -237,11 +244,18 @@ fun HeaderTextAction(label: String, onClick: () -> Unit) {
 }
 
 // Slides in under the header while the WebSocket is down. Amber, not red:
-// it's "hold on", not "something you did failed".
+// it's "hold on", not "something you did failed". It waits a moment before
+// showing, so the half-second dial at app start (or one dropped packet)
+// doesn't flash "no internet" at a waiter; it goes away on its own the
+// moment the line is back.
 @Composable
 fun ConnBanner(connected: Boolean) {
+    var down by remember { mutableStateOf(false) }
+    LaunchedEffect(connected) {
+        if (connected) down = false else { kotlinx.coroutines.delay(1500); down = true }
+    }
     AnimatedVisibility(
-        visible = !connected,
+        visible = down,
         enter = expandVertically() + fadeIn(),
         exit = shrinkVertically() + fadeOut()
     ) {
@@ -262,7 +276,8 @@ fun ConnBanner(connected: Boolean) {
             Text(
                 S.reconnecting,
                 color = Color(0xFF6B4A00), fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
-                modifier = Modifier.padding(start = 8.dp)
+                textAlign = TextAlign.Center,
+                modifier = Modifier.padding(start = 8.dp, end = 12.dp)
             )
         }
     }
@@ -270,15 +285,19 @@ fun ConnBanner(connected: Boolean) {
 
 // One-line error strip for surfaced API failures — screens keep working, the
 // user just sees why the data may be stale. Pass null to hide.
+// While the offline banner is up it already says "no internet"; a red strip
+// under it saying the same thing again is noise, so that one case is hidden.
 @Composable
 fun ErrorBanner(message: String?, dark: Boolean = false) {
+    val connected by com.pavbhaji.pos.Deps.live.connected.collectAsState()
+    val shown = message?.takeUnless { !connected && it in S.noNetworkAll }
     AnimatedVisibility(
-        visible = message != null,
+        visible = shown != null,
         enter = expandVertically() + fadeIn(),
         exit = shrinkVertically() + fadeOut()
     ) {
-        var last by remember { mutableStateOf(message ?: "") }
-        if (message != null) last = message
+        var last by remember { mutableStateOf(shown ?: "") }
+        if (shown != null) last = shown
         val bg = if (dark) Color(0xFF3A1712) else Pb.dangerBg
         val fg = if (dark) Color(0xFFFFB59E) else Pb.danger
         Row(

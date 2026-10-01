@@ -25,7 +25,6 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -43,7 +42,6 @@ import com.pavbhaji.pos.data.ApiResult
 import com.pavbhaji.pos.data.ReportDto
 import com.pavbhaji.pos.ui.AppHeader
 import com.pavbhaji.pos.ui.CardLine
-import com.pavbhaji.pos.ui.ConnBanner
 import com.pavbhaji.pos.ui.GoodGreen
 import com.pavbhaji.pos.ui.S
 import com.pavbhaji.pos.ui.HeaderTextAction
@@ -76,7 +74,6 @@ fun AdminHome(onLogout: () -> Unit) {
 // The whole admin home: one number that matters, six doors, a quiet backup.
 @Composable
 private fun Dashboard(onLogout: () -> Unit, onOpen: (AdminScreen) -> Unit) {
-    val connected by Deps.live.connected.collectAsState()
     var rep by remember { mutableStateOf(ReportDto()) }
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
@@ -108,7 +105,6 @@ private fun Dashboard(onLogout: () -> Unit, onOpen: (AdminScreen) -> Unit) {
             subtitle = Deps.session.staffName,
             actions = { HeaderTextAction(S.logout, onLogout) }
         )
-        ConnBanner(connected)
         com.pavbhaji.pos.ui.ErrorBanner(loadError)
         if (kotlin.math.abs(clockSkewMs) > 3 * 60_000) {
             Text(

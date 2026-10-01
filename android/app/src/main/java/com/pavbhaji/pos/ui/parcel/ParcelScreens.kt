@@ -27,7 +27,6 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
@@ -50,7 +49,6 @@ import com.pavbhaji.pos.ui.AppHeader
 import com.pavbhaji.pos.ui.BigButton
 import com.pavbhaji.pos.ui.CardLine
 import com.pavbhaji.pos.ui.ConfirmDialog
-import com.pavbhaji.pos.ui.ConnBanner
 import com.pavbhaji.pos.ui.EmptyState
 import com.pavbhaji.pos.ui.ErrorBanner
 import com.pavbhaji.pos.ui.HeaderTextAction
@@ -81,7 +79,6 @@ fun ParcelHome(onLogout: () -> Unit) {
     var tables by remember { mutableStateOf<List<TableStateDto>>(emptyList()) }
     var loadError by remember { mutableStateOf<String?>(null) }
     var toast by remember { mutableStateOf<String?>(null) }
-    val connected by Deps.live.connected.collectAsState()
 
     suspend fun refresh() {
         when (val r = Deps.api.tables()) {
@@ -128,7 +125,6 @@ fun ParcelHome(onLogout: () -> Unit) {
             subtitle = "${Deps.session.staffName} · ${S.openParcels(parcels.size)}",
             actions = { HeaderTextAction(S.logout, onLogout) }
         )
-        ConnBanner(connected)
         ErrorBanner(loadError)
         toast?.let {
             Text(
@@ -247,7 +243,6 @@ private fun ParcelCard(t: TableStateDto, onClick: () -> Unit, modifier: Modifier
 @Composable
 fun AddParcelScreen(onDone: (Long) -> Unit, onBack: () -> Unit) {
     val scope = rememberCoroutineScope()
-    val connected by Deps.live.connected.collectAsState()
 
     var custName by remember { mutableStateOf("") }
     var custPhone by remember { mutableStateOf("") }
@@ -298,7 +293,6 @@ fun AddParcelScreen(onDone: (Long) -> Unit, onBack: () -> Unit) {
 
     Column(Modifier.fillMaxSize()) {
         AppHeader(title = "🥡 " + S.newParcel.trimStart('＋', ' '), subtitle = S.newOrder, onBack = leave)
-        ConnBanner(connected)
 
         LazyColumn(Modifier.weight(1f).padding(horizontal = 12.dp)) {
             // ---- customer details ----

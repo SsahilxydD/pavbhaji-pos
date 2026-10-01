@@ -35,7 +35,6 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
@@ -64,7 +63,6 @@ import com.pavbhaji.pos.ui.AppHeader
 import com.pavbhaji.pos.ui.BigButton
 import com.pavbhaji.pos.ui.CardLine
 import com.pavbhaji.pos.ui.ConfirmDialog
-import com.pavbhaji.pos.ui.ConnBanner
 import com.pavbhaji.pos.ui.ErrorBanner
 import com.pavbhaji.pos.ui.ListSkeleton
 import com.pavbhaji.pos.ui.Pb
@@ -93,7 +91,6 @@ data class CartLine(
 @Composable
 fun TableOrderScreen(tableId: Long, tableName: String, onBack: () -> Unit) {
     val scope = rememberCoroutineScope()
-    val connected by Deps.live.connected.collectAsState()
     val isAdmin = Deps.session.staffRole == "admin"
 
     var menu by remember { mutableStateOf<List<CategoryDto>>(emptyList()) }
@@ -187,7 +184,6 @@ fun TableOrderScreen(tableId: Long, tableName: String, onBack: () -> Unit) {
             },
             onBack = leave
         )
-        ConnBanner(connected)
         ErrorBanner(loadError)
         toast?.let { LaunchedEffect(it) { kotlinx.coroutines.delay(2500); toast = null } }
 

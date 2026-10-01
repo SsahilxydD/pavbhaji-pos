@@ -34,7 +34,6 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -61,7 +60,6 @@ import com.pavbhaji.pos.ui.BhajiRed
 import com.pavbhaji.pos.ui.BigButton
 import com.pavbhaji.pos.ui.CardLine
 import com.pavbhaji.pos.ui.ConfirmDialog
-import com.pavbhaji.pos.ui.ConnBanner
 import com.pavbhaji.pos.ui.ErrorBanner
 import com.pavbhaji.pos.ui.GoodGreen
 import com.pavbhaji.pos.ui.Pb
@@ -163,20 +161,10 @@ internal fun discountPatch(b: BillDto, subtotal: Long, discount: Long, note: Str
     return """{"discount":$discount,"discountNote":$noteJson,"paidCash":$cash,"paidOnline":$online}"""
 }
 
-// The server answers bill edits in English; the cashier reads them in her
-// own language. Anything unexpected still shows as the server said it.
-internal fun billErrorText(msg: String): String = when {
-    msg.startsWith("payment exceeds") -> S.payMoreThanBill
-    msg.startsWith("discount must be") -> S.discountTooBig
-    msg.startsWith("order already closed") -> S.billAlreadyClosed
-    else -> msg
-}
-
 @Composable
 fun BillScreen(tableId: Long, tableName: String, onBack: () -> Unit) {
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
-    val connected by Deps.live.connected.collectAsState()
 
     var order by remember { mutableStateOf<OrderDetailDto?>(null) }
     var bill by remember { mutableStateOf<BillDto?>(null) }
@@ -219,9 +207,9 @@ fun BillScreen(tableId: Long, tableName: String, onBack: () -> Unit) {
         scope.launch {
             when (val r = Deps.api.billPatch(o.id, patch)) {
                 is ApiResult.Ok -> bill = r.value
-                // Refused: say why in her language, and re-read the bill so
-                // the screen shows what the server actually holds.
-                is ApiResult.Err -> { toast = billErrorText(r.message); refresh() }
+                // Refused: say why (already in her language — serverErrText),
+                // and re-read the bill so the screen shows what the server holds.
+                is ApiResult.Err -> { toast = r.message; refresh() }
             }
         }
     }
@@ -264,7 +252,6 @@ fun BillScreen(tableId: Long, tableName: String, onBack: () -> Unit) {
             subtitle = o?.let { "${S.orderNo(it.orderNo)} · ${clockTime(it.openedAt)} · ${it.openedByName}" },
             onBack = onBack
         )
-        ConnBanner(connected)
         ErrorBanner(loadError)
         toast?.let {
             Text(
@@ -563,7 +550,6 @@ private fun shiftDate(date: String, days: Int): String = try {
 // Shared by the cashier's Bills tab and the admin's Bills door.
 @Composable
 fun BillsHistoryScreen(onLogout: (() -> Unit)?, onBack: (() -> Unit)?) {
-    val connected by Deps.live.connected.collectAsState()
     var date by remember { mutableStateOf<String?>(null) } // null = today
     var resp by remember { mutableStateOf(com.pavbhaji.pos.data.BillsResp()) }
     var openBill by remember { mutableStateOf<BillSummaryDto?>(null) }
@@ -594,7 +580,6 @@ fun BillsHistoryScreen(onLogout: (() -> Unit)?, onBack: (() -> Unit)?) {
             onBack = onBack,
             actions = { if (onBack == null && onLogout != null) com.pavbhaji.pos.ui.HeaderTextAction(S.logout, onLogout) }
         )
-        ConnBanner(connected)
         ErrorBanner(loadError)
         Row(
             Modifier.fillMaxWidth().padding(horizontal = 12.dp),

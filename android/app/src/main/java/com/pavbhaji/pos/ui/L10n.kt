@@ -164,11 +164,13 @@ object S {
     )
     val cancelItem get() = t("Cancel item", "आइटम रद्द करो", "આઈટમ રદ કરો")
 
-    // ---- connect ----
+    // ---- connect (server setup; reached by a long press on the login logo) ----
+    // The shop server is on the internet: no laptop, no black window. The
+    // only thing a phone can be missing is its own internet.
     val searchingLaptop get() = t(
-        "Looking for the laptop on this WiFi…",
-        "इस WiFi पर लैपटॉप ढूँढ रहे हैं…",
-        "આ WiFi પર લેપટોપ શોધી રહ્યાં છીએ…"
+        "Looking for the shop server…",
+        "दुकान का सर्वर ढूँढ रहे हैं…",
+        "દુકાનનું સર્વર શોધી રહ્યાં છીએ…"
     )
     fun foundServers(n: Int) = t(
         "Found $n servers — tap yours:",
@@ -176,34 +178,34 @@ object S {
         "$n સર્વર મળ્યા — તમારું પસંદ કરો:"
     )
     val notFound get() = t(
-        "Couldn't find the laptop by itself.\nIs it on, black window open, same WiFi?",
-        "लैपटॉप अपने आप नहीं मिला।\nचालू है? काली विंडो खुली है? वही WiFi?",
-        "લેપટોપ જાતે ન મળ્યું.\nચાલુ છે? કાળી વિન્ડો ખુલી છે? એ જ WiFi?"
+        "Couldn't reach the shop server.\nCheck this phone's internet (WiFi or mobile data) and search again.",
+        "दुकान का सर्वर नहीं मिला।\nइस फ़ोन का इंटरनेट (WiFi या मोबाइल डेटा) देखो और फिर ढूँढो।",
+        "દુકાનનું સર્વર ન મળ્યું.\nઆ ફોનનું ઇન્ટરનેટ (WiFi કે મોબાઈલ ડેટા) જુઓ અને ફરી શોધો."
     )
-    val scanQr get() = t("📷  Scan QR on laptop screen", "📷  लैपटॉप की QR स्कैन करो", "📷  લેપટોપનો QR સ્કેન કરો")
+    val scanQr get() = t("📷  Scan the server QR", "📷  सर्वर की QR स्कैन करो", "📷  સર્વરનો QR સ્કેન કરો")
     val scanPrompt get() = t(
-        "Point at the QR on the laptop screen",
-        "लैपटॉप की स्क्रीन पर QR पर कैमरा रखो",
-        "લેપટોપ સ્ક્રીન પરના QR પર કૅમેરો રાખો"
+        "Point at the server's QR code",
+        "सर्वर के QR कोड पर कैमरा रखो",
+        "સર્વરના QR કોડ પર કૅમેરો રાખો"
     )
     val searchAgain get() = t("🔄  Search again", "🔄  फिर ढूँढो", "🔄  ફરી શોધો")
     val orTypeAddr get() = t(
-        "or type the address from the laptop",
-        "या लैपटॉप का पता टाइप करो",
-        "અથવા લેપટોપનું સરનામું ટાઈપ કરો"
+        "or type the server address",
+        "या सर्वर का पता टाइप करो",
+        "અથવા સર્વરનું સરનામું ટાઈપ કરો"
     )
     val serverAddress get() = t("Server address", "सर्वर पता", "સર્વરનું સરનામું")
     val connect get() = t("Connect", "कनेक्ट करो", "કનેક્ટ કરો")
+    val checking get() = t("Checking…", "जाँच रहे हैं…", "ચકાસી રહ્યાં છીએ…")
     val badAddress get() = t("That doesn't look like an address", "यह पता सही नहीं लगता", "આ સરનામું બરાબર નથી લાગતું")
     fun noServerAt(addr: String) = t(
-        "No server at $addr. Same WiFi? Black window open on the laptop?",
-        "$addr पर सर्वर नहीं मिला। वही WiFi? लैपटॉप पर काली विंडो खुली है?",
-        "$addr પર સર્વર ન મળ્યું. એ જ WiFi? લેપટોપ પર કાળી વિન્ડો ખુલી છે?"
+        "No POS server answered at $addr. Check the address and this phone's internet.",
+        "$addr पर कोई POS सर्वर नहीं मिला। पता और इस फ़ोन का इंटरनेट देखो।",
+        "$addr પર કોઈ POS સર્વર ન મળ્યું. સરનામું અને આ ફોનનું ઇન્ટરનેટ જુઓ."
     )
 
     // ---- login ----
     val enterPin get() = t("Enter your PIN", "अपना PIN डालो", "તમારો PIN નાખો")
-    val changeServer get() = t("change", "बदलो", "બદલો")
 
     // ---- waiter serve list ----
     val serveTitle get() = t("Serve", "परोसो", "પીરસો")

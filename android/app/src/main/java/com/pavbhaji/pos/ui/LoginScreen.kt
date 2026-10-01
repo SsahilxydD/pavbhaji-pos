@@ -1,6 +1,7 @@
 package com.pavbhaji.pos.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -11,7 +12,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -24,6 +24,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -43,14 +44,19 @@ fun LoginScreen(onLoggedIn: () -> Unit, onChangeServer: () -> Unit) {
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
-            // Brand lockup: dish in a warm tile, wordmark under it.
+            // Brand lockup: dish in a warm tile, wordmark under it. A long
+            // press on the tile opens the server setup — it used to be a
+            // visible "server · change" link that staff wandered into
+            // mid-shift; the phones talk to the one cloud server and nobody
+            // on the floor ever needs it.
             Box(
                 Modifier
                     .size(76.dp)
                     .background(
                         Brush.linearGradient(listOf(Color(0xFFFFE3C2), Color(0xFFFFD1A6))),
                         RoundedCornerShape(24.dp)
-                    ),
+                    )
+                    .pointerInput(Unit) { detectTapGestures(onLongPress = { onChangeServer() }) },
                 contentAlignment = Alignment.Center
             ) { Text("🍛", fontSize = 40.sp) }
             Text(
@@ -82,18 +88,6 @@ fun LoginScreen(onLoggedIn: () -> Unit, onChangeServer: () -> Unit) {
                 },
                 error = error
             )
-            Surface(
-                onClick = onChangeServer,
-                color = Color.Transparent,
-                shape = RoundedCornerShape(99.dp),
-                modifier = Modifier.padding(top = 16.dp)
-            ) {
-                Text(
-                    "${Deps.session.serverAddr}  ·  ${S.changeServer}",
-                    fontSize = 12.sp, color = Pb.ink3, fontWeight = FontWeight.Medium,
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
-                )
-            }
         }
         LangAction(
             tint = MaterialTheme.colorScheme.primary,

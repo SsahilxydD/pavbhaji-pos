@@ -48,7 +48,14 @@ fun PosApp() {
 
     Surface(Modifier.fillMaxSize()) {
         when (stage) {
-            Stage.Connect -> ConnectScreen(onConnected = { stage = Stage.Login })
+            Stage.Connect -> {
+                // Opened from the login logo by mistake: Back returns to the
+                // PIN pad (there is always the built-in cloud address).
+                if (session.serverAddr.isNotEmpty()) {
+                    androidx.activity.compose.BackHandler { stage = Stage.Login }
+                }
+                ConnectScreen(onConnected = { stage = Stage.Login })
+            }
             Stage.Login -> LoginScreen(
                 onLoggedIn = { stage = Stage.Home },
                 onChangeServer = { stage = Stage.Connect }

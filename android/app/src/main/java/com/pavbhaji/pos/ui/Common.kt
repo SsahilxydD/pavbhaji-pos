@@ -314,7 +314,7 @@ fun ConnBanner(connected: Boolean) {
             Modifier
                 .fillMaxWidth()
                 .background(Color(0xFFF7E7C8))
-                .padding(vertical = 7.dp),
+                .padding(horizontal = 14.dp, vertical = 7.dp),
             horizontalArrangement = Arrangement.Center,
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -328,7 +328,7 @@ fun ConnBanner(connected: Boolean) {
                 S.reconnecting,
                 color = Color(0xFF6B4A00), fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
                 textAlign = TextAlign.Center,
-                modifier = Modifier.padding(start = 8.dp, end = 12.dp)
+                modifier = Modifier.padding(start = 8.dp)
             )
         }
     }

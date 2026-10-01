@@ -939,17 +939,19 @@ function paintCartBar() {
   var bar = $('bar');
   if (!cart.length) { bar.className = ''; bar.innerHTML = ''; return; }
   var n = cartPlates();
-  var btn = '<button class="primary" id="sendBtn"' + (sending ? ' disabled' : '') + '>';
+  // While it goes: a turning ring and "Bhej rahe…", not just a greyed button.
+  var btn = '<button class="primary' + (sending ? ' busy' : '') + '" id="sendBtn"' + (sending ? ' disabled aria-busy="true"' : '') + '>';
+  var busyLabel = '<span class="spin" aria-hidden="true"></span>' + esc(S.sending);
   if (cartLocked) {
     bar.className = 'bar stack';
     bar.innerHTML = '<div class="unsure">' + esc(S.unsureBar) + '</div>' +
-      btn + esc(sending ? S.sending : S.resend + ' · ' + S.items(n)) + '</button>';
+      btn + (sending ? busyLabel : esc(S.resend + ' · ' + S.items(n))) + '</button>';
   } else {
     // The left half opens the cart: every line, its note, its count.
     bar.className = 'bar';
     bar.innerHTML = '<button class="ghost cartbtn" id="cartBtn">' +
         '<b>' + esc(S.items(n)) + ' · ' + rupees(cartTotal()) + '</b><small>' + esc(S.cartHint) + '</small></button>' +
-      btn + esc(sending ? S.sending : S.sendKitchen) + '</button>';
+      btn + (sending ? busyLabel : esc(S.sendKitchen)) + '</button>';
     $('cartBtn').onclick = openCart;
   }
   $('sendBtn').onclick = function () { if (onSend) onSend(); };

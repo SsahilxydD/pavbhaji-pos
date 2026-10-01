@@ -154,6 +154,15 @@ button.chipbtn {
 button.ghost { background:var(--card); color:var(--ink); border-color:var(--line); }
 button.danger { background:var(--danger-bg); color:var(--danger); border-color:#f6cfca; }
 button:disabled { opacity:.45; }
+/* a button whose request is on its way: barely dimmed, with a turning ring */
+button.busy:disabled { opacity:.8; cursor:progress; }
+.spin {
+  display:inline-block; width:15px; height:15px; margin-right:8px; vertical-align:-2px;
+  border:2.5px solid currentColor; border-right-color:transparent; border-radius:50%;
+  animation:spin .7s linear infinite;
+}
+@keyframes spin { to { transform:rotate(360deg); } }
+@media (prefers-reduced-motion:reduce) { .spin { animation-duration:2s; } }
 .btnrow { display:flex; gap:9px; }
 .btnrow > * { flex:1; }
 

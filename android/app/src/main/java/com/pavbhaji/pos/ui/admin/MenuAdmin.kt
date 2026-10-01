@@ -37,6 +37,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -81,7 +83,14 @@ fun MenuAdmin(onBack: () -> Unit) {
     var colourFor by remember { mutableStateOf<MenuItemDto?>(null) }
     var addToCat by remember { mutableStateOf<CategoryDto?>(null) }
     var addCategory by remember { mutableStateOf(false) }
+    var archiveFor by remember { mutableStateOf<MenuItemDto?>(null) }
     var err by remember { mutableStateOf<String?>(null) }
+    // A write the server refused (or that never reached it). Every admin
+    // write used to ignore its answer — a failed availability switch just
+    // snapped back with no word. Kept apart from `err`, which a successful
+    // reload clears.
+    var actionErr by remember { mutableStateOf<String?>(null) }
+    actionErr?.let { LaunchedEffect(it) { kotlinx.coroutines.delay(5000); actionErr = null } }
 
     suspend fun refresh() {
         when (val m = Deps.api.menu()) {
@@ -89,6 +98,12 @@ fun MenuAdmin(onBack: () -> Unit) {
             is ApiResult.Err -> err = m.message
         }
     }
+    // Runs one admin write; on failure says why and returns the message.
+    suspend fun write(call: suspend () -> ApiResult<*>): String? =
+        when (val r = call()) {
+            is ApiResult.Ok -> null
+            is ApiResult.Err -> { actionErr = r.message; r.message }
+        }
     LaunchedEffect(Unit) {
         refresh()
         Deps.live.topics.collect { if (it == "menu") refresh() }
@@ -100,7 +115,7 @@ fun MenuAdmin(onBack: () -> Unit) {
             onBack = onBack,
             actions = { HeaderTextAction(S.addCategory) { addCategory = true } }
         )
-        com.pavbhaji.pos.ui.ErrorBanner(err)
+        com.pavbhaji.pos.ui.ErrorBanner(actionErr ?: err)
 
         LazyColumn(
             Modifier.fillMaxSize(),
@@ -130,7 +145,7 @@ fun MenuAdmin(onBack: () -> Unit) {
                             onColour = { colourFor = mi },
                             onToggle = { on ->
                                 scope.launch {
-                                    Deps.api.menuItemPatch(mi.id, """{"available":$on}""")
+                                    write { Deps.api.menuItemPatch(mi.id, """{"available":$on}""") }
                                     refresh()
                                 }
                             }
@@ -142,6 +157,9 @@ fun MenuAdmin(onBack: () -> Unit) {
         }
     }
 
+    // Every kitchen dish's bucket colour, for the "too close to …" note.
+    val kitchenColours = menu.flatMap { it.items }.filter { it.station == "kitchen" }
+
     // ---- colour ----
     colourFor?.let { mi ->
         ColourPickerDialog(
@@ -149,12 +167,15 @@ fun MenuAdmin(onBack: () -> Unit) {
             initial = colourOf(mi),
             onPick = { hex ->
                 scope.launch {
-                    Deps.api.menuItemPatch(mi.id, """{"colour":"$hex"}""")
+                    write { Deps.api.menuItemPatch(mi.id, """{"colour":"$hex"}""") }
                     colourFor = null
                     refresh()
                 }
             },
-            onDismiss = { colourFor = null }
+            onDismiss = { colourFor = null },
+            others = if (mi.station == "kitchen")
+                kitchenColours.filter { it.id != mi.id }.map { it.name to colourOf(it) }
+            else emptyList()
         )
     }
 
@@ -168,6 +189,7 @@ fun MenuAdmin(onBack: () -> Unit) {
         var withFood by remember(mi.id) { mutableStateOf(mi.serveWithFood) }
         var cap by remember(mi.id) { mutableStateOf(mi.batchCap?.toString() ?: "") }
         var ageMin by remember(mi.id) { mutableStateOf(mi.batchAgeMin?.toString() ?: "") }
+        var dErr by remember(mi.id) { mutableStateOf<String?>(null) }
         AlertDialog(
             onDismissRequest = { editItem = null },
             title = { Text(mi.name) },
@@ -200,12 +222,11 @@ fun MenuAdmin(onBack: () -> Unit) {
                     } else {
                         WithFoodToggle(withFood) { withFood = it }
                     }
-                    TextButton(onClick = {
-                        scope.launch {
-                            Deps.api.menuItemPatch(mi.id, """{"active":false}""")
-                            editItem = null; refresh()
-                        }
-                    }) { Text(S.archiveItem, color = MaterialTheme.colorScheme.error, fontSize = 13.sp) }
+                    // Archiving hides the dish everywhere: it asks first.
+                    TextButton(onClick = { editItem = null; archiveFor = mi }) {
+                        Text(S.archiveItem, color = MaterialTheme.colorScheme.error, fontSize = 13.sp)
+                    }
+                    dErr?.let { Text(it, color = MaterialTheme.colorScheme.error, fontSize = 13.sp) }
                 }
             },
             confirmButton = {
@@ -219,13 +240,17 @@ fun MenuAdmin(onBack: () -> Unit) {
                             val tuning = if (station == "kitchen")
                                 ""","batchCap":${cap.toLongOrNull() ?: 0},"batchAgeMin":${ageMin.toLongOrNull() ?: 0}"""
                             else ""","serveWithFood":$withFood"""
-                            Deps.api.menuItemPatch(
-                                mi.id,
-                                """{"name":${Deps.api.json.encodeToString(kotlinx.serialization.serializer<String>(), name.trim())},"price":$p,"station":"$station"$tuning}"""
-                            )
-                            editItem = null; refresh()
+                            dErr = write {
+                                Deps.api.menuItemPatch(
+                                    mi.id,
+                                    """{"name":${Deps.api.json.encodeToString(kotlinx.serialization.serializer<String>(), name.trim())},"price":$p,"station":"$station"$tuning}"""
+                                )
+                            }
+                            // Refused: the dialog stays open with the reason.
+                            if (dErr == null) editItem = null
+                            refresh()
                         }
-                    }
+                    } else dErr = S.namePriceNeeded
                 }) { Text(S.save) }
             },
             dismissButton = { TextButton(onClick = { editItem = null }) { Text(S.back) } }
@@ -240,6 +265,7 @@ fun MenuAdmin(onBack: () -> Unit) {
         var station by remember(cat.id) { mutableStateOf("kitchen") }
         var withFood by remember(cat.id) { mutableStateOf(false) }
         var morePicker by remember { mutableStateOf(false) }
+        var dErr by remember(cat.id) { mutableStateOf<String?>(null) }
         AlertDialog(
             onDismissRequest = { addToCat = null },
             title = { Text(S.newItemIn(cat.name)) },
@@ -253,6 +279,8 @@ fun MenuAdmin(onBack: () -> Unit) {
                     StationPicker(station) { station = it }
                     if (station == "counter") WithFoodToggle(withFood) { withFood = it }
                     ColourSwatchRow(colour, onSelect = { colour = it }, onMore = { morePicker = true })
+                    if (station == "kitchen") ColourClashNote(colour, kitchenColours.map { it.name to colourOf(it) })
+                    dErr?.let { Text(it, color = MaterialTheme.colorScheme.error, fontSize = 13.sp, modifier = Modifier.padding(top = 6.dp)) }
                 }
             },
             confirmButton = {
@@ -260,10 +288,11 @@ fun MenuAdmin(onBack: () -> Unit) {
                     val p = parseRupees(price)
                     if (p != null && name.trim().isNotEmpty()) {
                         scope.launch {
-                            Deps.api.menuItemCreate(cat.id, name.trim(), p, colour, station, withFood)
-                            addToCat = null; refresh()
+                            dErr = write { Deps.api.menuItemCreate(cat.id, name.trim(), p, colour, station, withFood) }
+                            if (dErr == null) addToCat = null
+                            refresh()
                         }
-                    }
+                    } else dErr = S.namePriceNeeded
                 }) { Text(S.add) }
             },
             dismissButton = { TextButton(onClick = { addToCat = null }) { Text(S.back) } }
@@ -273,7 +302,8 @@ fun MenuAdmin(onBack: () -> Unit) {
                 title = name.trim().ifBlank { S.newItem },
                 initial = colour,
                 onPick = { colour = it; morePicker = false },
-                onDismiss = { morePicker = false }
+                onDismiss = { morePicker = false },
+                others = if (station == "kitchen") kitchenColours.map { it.name to colourOf(it) } else emptyList()
             )
         }
     }
@@ -281,21 +311,47 @@ fun MenuAdmin(onBack: () -> Unit) {
     // ---- add category ----
     if (addCategory) {
         var name by remember { mutableStateOf("") }
+        var dErr by remember { mutableStateOf<String?>(null) }
         AlertDialog(
             onDismissRequest = { addCategory = false },
             title = { Text(S.newCategory) },
-            text = { OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text(S.name) }) },
+            text = {
+                Column {
+                    OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text(S.name) })
+                    dErr?.let { Text(it, color = MaterialTheme.colorScheme.error, fontSize = 13.sp, modifier = Modifier.padding(top = 6.dp)) }
+                }
+            },
             confirmButton = {
                 Button(onClick = {
                     if (name.trim().isNotEmpty()) {
                         scope.launch {
-                            Deps.api.categoryCreate(name.trim())
-                            addCategory = false; refresh()
+                            dErr = write { Deps.api.categoryCreate(name.trim()) }
+                            if (dErr == null) addCategory = false
+                            refresh()
                         }
                     }
                 }) { Text(S.add) }
             },
             dismissButton = { TextButton(onClick = { addCategory = false }) { Text(S.back) } }
+        )
+    }
+
+    // ---- archive: hides the dish from every menu, so it asks first ----
+    archiveFor?.let { mi ->
+        com.pavbhaji.pos.ui.ConfirmDialog(
+            title = S.archiveQ(mi.name),
+            body = S.archiveBody,
+            confirmLabel = S.archiveBtn,
+            dismissLabel = S.keepBtn,
+            destructive = true,
+            onConfirm = {
+                archiveFor = null
+                scope.launch {
+                    write { Deps.api.menuItemPatch(mi.id, """{"active":false}""") }
+                    refresh()
+                }
+            },
+            onDismiss = { archiveFor = null }
         )
     }
 }
@@ -320,7 +376,8 @@ private fun MenuItemCard(
         ) {
             // Generous tap target around the swatch — this is the colour editor.
             Box(
-                Modifier.size(46.dp).clip(RoundedCornerShape(12.dp)).clickable(onClick = onColour),
+                Modifier.size(46.dp).clip(RoundedCornerShape(12.dp)).clickable(onClick = onColour)
+                    .semantics { contentDescription = "${S.bucketColour} · ${mi.name}" },
                 contentAlignment = Alignment.Center
             ) {
                 Box(Modifier.size(24.dp).background(dishColour(mi.colour, mi.id), RoundedCornerShape(8.dp)))

@@ -35,6 +35,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -43,7 +44,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -102,9 +102,20 @@ fun KitchenScreen(onLogout: () -> Unit, embedded: Boolean = false, onBack: (() -
         onDispose { window?.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON) }
     }
 
-    // Beep when a bucket we've never seen shows up.
+    // Beep when a bucket we've never seen shows up, or plates join one we
+    // have. One generator for the screen's life, released when it goes (a
+    // new one per beep leaked audio tracks over a night). ALARM stream, so
+    // it rings with the media volume at zero, plus a buzz for a phone lying
+    // on the steel counter.
     val seenBuckets = remember { mutableSetOf<Long>() }
+    val lastQty = remember { mutableMapOf<Long, Long>() }
     var firstLoad by remember { mutableStateOf(true) }
+    val beeper = remember {
+        if (embedded) null
+        else try { ToneGenerator(AudioManager.STREAM_ALARM, 90) } catch (_: Exception) { null }
+    }
+    DisposableEffect(beeper) { onDispose { beeper?.release() } }
+    val view = LocalView.current
 
     // Every chef action reaches the server through ONE queue, one request at
     // a time, in tap order. Nothing is dropped because an earlier request is
@@ -137,13 +148,14 @@ fun KitchenScreen(onLogout: () -> Unit, embedded: Boolean = false, onBack: (() -
         when (r) {
             is ApiResult.Ok -> {
                 val fresh = r.value.buckets.map { it.id }.filter { it !in seenBuckets }
-                if (fresh.isNotEmpty() && !firstLoad && !embedded) {
-                    try {
-                        ToneGenerator(AudioManager.STREAM_MUSIC, 90)
-                            .startTone(ToneGenerator.TONE_PROP_BEEP2, 500)
-                    } catch (_: Exception) {}
+                val grew = r.value.buckets.any { b -> b.id in seenBuckets && b.qty > (lastQty[b.id] ?: 0L) }
+                if ((fresh.isNotEmpty() || grew) && !firstLoad && !embedded) {
+                    try { beeper?.startTone(ToneGenerator.TONE_PROP_BEEP2, 500) } catch (_: Exception) {}
+                    view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
                 }
                 seenBuckets.addAll(fresh)
+                lastQty.clear()
+                r.value.buckets.forEach { lastQty[it.id] = it.qty }
                 firstLoad = false
                 data = r.value
                 loaded = true
@@ -222,9 +234,7 @@ fun KitchenScreen(onLogout: () -> Unit, embedded: Boolean = false, onBack: (() -
             com.pavbhaji.pos.ui.LangAction(tint = Kc.ink2)
             Box(Modifier.size(7.dp).background(if (connected) Kc.ready else Kc.late, CircleShape))
             if (onBack == null) {
-                TextButton(onClick = onLogout) {
-                    Text(S.logout, color = Kc.ink2, fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                }
+                com.pavbhaji.pos.ui.LogoutAction(onLogout, tint = Kc.ink2, fontSize = 13)
             } else {
                 Spacer(Modifier.width(10.dp))
             }
@@ -245,14 +255,24 @@ fun KitchenScreen(onLogout: () -> Unit, embedded: Boolean = false, onBack: (() -
                 Text(S.noBuckets, color = Kc.ink2, fontSize = 14.sp)
             }
         } else {
+            // The bucket this chef is cooking is always the first card — it
+            // used to keep its queue place and sat 4th, half off the screen.
+            // The rest stay oldest first.
+            val mineFirst = data.buckets.sortedByDescending { it.status == "taken" && it.takenBy == myId }
+            val myBucket = mineFirst.firstOrNull()?.takeIf { it.status == "taken" && it.takenBy == myId }?.id
+            val listState = rememberLazyListState()
+            // Taking a bucket moves it to the top; follow it there (the list
+            // would otherwise stay on whatever card was at the top before).
+            LaunchedEffect(myBucket) { if (myBucket != null) listState.animateScrollToItem(0) }
             LazyColumn(
                 Modifier.fillMaxSize(),
+                state = listState,
                 contentPadding = PaddingValues(12.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                val myBusy = data.buckets.any { it.status == "taken" && it.takenBy == myId }
-                items(data.buckets.size, key = { data.buckets[it].id }) { i ->
-                    val b = data.buckets[i]
+                val myBusy = myBucket != null
+                items(mineFirst.size, key = { mineFirst[it].id }) { i ->
+                    val b = mineFirst[i]
                     BucketCard(
                         modifier = Modifier.animateItem(),
                         b = b, cap = if (b.cap > 0) b.cap else data.cap, myId = myId, myBusy = myBusy,
@@ -322,6 +342,12 @@ fun KitchenScreen(onLogout: () -> Unit, embedded: Boolean = false, onBack: (() -
 
 private fun minsSince(ms: Long): Long =
     ((System.currentTimeMillis() - ms) / 60_000).coerceAtLeast(0)
+
+// How long the food in this bucket has waited: its oldest plate still on the
+// tawa. Not the bucket's own birth — an open bucket left over from last
+// night took the day's first order and read "526m" in red.
+private fun bucketAge(b: BucketDto): Long =
+    b.lines.filter { !it.done && it.since > 0 }.minOfOrNull { it.since } ?: b.createdAt
 
 @Composable
 private fun AgeChip(sinceMs: Long) {
@@ -401,7 +427,7 @@ private fun BucketCard(
                         "${b.qty}", color = Kc.ink, fontSize = 15.sp, fontWeight = FontWeight.ExtraBold
                     )
                     Text("/$cap", color = Kc.ink2, fontSize = 11.sp)
-                    if (b.status != "taken") AgeChip(b.createdAt)
+                    if (b.status != "taken") AgeChip(bucketAge(b))
                 }
                 // state chip + fill bar
                 Row(

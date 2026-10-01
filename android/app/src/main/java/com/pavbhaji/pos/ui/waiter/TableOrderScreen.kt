@@ -1,12 +1,19 @@
 package com.pavbhaji.pos.ui.waiter
 
+import android.os.SystemClock
 import android.view.HapticFeedbackConstants
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.lazy.LazyListScope
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -35,20 +42,29 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.listSaver
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.snapshots.SnapshotStateList
+import androidx.compose.runtime.toMutableStateList
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
@@ -64,8 +80,9 @@ import com.pavbhaji.pos.ui.AppHeader
 import com.pavbhaji.pos.ui.BigButton
 import com.pavbhaji.pos.ui.CardLine
 import com.pavbhaji.pos.ui.ConfirmDialog
-import com.pavbhaji.pos.ui.ConnBanner
 import com.pavbhaji.pos.ui.ErrorBanner
+import com.pavbhaji.pos.ui.HoldUpdates
+import com.pavbhaji.pos.ui.InkDark
 import com.pavbhaji.pos.ui.ListSkeleton
 import com.pavbhaji.pos.ui.Pb
 import com.pavbhaji.pos.ui.QtyStepper
@@ -79,6 +96,7 @@ import com.pavbhaji.pos.ui.dishColour
 import com.pavbhaji.pos.ui.items as itemsLabel
 import com.pavbhaji.pos.ui.pricesVisible
 import com.pavbhaji.pos.ui.rupees
+import com.pavbhaji.pos.ui.swallowTapsAfter
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import java.util.UUID
@@ -90,19 +108,49 @@ data class CartLine(
     val qty: Long, val note: String
 )
 
+// One more of a dish: onto its plain (no-note) line, or a new line. Returns
+// true when a NEW line appeared — the cart strip just grew under the finger.
+fun cartAddOne(cart: MutableList<CartLine>, id: Long, name: String, price: Long): Boolean {
+    val i = cart.indexOfFirst { it.menuItemId == id && it.note.isEmpty() }
+    if (i >= 0) { cart[i] = cart[i].copy(qty = cart[i].qty + 1); return false }
+    cart.add(CartLine(id, name, price, 1, ""))
+    return true
+}
+
+// One less of a dish, from its plain line first (a noted "Jain" plate is the
+// deliberate one), dropping the line at zero.
+fun cartRemoveOne(cart: MutableList<CartLine>, id: Long) {
+    val i = cart.indexOfLast { it.menuItemId == id && it.note.isEmpty() }
+        .takeIf { it >= 0 } ?: cart.indexOfLast { it.menuItemId == id }
+    if (i < 0) return
+    if (cart[i].qty <= 1) cart.removeAt(i) else cart[i] = cart[i].copy(qty = cart[i].qty - 1)
+}
+
+// A cart outlives Android killing the app in the background (the cashier on
+// a 3 GB phone flipping to the UPI app): flattened into the saved state and
+// rebuilt on return, together with its idempotency key.
+val CartSaver = listSaver<SnapshotStateList<CartLine>, Any>(
+    save = { cart -> cart.flatMap { listOf(it.menuItemId, it.name, it.price, it.qty, it.note) } },
+    restore = { flat ->
+        flat.chunked(5).map {
+            CartLine(it[0] as Long, it[1] as String, it[2] as Long, it[3] as Long, it[4] as String)
+        }.toMutableStateList()
+    }
+)
+
 @Composable
 fun TableOrderScreen(tableId: Long, tableName: String, onBack: () -> Unit) {
     val scope = rememberCoroutineScope()
-    val connected by Deps.live.connected.collectAsState()
     val isAdmin = Deps.session.staffRole == "admin"
 
     var menu by remember { mutableStateOf<List<CategoryDto>>(emptyList()) }
     var order by remember { mutableStateOf<OrderDetailDto?>(null) }
-    val cart = remember { mutableStateListOf<CartLine>() }
+    val cart = rememberSaveable(saver = CartSaver) { mutableStateListOf<CartLine>() }
+    HoldUpdates(cart.isNotEmpty())
 
     // The idempotency key. Fixed for the lifetime of this cart; a new one is
     // made ONLY after the server confirmed the previous ticket.
-    var clientTicketId by remember { mutableStateOf(UUID.randomUUID().toString()) }
+    var clientTicketId by rememberSaveable { mutableStateOf(UUID.randomUUID().toString()) }
     var sending by remember { mutableStateOf(false) }
     var sendError by remember { mutableStateOf<String?>(null) }
 
@@ -144,10 +192,12 @@ fun TableOrderScreen(tableId: Long, tableName: String, onBack: () -> Unit) {
         }
     }
 
+    // When the bottom bar last grew (first dish in, or a new line): for a
+    // moment after that it ignores touches, so the second half of a fast
+    // double-tap on the lowest menu row can't hit the strip's "−" or Send.
+    var barArmedAt by remember { mutableLongStateOf(0L) }
     fun addToCart(id: Long, name: String, price: Long) {
-        val i = cart.indexOfFirst { it.menuItemId == id && it.note.isEmpty() }
-        if (i >= 0) cart[i] = cart[i].copy(qty = cart[i].qty + 1)
-        else cart.add(CartLine(id, name, price, 1, ""))
+        if (cartAddOne(cart, id, name, price)) barArmedAt = SystemClock.uptimeMillis()
     }
 
     fun send() {
@@ -187,7 +237,6 @@ fun TableOrderScreen(tableId: Long, tableName: String, onBack: () -> Unit) {
             },
             onBack = leave
         )
-        ConnBanner(connected)
         ErrorBanner(loadError)
         toast?.let { LaunchedEffect(it) { kotlinx.coroutines.delay(2500); toast = null } }
 
@@ -199,6 +248,19 @@ fun TableOrderScreen(tableId: Long, tableName: String, onBack: () -> Unit) {
         // When the table's order first appears (opened, or this cart was the
         // first KOT) go to the top, where its tickets are. Waits for layout.
         LaunchedEffect(o?.id) { if (o != null && cart.isEmpty()) listState.scrollToItem(0) }
+
+        // Where each menu category starts in the list below (same order as
+        // the items: tickets, the ADD ITEMS header, then category by
+        // category), for the chips that jump there.
+        val catFirstIndex = remember(o, menu) {
+            var i = 0
+            if (o != null) { i += 1; o.tickets.forEach { i += 1 + it.items.size } }
+            i += 1
+            buildMap {
+                menu.forEach { c -> if (c.items.isNotEmpty()) { put(c.id, i); i += 1 + c.items.size } }
+            }
+        }
+        if (loaded) CategoryChips(menu, catFirstIndex, listState)
 
         Box(Modifier.weight(1f)) {
             if (!loaded) {
@@ -256,7 +318,8 @@ fun TableOrderScreen(tableId: Long, tableName: String, onBack: () -> Unit) {
                                 colour = dishColour(m.colour, m.id),
                                 counter = m.station == "counter",
                                 inCart = cartQty[m.id] ?: 0,
-                                onClick = { if (m.available) addToCart(m.id, m.name, m.price) }
+                                onClick = { if (m.available) addToCart(m.id, m.name, m.price) },
+                                onMinus = { cartRemoveOne(cart, m.id) }
                             )
                         }
                     }
@@ -286,6 +349,7 @@ fun TableOrderScreen(tableId: Long, tableName: String, onBack: () -> Unit) {
         Surface(shadowElevation = 10.dp) {
             Column(
                 Modifier.fillMaxWidth()
+                    .swallowTapsAfter(barArmedAt)
                     .navigationBarsPadding()
                     .padding(horizontal = 12.dp, vertical = 10.dp)
             ) {
@@ -380,13 +444,57 @@ fun TableOrderScreen(tableId: Long, tableName: String, onBack: () -> Unit) {
     }
 }
 
+// A row of category chips pinned above the menu: one tap jumps the list to
+// that category (drinks used to be three flings down a 50-dish list). The
+// chip of the category on screen is filled and kept in view.
+@Composable
+fun CategoryChips(menu: List<CategoryDto>, firstIndex: Map<Long, Int>, listState: LazyListState) {
+    val cats = menu.filter { firstIndex.containsKey(it.id) }
+    if (cats.size < 2) return
+    val scope = rememberCoroutineScope()
+    val current by remember(firstIndex, cats) {
+        derivedStateOf {
+            val top = listState.firstVisibleItemIndex
+            cats.lastOrNull { (firstIndex[it.id] ?: Int.MAX_VALUE) <= top }?.id
+        }
+    }
+    val rowState = rememberLazyListState()
+    LaunchedEffect(current) {
+        val i = cats.indexOfFirst { it.id == current }
+        if (i >= 0) rowState.animateScrollToItem(i)
+    }
+    LazyRow(
+        state = rowState,
+        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 2.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        modifier = Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface)
+    ) {
+        items(cats, key = { it.id }) { c ->
+            val sel = c.id == current
+            Surface(
+                onClick = { scope.launch { listState.animateScrollToItem(firstIndex.getValue(c.id)) } },
+                shape = RoundedCornerShape(99.dp),
+                color = if (sel) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surface,
+                border = if (sel) null else androidx.compose.foundation.BorderStroke(1.dp, CardLine)
+            ) {
+                Text(
+                    c.name, fontSize = 13.sp, fontWeight = FontWeight.Bold, maxLines = 1,
+                    color = if (sel) Color.White else InkDark,
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp)
+                )
+            }
+        }
+    }
+}
+
 // Shared with the parcel manager's add-order screen — same one-row-per-dish,
 // tap-equals-plus-one picker everywhere an order is punched.
 @Composable
 fun MenuRow(
     name: String, price: Long, available: Boolean,
     colour: Color, counter: Boolean, inCart: Long,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    onMinus: (() -> Unit)? = null
 ) {
     val view = LocalView.current
     val interaction = remember { MutableInteractionSource() }
@@ -395,9 +503,14 @@ fun MenuRow(
         if (pressed && available) 0.975f else 1f,
         spring(dampingRatio = 0.7f, stiffness = 1100f), label = "menuRow"
     )
+    // Last time this row added a plate. The "−" appears under the finger on
+    // the first add, so a tap on it right after an add (a fast double or
+    // triple tap on the row) still means "one more", not "one less".
+    var lastAddAt by remember { mutableLongStateOf(0L) }
     Surface(
         onClick = {
             if (available) view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+            lastAddAt = SystemClock.uptimeMillis()
             onClick()
         },
         enabled = available,
@@ -438,6 +551,29 @@ fun MenuRow(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(end = 8.dp)
             )
+            // A mis-tap is undone right on the row — no hunting in the cart.
+            if (inCart > 0 && onMinus != null) {
+                Surface(
+                    onClick = {
+                        view.performHapticFeedback(HapticFeedbackConstants.KEYBOARD_TAP)
+                        if (SystemClock.uptimeMillis() - lastAddAt < 350) {
+                            lastAddAt = SystemClock.uptimeMillis(); onClick()
+                        } else onMinus()
+                    },
+                    shape = CircleShape,
+                    color = Color.White,
+                    border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.5f)),
+                    modifier = Modifier.padding(end = 8.dp).size(34.dp)
+                        .semantics { contentDescription = S.oneLess }
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Text(
+                            "−", fontSize = 19.sp, fontWeight = FontWeight.Bold, color = InkDark,
+                            modifier = Modifier.clearAndSetSemantics {}
+                        )
+                    }
+                }
+            }
             if (inCart > 0) {
                 Surface(color = MaterialTheme.colorScheme.primary, shape = CircleShape, modifier = Modifier.size(26.dp)) {
                     Box(contentAlignment = Alignment.Center) {
@@ -485,26 +621,34 @@ fun CartStrip(
                         Modifier.fillMaxWidth().padding(vertical = 3.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Column(Modifier.weight(1f).padding(end = 4.dp)) {
+                        // The dish name gets everything left of the stepper and
+                        // wraps instead of turning into "Cheese Butter Ma…" at a
+                        // big font. The note lives under it: tap the dish to
+                        // write one (the ✎ line says so).
+                        Column(
+                            Modifier.weight(1f).padding(end = 6.dp)
+                                .clip(RoundedCornerShape(8.dp))
+                                .clickable { onNote(idx) }
+                                .padding(vertical = 2.dp)
+                        ) {
                             Text(
                                 line.name, fontSize = 15.sp, fontWeight = FontWeight.Bold,
-                                maxLines = 2, overflow = TextOverflow.Ellipsis
+                                maxLines = 3, overflow = TextOverflow.Ellipsis
                             )
-                            val sub = listOfNotNull(
-                                if (pricesVisible()) rupees(line.price) else null,
-                                if (line.note.isNotEmpty()) "✎ ${line.note}" else null
-                            ).joinToString(" · ")
-                            if (sub.isNotEmpty()) Text(
-                                sub,
-                                fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
-                                color = if (line.note.isEmpty()) MaterialTheme.colorScheme.onSurfaceVariant
-                                else MaterialTheme.colorScheme.error
-                            )
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                if (pricesVisible()) Text(
+                                    rupees(line.price) + " · ",
+                                    fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Text(
+                                    if (line.note.isEmpty()) "✎ ${S.noteBtn}" else "✎ ${line.note}",
+                                    fontSize = 12.sp, fontWeight = FontWeight.SemiBold,
+                                    maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                    color = if (line.note.isEmpty()) MaterialTheme.colorScheme.primary
+                                    else MaterialTheme.colorScheme.error
+                                )
+                            }
                         }
-                        TextButton(
-                            onClick = { onNote(idx) },
-                            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 6.dp)
-                        ) { Text(S.noteBtn, fontSize = 12.sp) }
                         QtyStepper(line.qty) { q -> onQty(idx, q) }
                     }
                 }

@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
@@ -27,15 +28,18 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -50,10 +54,9 @@ import com.pavbhaji.pos.ui.AppHeader
 import com.pavbhaji.pos.ui.BigButton
 import com.pavbhaji.pos.ui.CardLine
 import com.pavbhaji.pos.ui.ConfirmDialog
-import com.pavbhaji.pos.ui.ConnBanner
 import com.pavbhaji.pos.ui.EmptyState
 import com.pavbhaji.pos.ui.ErrorBanner
-import com.pavbhaji.pos.ui.HeaderTextAction
+import com.pavbhaji.pos.ui.ListSkeleton
 import com.pavbhaji.pos.ui.Pb
 import com.pavbhaji.pos.ui.Pill
 import com.pavbhaji.pos.ui.S
@@ -62,7 +65,12 @@ import com.pavbhaji.pos.ui.ageMinutes
 import com.pavbhaji.pos.ui.dishColour
 import com.pavbhaji.pos.ui.items as itemsLabel
 import com.pavbhaji.pos.ui.rupees
+import com.pavbhaji.pos.ui.swallowTapsAfter
 import com.pavbhaji.pos.ui.waiter.CartLine
+import com.pavbhaji.pos.ui.waiter.CategoryChips
+import com.pavbhaji.pos.ui.waiter.CartSaver
+import com.pavbhaji.pos.ui.waiter.cartAddOne
+import com.pavbhaji.pos.ui.waiter.cartRemoveOne
 import com.pavbhaji.pos.ui.waiter.CartStrip
 import com.pavbhaji.pos.ui.waiter.MenuRow
 import com.pavbhaji.pos.ui.waiter.TableOrderScreen
@@ -76,16 +84,21 @@ import java.util.UUID
 // blue = handed over, collect and close. Tap a tab for the full order.
 @Composable
 fun ParcelHome(onLogout: () -> Unit) {
-    var selected by remember { mutableStateOf<TableStateDto?>(null) }
-    var adding by remember { mutableStateOf(false) }
+    // Which parcel is open (id + header title) and the add flow survive the
+    // app being killed in the background.
+    var selId by rememberSaveable { mutableStateOf<Long?>(null) }
+    var selTitle by rememberSaveable { mutableStateOf("") }
+    var adding by rememberSaveable { mutableStateOf(false) }
     var tables by remember { mutableStateOf<List<TableStateDto>>(emptyList()) }
     var loadError by remember { mutableStateOf<String?>(null) }
     var toast by remember { mutableStateOf<String?>(null) }
-    val connected by Deps.live.connected.collectAsState()
+    // Until the first answer, "no parcels" would be a guess — and staff
+    // re-punch parcels they think are missing.
+    var loaded by remember { mutableStateOf(false) }
 
     suspend fun refresh() {
         when (val r = Deps.api.tables()) {
-            is ApiResult.Ok -> { tables = r.value.tables; loadError = null }
+            is ApiResult.Ok -> { tables = r.value.tables; loadError = null; loaded = true }
             is ApiResult.Err -> loadError = r.message
         }
     }
@@ -97,14 +110,9 @@ fun ParcelHome(onLogout: () -> Unit) {
         while (true) { delay(25_000); refresh() }
     }
 
-    val sel = selected
+    val sel = selId
     if (sel != null) {
-        val customer = sel.order?.customerName ?: ""
-        TableOrderScreen(
-            tableId = sel.id,
-            tableName = if (customer.isEmpty()) sel.name else "$customer · ${sel.name}",
-            onBack = { selected = null }
-        )
+        TableOrderScreen(tableId = sel, tableName = selTitle, onBack = { selId = null })
         return
     }
     if (adding) {
@@ -125,10 +133,13 @@ fun ParcelHome(onLogout: () -> Unit) {
     Column(Modifier.fillMaxSize()) {
         AppHeader(
             title = "🥡 " + S.parcelsTitle,
-            subtitle = "${Deps.session.staffName} · ${S.openParcels(parcels.size)}",
-            actions = { HeaderTextAction(S.logout, onLogout) }
+            subtitle = "${Deps.session.staffName} · " + when {
+                loaded -> S.openParcels(parcels.size)
+                loadError != null -> S.offlineShort
+                else -> S.loading
+            },
+            actions = { com.pavbhaji.pos.ui.LogoutAction(onLogout) }
         )
-        ConnBanner(connected)
         ErrorBanner(loadError)
         toast?.let {
             Text(
@@ -139,7 +150,9 @@ fun ParcelHome(onLogout: () -> Unit) {
             LaunchedEffect(it) { delay(2500); toast = null }
         }
 
-        if (parcels.isEmpty()) {
+        if (!loaded) {
+            Box(Modifier.weight(1f).fillMaxWidth()) { ListSkeleton(rows = 3, rowHeight = 124.dp) }
+        } else if (parcels.isEmpty()) {
             Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
                 EmptyState("🥡", S.noParcels)
             }
@@ -152,7 +165,11 @@ fun ParcelHome(onLogout: () -> Unit) {
                 modifier = Modifier.weight(1f)
             ) {
                 items(parcels, key = { it.id }) { t ->
-                    ParcelCard(t, onClick = { selected = t }, modifier = Modifier.animateItem())
+                    ParcelCard(t, onClick = {
+                        val customer = t.order?.customerName ?: ""
+                        selTitle = if (customer.isEmpty()) t.name else "$customer · ${t.name}"
+                        selId = t.id
+                    }, modifier = Modifier.animateItem())
                 }
             }
         }
@@ -233,7 +250,7 @@ private fun ParcelCard(t: TableStateDto, onClick: () -> Unit, modifier: Modifier
                     when {
                         cooking -> Pill(S.inKitchen, Color(0xFFF0D060), Color(0xFF5D4000))
                         allReady -> Pill(S.allReadyPill, Pb.successDeep, Color.White)
-                        else -> Pill(S.collectAmt(rupees(o.total)), Pb.infoDeep, Color.White)
+                        else -> Pill(S.amountDue(rupees(o.total)), Pb.infoDeep, Color.White)
                     }
                 }
             }
@@ -247,13 +264,15 @@ private fun ParcelCard(t: TableStateDto, onClick: () -> Unit, modifier: Modifier
 @Composable
 fun AddParcelScreen(onDone: (Long) -> Unit, onBack: () -> Unit) {
     val scope = rememberCoroutineScope()
-    val connected by Deps.live.connected.collectAsState()
 
-    var custName by remember { mutableStateOf("") }
-    var custPhone by remember { mutableStateOf("") }
+    // Saved state: a parcel half-punched survives the app being killed in
+    // the background, and holds the silent update off until it is sent.
+    var custName by rememberSaveable { mutableStateOf("") }
+    var custPhone by rememberSaveable { mutableStateOf("") }
     var menu by remember { mutableStateOf<List<CategoryDto>>(emptyList()) }
-    val cart = remember { mutableStateListOf<CartLine>() }
-    var clientTicketId by remember { mutableStateOf(UUID.randomUUID().toString()) }
+    val cart = rememberSaveable(saver = CartSaver) { mutableStateListOf<CartLine>() }
+    var clientTicketId by rememberSaveable { mutableStateOf(UUID.randomUUID().toString()) }
+    com.pavbhaji.pos.ui.HoldUpdates(cart.isNotEmpty() || custName.isNotBlank())
     var sending by remember { mutableStateOf(false) }
     var sendError by remember { mutableStateOf<String?>(null) }
     var noteEditIdx by remember { mutableStateOf<Int?>(null) }
@@ -265,15 +284,31 @@ fun AddParcelScreen(onDone: (Long) -> Unit, onBack: () -> Unit) {
         }
     }
 
+    // Same double-tap guard as the table screen: the send bar grows when a
+    // new line goes in, and ignores touches for a moment after.
+    var barArmedAt by remember { mutableLongStateOf(0L) }
     fun addToCart(id: Long, name: String, price: Long) {
-        val i = cart.indexOfFirst { it.menuItemId == id && it.note.isEmpty() }
-        if (i >= 0) cart[i] = cart[i].copy(qty = cart[i].qty + 1)
-        else cart.add(CartLine(id, name, price, 1, ""))
+        if (cartAddOne(cart, id, name, price)) barArmedAt = android.os.SystemClock.uptimeMillis()
     }
+
+    val listState = rememberLazyListState()
+    // A missing name is the name field's problem, not the send button's:
+    // the field turns red with the reason under it, the list scrolls up to
+    // it and the keyboard opens there. The button keeps its own label (it
+    // used to flip to "Try again", which reads like a network failure).
+    var nameError by remember { mutableStateOf(false) }
+    val nameFocus = remember { FocusRequester() }
 
     fun send() {
         if (sending || cart.isEmpty()) return
-        if (custName.trim().isEmpty()) { sendError = S.nameNeeded; return }
+        if (custName.trim().isEmpty()) {
+            nameError = true
+            scope.launch {
+                listState.animateScrollToItem(0)
+                try { nameFocus.requestFocus() } catch (_: Exception) {}
+            }
+            return
+        }
         sending = true; sendError = null
         scope.launch {
             val lines = cart.map { NewTicketLine(it.menuItemId, it.qty, it.note) }
@@ -298,9 +333,18 @@ fun AddParcelScreen(onDone: (Long) -> Unit, onBack: () -> Unit) {
 
     Column(Modifier.fillMaxSize()) {
         AppHeader(title = "🥡 " + S.newParcel.trimStart('＋', ' '), subtitle = S.newOrder, onBack = leave)
-        ConnBanner(connected)
 
-        LazyColumn(Modifier.weight(1f).padding(horizontal = 12.dp)) {
+        // Category chips, as on the table screen. The list below is: the
+        // customer card, the ADD ITEMS header, then category by category.
+        val catFirstIndex = remember(menu) {
+            var i = 2
+            buildMap {
+                menu.forEach { c -> if (c.items.isNotEmpty()) { put(c.id, i); i += 1 + c.items.size } }
+            }
+        }
+        CategoryChips(menu, catFirstIndex, listState)
+
+        LazyColumn(Modifier.weight(1f).padding(horizontal = 12.dp), state = listState) {
             // ---- customer details ----
             item {
                 Surface(
@@ -312,11 +356,13 @@ fun AddParcelScreen(onDone: (Long) -> Unit, onBack: () -> Unit) {
                 ) {
                     Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         OutlinedTextField(
-                            value = custName, onValueChange = { custName = it.take(60) },
+                            value = custName, onValueChange = { custName = it.take(60); nameError = false },
                             label = { Text(S.customerName) },
                             singleLine = true,
+                            isError = nameError,
+                            supportingText = if (nameError) { { Text(S.nameNeeded) } } else null,
                             shape = RoundedCornerShape(12.dp),
-                            modifier = Modifier.fillMaxWidth()
+                            modifier = Modifier.fillMaxWidth().focusRequester(nameFocus)
                         )
                         OutlinedTextField(
                             value = custPhone,
@@ -355,7 +401,8 @@ fun AddParcelScreen(onDone: (Long) -> Unit, onBack: () -> Unit) {
                             colour = dishColour(m.colour, m.id),
                             counter = m.station == "counter",
                             inCart = cartQty[m.id] ?: 0,
-                            onClick = { if (m.available) addToCart(m.id, m.name, m.price) }
+                            onClick = { if (m.available) addToCart(m.id, m.name, m.price) },
+                            onMinus = { cartRemoveOne(cart, m.id) }
                         )
                     }
                 }
@@ -367,6 +414,7 @@ fun AddParcelScreen(onDone: (Long) -> Unit, onBack: () -> Unit) {
         Surface(shadowElevation = 10.dp) {
             Column(
                 Modifier.fillMaxWidth()
+                    .swallowTapsAfter(barArmedAt)
                     .navigationBarsPadding()
                     .padding(horizontal = 12.dp, vertical = 10.dp)
             ) {

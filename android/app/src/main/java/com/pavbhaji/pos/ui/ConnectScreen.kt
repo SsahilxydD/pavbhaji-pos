@@ -47,10 +47,11 @@ import com.pavbhaji.pos.data.Discovery
 import com.pavbhaji.pos.data.Session
 import kotlinx.coroutines.launch
 
-// Connecting a phone should be zero work: the screen hunts for the laptop by
-// itself (UDP shout, then subnet sweep) and connects when it finds exactly one.
-// Fallbacks, in order of effort: scan the QR on the laptop screen, tap the
-// right server if several answered, or type the address like the old days.
+// Server setup. A new phone needs none of it (the cloud server is built in),
+// so the login screen hides the way in behind a long press on the logo. It
+// tries the cloud server first, then the old LAN hunt (UDP shout, subnet
+// sweep) in case a counter machine ever comes back. Fallbacks: scan a QR,
+// tap the right server if several answered, or type the address.
 @Composable
 fun ConnectScreen(onConnected: () -> Unit) {
     val scope = rememberCoroutineScope()
@@ -153,7 +154,7 @@ fun ConnectScreen(onConnected: () -> Unit) {
                                 Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 14.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Text("💻", fontSize = 20.sp)
+                                Text("🖥", fontSize = 20.sp)
                                 Column(Modifier.weight(1f).padding(start = 12.dp)) {
                                     Text(f.name, fontSize = 15.sp, fontWeight = FontWeight.Bold)
                                     Text(f.addr, fontSize = 12.sp, color = Pb.ink3)
@@ -184,6 +185,7 @@ fun ConnectScreen(onConnected: () -> Unit) {
             BigButton(
                 label = S.scanQr,
                 loading = busy,
+                loadingLabel = S.checking,
                 onClick = {
                     scanLauncher.launch(
                         ScanOptions()
@@ -212,7 +214,7 @@ fun ConnectScreen(onConnected: () -> Unit) {
                 value = addr,
                 onValueChange = { addr = it.trim(); error = null },
                 label = { Text(S.serverAddress) },
-                placeholder = { Text("192.168.1.50:8177") },
+                placeholder = { Text(Session.CLOUD_SERVER) },
                 singleLine = true,
                 shape = RoundedCornerShape(14.dp),
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
@@ -223,7 +225,9 @@ fun ConnectScreen(onConnected: () -> Unit) {
                 bg = Color.Transparent,
                 fg = BhajiRed,
                 border = androidx.compose.foundation.BorderStroke(1.5.dp, BhajiRed.copy(alpha = 0.5f)),
-                enabled = !busy && addr.length >= 7,
+                enabled = addr.length >= 7,
+                loading = busy,
+                loadingLabel = S.checking,
                 onClick = { tryAddr(addr) },
                 modifier = Modifier.padding(top = 10.dp)
             )

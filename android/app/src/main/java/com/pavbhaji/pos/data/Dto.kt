@@ -82,7 +82,8 @@ data class BucketLineDto(
     val tableName: String, val qty: Long, val note: String = "",
     val name: String = "", // the variety — one colour bucket can hold several
     val menuItemId: Long = 0, // the variety's identity, for per-variety ticks
-    val done: Boolean = false // already ticked ready while the bucket cooks on
+    val done: Boolean = false, // already ticked ready while the bucket cooks on
+    val since: Long = 0 // when its KOT was punched (0 = older server)
 )
 
 @Serializable

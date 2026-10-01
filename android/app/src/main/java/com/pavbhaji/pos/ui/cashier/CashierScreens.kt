@@ -3,6 +3,9 @@ package com.pavbhaji.pos.ui.cashier
 import android.content.Context
 import android.print.PrintAttributes
 import android.print.PrintManager
+import android.webkit.WebResourceError
+import android.webkit.WebResourceRequest
+import android.webkit.WebResourceResponse
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.compose.foundation.layout.Arrangement
@@ -34,12 +37,12 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -55,13 +58,11 @@ import com.pavbhaji.pos.data.ApiResult
 import com.pavbhaji.pos.data.BillDto
 import com.pavbhaji.pos.data.BillSummaryDto
 import com.pavbhaji.pos.data.OrderDetailDto
-import com.pavbhaji.pos.data.TableStateDto
 import com.pavbhaji.pos.ui.AppHeader
 import com.pavbhaji.pos.ui.BhajiRed
 import com.pavbhaji.pos.ui.BigButton
 import com.pavbhaji.pos.ui.CardLine
 import com.pavbhaji.pos.ui.ConfirmDialog
-import com.pavbhaji.pos.ui.ConnBanner
 import com.pavbhaji.pos.ui.ErrorBanner
 import com.pavbhaji.pos.ui.GoodGreen
 import com.pavbhaji.pos.ui.Pb
@@ -81,19 +82,22 @@ import kotlinx.serialization.json.JsonPrimitive
 // punch orders; they settle them, and closing is theirs alone.
 @Composable
 fun CashierHome(onLogout: () -> Unit) {
-    var billFor by remember { mutableStateOf<TableStateDto?>(null) }
-    var tab by remember { mutableIntStateOf(0) }
+    // Saved state: a cashier who flips to the UPI app on a small phone, and
+    // whose app Android kills meanwhile, comes back to the same open bill.
+    var billId by rememberSaveable { mutableStateOf<Long?>(null) }
+    var billName by rememberSaveable { mutableStateOf("") }
+    var tab by rememberSaveable { mutableIntStateOf(0) }
 
-    val sel = billFor
+    val sel = billId
     if (sel != null) {
-        BillScreen(tableId = sel.id, tableName = sel.name, onBack = { billFor = null })
+        BillScreen(tableId = sel, tableName = billName, onBack = { billId = null })
         return
     }
     Column(Modifier.fillMaxSize()) {
         Box(Modifier.weight(1f)) {
             if (tab == 0) {
                 TablesScreen(
-                    onOpenTable = { if (it.order != null) billFor = it },
+                    onOpenTable = { if (it.order != null) { billName = it.name; billId = it.id } },
                     onLogout = onLogout,
                     onBack = null
                 )
@@ -138,6 +142,39 @@ private fun billLines(o: OrderDetailDto): List<BillLine> {
     return out.values.toList()
 }
 
+// Loads the print-ready bill page in an off-screen WebView and hands it to
+// Android's print dialog — but only if the page really loaded: a dead
+// network or a server error used to get its error page printed. `onDone`
+// says whether the dialog opened. Keep the returned WebView alive until
+// then (Android renders the job from it after the dialog opens).
+internal fun startBillPrint(context: Context, url: String, job: String, onDone: (Boolean) -> Unit): WebView {
+    val wv = WebView(context)
+    var failed = false
+    var fired = false
+    wv.webViewClient = object : WebViewClient() {
+        override fun onReceivedError(view: WebView, req: WebResourceRequest, err: WebResourceError) {
+            if (req.isForMainFrame) failed = true
+        }
+        override fun onReceivedHttpError(view: WebView, req: WebResourceRequest, resp: WebResourceResponse) {
+            if (req.isForMainFrame) failed = true
+        }
+        override fun onPageFinished(view: WebView, url: String?) {
+            if (fired) return
+            fired = true
+            if (failed) { onDone(false); return }
+            try {
+                val pm = context.getSystemService(Context.PRINT_SERVICE) as PrintManager
+                pm.print(job, view.createPrintDocumentAdapter(job), PrintAttributes.Builder().build())
+                onDone(true)
+            } catch (_: Exception) {
+                onDone(false)
+            }
+        }
+    }
+    wv.loadUrl(url)
+    return wv
+}
+
 // "120" / "120.50" / "₹120" → paise, or null when unparseable/negative.
 private fun toPaise(s: String): Long? {
     val v = s.trim().removePrefix("₹").trim().toDoubleOrNull() ?: return null
@@ -163,20 +200,10 @@ internal fun discountPatch(b: BillDto, subtotal: Long, discount: Long, note: Str
     return """{"discount":$discount,"discountNote":$noteJson,"paidCash":$cash,"paidOnline":$online}"""
 }
 
-// The server answers bill edits in English; the cashier reads them in her
-// own language. Anything unexpected still shows as the server said it.
-internal fun billErrorText(msg: String): String = when {
-    msg.startsWith("payment exceeds") -> S.payMoreThanBill
-    msg.startsWith("discount must be") -> S.discountTooBig
-    msg.startsWith("order already closed") -> S.billAlreadyClosed
-    else -> msg
-}
-
 @Composable
 fun BillScreen(tableId: Long, tableName: String, onBack: () -> Unit) {
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
-    val connected by Deps.live.connected.collectAsState()
 
     var order by remember { mutableStateOf<OrderDetailDto?>(null) }
     var bill by remember { mutableStateOf<BillDto?>(null) }
@@ -188,6 +215,9 @@ fun BillScreen(tableId: Long, tableName: String, onBack: () -> Unit) {
     // The WebView must outlive the click that made it: Android renders the
     // print job from it asynchronously after the dialog opens.
     var printHold by remember { mutableStateOf<WebView?>(null) }
+    // Mid-settlement: the silent update waits (the cashier may only have
+    // flipped to the UPI app to check a payment).
+    com.pavbhaji.pos.ui.HoldUpdates(true)
 
     // Every refresh re-generates the bill server-side, so its subtotal always
     // tracks the live items (a KOT punched mid-billing can't sneak past).
@@ -219,29 +249,25 @@ fun BillScreen(tableId: Long, tableName: String, onBack: () -> Unit) {
         scope.launch {
             when (val r = Deps.api.billPatch(o.id, patch)) {
                 is ApiResult.Ok -> bill = r.value
-                // Refused: say why in her language, and re-read the bill so
-                // the screen shows what the server actually holds.
-                is ApiResult.Err -> { toast = billErrorText(r.message); refresh() }
+                // Refused: say why (already in her language — serverErrText),
+                // and re-read the bill so the screen shows what the server holds.
+                is ApiResult.Err -> { toast = r.message; refresh() }
             }
         }
     }
 
     fun setPayment(cash: Long, online: Long) = patchBill("""{"paidCash":$cash,"paidOnline":$online}""")
 
+    var printing by remember { mutableStateOf(false) }
+    // A page that never answers must not leave the button spinning forever.
+    LaunchedEffect(printing) { if (printing) { delay(20_000); if (printing) { printing = false; toast = S.printFailed } } }
     fun print(o: OrderDetailDto) {
-        val wv = WebView(context)
-        var fired = false
-        wv.webViewClient = object : WebViewClient() {
-            override fun onPageFinished(view: WebView, url: String?) {
-                if (fired) return
-                fired = true
-                val pm = context.getSystemService(Context.PRINT_SERVICE) as PrintManager
-                val job = "PavBhaji bill #${o.orderNo}"
-                pm.print(job, view.createPrintDocumentAdapter(job), PrintAttributes.Builder().build())
-            }
+        if (printing) return
+        printing = true
+        printHold = startBillPrint(context, Deps.api.billUrl(o.id), "PavBhaji bill #${o.orderNo}") { ok ->
+            printing = false
+            if (!ok) toast = S.printFailed
         }
-        printHold = wv
-        wv.loadUrl(Deps.api.billUrl(o.id))
     }
 
     fun closeNow() {
@@ -264,7 +290,6 @@ fun BillScreen(tableId: Long, tableName: String, onBack: () -> Unit) {
             subtitle = o?.let { "${S.orderNo(it.orderNo)} · ${clockTime(it.openedAt)} · ${it.openedByName}" },
             onBack = onBack
         )
-        ConnBanner(connected)
         ErrorBanner(loadError)
         toast?.let {
             Text(
@@ -402,22 +427,23 @@ fun BillScreen(tableId: Long, tableName: String, onBack: () -> Unit) {
                                     Text("📲 ${S.onlineLbl}", fontSize = 13.5.sp, modifier = Modifier.weight(1f))
                                     Text(rupees(b.paidOnline), fontSize = 13.5.sp, fontWeight = FontWeight.Bold)
                                 }
+                                // How it was settled, so the choice shows: after
+                                // '💵 all cash' that button turns green with a ✓
+                                // instead of looking exactly as before.
+                                val mode = when {
+                                    total <= 0L || paid != total -> null
+                                    b.paidOnline == 0L -> "cash"
+                                    b.paidCash == 0L -> "online"
+                                    else -> "split"
+                                }
+                                // The two common answers are the two big buttons;
+                                // a split is the quieter row under them.
                                 Row(
-                                    Modifier.padding(top = 8.dp),
+                                    Modifier.padding(top = 10.dp),
                                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                                 ) {
-                                    OutlinedButton(
-                                        onClick = { setPayment(total, 0) },
-                                        modifier = Modifier.weight(1f),
-                                        shape = RoundedCornerShape(10.dp),
-                                        contentPadding = androidx.compose.foundation.layout.PaddingValues(vertical = 8.dp)
-                                    ) { Text(S.allCashChip, fontSize = 12.5.sp, fontWeight = FontWeight.Bold) }
-                                    OutlinedButton(
-                                        onClick = { setPayment(0, total) },
-                                        modifier = Modifier.weight(1f),
-                                        shape = RoundedCornerShape(10.dp),
-                                        contentPadding = androidx.compose.foundation.layout.PaddingValues(vertical = 8.dp)
-                                    ) { Text(S.allOnlineChip, fontSize = 12.5.sp, fontWeight = FontWeight.Bold) }
+                                    PayChoice(S.allCashChip, mode == "cash", Modifier.weight(1f)) { setPayment(total, 0) }
+                                    PayChoice(S.allOnlineChip, mode == "online", Modifier.weight(1f)) { setPayment(0, total) }
                                 }
                                 Row(
                                     Modifier.padding(top = 8.dp),
@@ -432,14 +458,28 @@ fun BillScreen(tableId: Long, tableName: String, onBack: () -> Unit) {
                                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                                         modifier = Modifier.weight(1f)
                                     )
-                                    Button(
+                                    OutlinedButton(
                                         onClick = {
                                             val p = toPaise(onlineTxt)
-                                            if (p == null || p > total) { toast = S.payLeft(rupees(total)) }
-                                            else { setPayment(total - p, p); onlineTxt = "" }
+                                            when {
+                                                p == null -> toast = S.splitEnterAmount
+                                                p > total -> toast = S.splitTooBig
+                                                else -> { setPayment(total - p, p); onlineTxt = "" }
+                                            }
                                         },
-                                        shape = RoundedCornerShape(10.dp)
-                                    ) { Text(S.splitApply, fontSize = 12.5.sp, fontWeight = FontWeight.Bold) }
+                                        shape = RoundedCornerShape(10.dp),
+                                        colors = if (mode == "split") ButtonDefaults.outlinedButtonColors(containerColor = Pb.successBg) else ButtonDefaults.outlinedButtonColors()
+                                    ) {
+                                        Text(
+                                            (if (mode == "split") "✓ " else "") + S.splitApply,
+                                            fontSize = 12.5.sp, fontWeight = FontWeight.Bold
+                                        )
+                                    }
+                                }
+                                // Whatever part is cash (all of it until the
+                                // cashier says otherwise): what came in → change.
+                                if (mode != "online") {
+                                    CashChange(cashDue = if (b.paidCash > 0) b.paidCash else total - b.paidOnline)
                                 }
                             }
                         }
@@ -459,6 +499,8 @@ fun BillScreen(tableId: Long, tableName: String, onBack: () -> Unit) {
                     BigButton(
                         label = S.printBill,
                         onClick = { print(o) },
+                        loading = printing,
+                        loadingLabel = S.preparingPrint,
                         fontSize = 16
                     )
                     BigButton(
@@ -467,6 +509,18 @@ fun BillScreen(tableId: Long, tableName: String, onBack: () -> Unit) {
                         enabled = settled,
                         bg = Pb.successDeep,
                         fontSize = 14
+                    )
+                    // A faded Close says nothing by itself: say why, right
+                    // under it, in plain words.
+                    val closeWhy = when {
+                        settled || b == null -> null
+                        b.subtotal != o.total -> S.billCatchingUp
+                        paid == 0L -> S.pickPayFirst
+                        else -> S.payLeft(rupees(total - paid))
+                    }
+                    if (closeWhy != null) Text(
+                        closeWhy, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = WarnAmber,
+                        textAlign = TextAlign.Center, modifier = Modifier.fillMaxWidth()
                     )
                 }
             }
@@ -558,20 +612,44 @@ private fun shiftDate(date: String, days: Int): String = try {
     )
 } catch (e: Exception) { date }
 
+// "2026-09-30" → "Yesterday · Tue, 30 Sep" in the reader's language (the
+// year only when it isn't this one). Falls back to the raw date.
+private fun prettyDay(iso: String, today: String?): String {
+    val p = iso.split("-").mapNotNull { it.toIntOrNull() }
+    if (p.size != 3) return iso
+    val cal = java.util.Calendar.getInstance().apply { set(p[0], p[1] - 1, p[2]) }
+    val loc = when (com.pavbhaji.pos.ui.L10n.lang) {
+        "hi" -> java.util.Locale("hi", "IN"); "gu" -> java.util.Locale("gu", "IN"); else -> java.util.Locale("en", "IN")
+    }
+    val thisYear = today?.take(4) ?: java.util.Calendar.getInstance().get(java.util.Calendar.YEAR).toString()
+    val pattern = if (iso.take(4) == thisYear) "EEE, d MMM" else "EEE, d MMM yyyy"
+    val d = java.text.SimpleDateFormat(pattern, loc).format(cal.time)
+    val rel = when {
+        today == null -> null
+        iso == today -> S.todayWord
+        iso == shiftDate(today, -1) -> S.yesterdayWord
+        else -> null
+    }
+    return if (rel != null) "$rel · $d" else d
+}
+
 // The settled-bill history: one business day's closed bills, newest first.
 // Tap a bill for the full read-back (items, discount, payment) + reprint.
 // Shared by the cashier's Bills tab and the admin's Bills door.
 @Composable
 fun BillsHistoryScreen(onLogout: (() -> Unit)?, onBack: (() -> Unit)?) {
-    val connected by Deps.live.connected.collectAsState()
     var date by remember { mutableStateOf<String?>(null) } // null = today
     var resp by remember { mutableStateOf(com.pavbhaji.pos.data.BillsResp()) }
     var openBill by remember { mutableStateOf<BillSummaryDto?>(null) }
+    // The shop's business day, as the server counts it (its answer for
+    // "today"): ▶ stops there instead of walking into the future.
+    var today by remember { mutableStateOf<String?>(null) }
 
     var loadError by remember { mutableStateOf<String?>(null) }
     suspend fun refresh() {
-        when (val r = Deps.api.bills(date)) {
-            is ApiResult.Ok -> { resp = r.value; loadError = null }
+        val asked = date
+        when (val r = Deps.api.bills(asked)) {
+            is ApiResult.Ok -> { resp = r.value; loadError = null; if (asked == null) today = r.value.date }
             is ApiResult.Err -> loadError = r.message
         }
     }
@@ -592,19 +670,41 @@ fun BillsHistoryScreen(onLogout: (() -> Unit)?, onBack: (() -> Unit)?) {
             title = "🧾 " + S.navBills,
             subtitle = "${S.billsCount(resp.bills.size)} · ${rupees(resp.bills.sumOf { it.total })}",
             onBack = onBack,
-            actions = { if (onBack == null && onLogout != null) com.pavbhaji.pos.ui.HeaderTextAction(S.logout, onLogout) }
+            actions = { if (onBack == null && onLogout != null) com.pavbhaji.pos.ui.LogoutAction(onLogout) }
         )
-        ConnBanner(connected)
         ErrorBanner(loadError)
+        val onToday = today == null || resp.date == today
         Row(
             Modifier.fillMaxWidth().padding(horizontal = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.Center
         ) {
             TextButton(onClick = { date = shiftDate(resp.date, -1) }) { Text("◀") }
-            Text(resp.date, fontSize = 15.sp, fontWeight = FontWeight.Bold)
-            TextButton(onClick = { date = shiftDate(resp.date, +1) }) { Text("▶") }
-            TextButton(onClick = { date = null }) { Text(S.todayBtn, fontSize = 12.sp) }
+            Text(
+                prettyDay(resp.date, today), fontSize = 15.sp, fontWeight = FontWeight.Bold,
+                textAlign = TextAlign.Center, modifier = Modifier.weight(1f, fill = false)
+            )
+            TextButton(onClick = { date = shiftDate(resp.date, +1) }, enabled = !onToday) { Text("▶") }
+            if (!onToday) TextButton(onClick = { date = null }) { Text(S.todayBtn, fontSize = 12.sp) }
+        }
+        // The drawer view the web cashier already has: how the day's
+        // closed bills were paid.
+        if (resp.bills.isNotEmpty()) {
+            val cash = resp.bills.sumOf { it.paidCash }
+            val online = resp.bills.sumOf { it.paidOnline }
+            val disc = resp.bills.sumOf { it.discount }
+            Text(
+                listOfNotNull(
+                    // non-breaking: a label never wraps away from its amount
+                    "${S.reportCash} ${rupees(cash)}",
+                    "${S.reportOnline} ${rupees(online)}",
+                    if (disc > 0) "${S.reportDiscounts} −${rupees(disc)}" else null
+                ).joinToString("  ·  "),
+                fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp)
+            )
         }
         if (resp.bills.isEmpty()) {
             com.pavbhaji.pos.ui.EmptyHint(S.noBillsDay)
@@ -689,20 +789,16 @@ fun BillHistoryDetail(summary: BillSummaryDto, onBack: () -> Unit) {
         }
     }
 
+    var printing by remember { mutableStateOf(false) }
+    var printErr by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(printing) { if (printing) { delay(20_000); if (printing) { printing = false; printErr = S.printFailed } } }
     fun print() {
-        val wv = WebView(context)
-        var fired = false
-        wv.webViewClient = object : WebViewClient() {
-            override fun onPageFinished(view: WebView, url: String?) {
-                if (fired) return
-                fired = true
-                val pm = context.getSystemService(Context.PRINT_SERVICE) as PrintManager
-                val job = "PavBhaji bill #${summary.orderNo}"
-                pm.print(job, view.createPrintDocumentAdapter(job), PrintAttributes.Builder().build())
-            }
+        if (printing) return
+        printing = true; printErr = null
+        printHold = startBillPrint(context, Deps.api.billUrl(summary.orderId), "PavBhaji bill #${summary.orderNo}") { ok ->
+            printing = false
+            if (!ok) printErr = S.printFailed
         }
-        printHold = wv
-        wv.loadUrl(Deps.api.billUrl(summary.orderId))
     }
 
     Column(Modifier.fillMaxSize()) {
@@ -711,6 +807,8 @@ fun BillHistoryDetail(summary: BillSummaryDto, onBack: () -> Unit) {
             subtitle = S.closedLine(clockTime(summary.closedAt), summary.closedByName),
             onBack = onBack
         )
+        ErrorBanner(printErr)
+        printErr?.let { LaunchedEffect(it) { delay(4000); printErr = null } }
         val o = order
         val b = bill
         LazyColumn(Modifier.weight(1f).padding(horizontal = 12.dp)) {
@@ -793,10 +891,60 @@ fun BillHistoryDetail(summary: BillSummaryDto, onBack: () -> Unit) {
                 BigButton(
                     label = S.printBill,
                     onClick = { print() },
+                    loading = printing,
+                    loadingLabel = S.preparingPrint,
                     fontSize = 16
                 )
             }
         }
+    }
+}
+
+// Optional helper at the counter: the note the customer handed over → the
+// change to give back (or what is still short). Nothing is stored; it only
+// saves the sum in the cashier's head on a busy night.
+@Composable
+private fun CashChange(cashDue: Long) {
+    var got by remember { mutableStateOf("") }
+    Row(Modifier.padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+        OutlinedTextField(
+            value = got,
+            onValueChange = { got = it.filter { c -> c.isDigit() || c == '.' }.take(9) },
+            label = { Text(S.cashReceived, fontSize = 12.sp) },
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+            modifier = Modifier.weight(1f)
+        )
+        val p = toPaise(got)
+        if (p != null && p > 0 && cashDue > 0) {
+            val diff = p - cashDue
+            Text(
+                if (diff >= 0) S.giveBack(rupees(diff)) else S.cashShort(rupees(-diff)),
+                fontSize = 15.sp, fontWeight = FontWeight.ExtraBold,
+                color = if (diff >= 0) GoodGreen else WarnAmber,
+                textAlign = TextAlign.End,
+                modifier = Modifier.padding(start = 10.dp).weight(0.8f)
+            )
+        }
+    }
+}
+
+// One of the two big payment answers. Chosen = filled green with a ✓;
+// otherwise an outlined red button that is still clearly the main choice.
+@Composable
+private fun PayChoice(label: String, selected: Boolean, modifier: Modifier, onClick: () -> Unit) {
+    val shape = RoundedCornerShape(12.dp)
+    val pad = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 12.dp)
+    if (selected) {
+        Button(
+            onClick = onClick, modifier = modifier, shape = shape, contentPadding = pad,
+            colors = ButtonDefaults.buttonColors(containerColor = Pb.successDeep)
+        ) { Text("✓ $label", fontSize = 14.sp, fontWeight = FontWeight.ExtraBold, textAlign = TextAlign.Center) }
+    } else {
+        OutlinedButton(
+            onClick = onClick, modifier = modifier, shape = shape, contentPadding = pad,
+            border = androidx.compose.foundation.BorderStroke(1.5.dp, BhajiRed)
+        ) { Text(label, fontSize = 14.sp, fontWeight = FontWeight.ExtraBold, color = BhajiRed, textAlign = TextAlign.Center) }
     }
 }
 

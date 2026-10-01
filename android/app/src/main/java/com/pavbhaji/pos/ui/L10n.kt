@@ -10,9 +10,9 @@ import androidx.compose.runtime.setValue
 // language changes — no restart, no Android locale plumbing.
 //
 // NOT translated on purpose: dish/table/staff names (owner's data), PIN, KOT,
-// QR, WiFi (everyday loanwords), and server error messages (come from the Go
-// side in English; rare, and the owner reads English) — except the bill
-// refusals a cashier meets mid-settlement, mapped in billErrorText.
+// QR (everyday loanwords). Server error messages come from the Go side in
+// English; the ones floor staff actually meet are mapped in serverErrText,
+// anything rarer (mostly admin) shows as the server said it.
 object L10n {
     var lang by mutableStateOf("en") // "en" | "hi" | "gu"
 }
@@ -20,12 +20,47 @@ object L10n {
 fun t(en: String, hi: String, gu: String): String =
     when (L10n.lang) { "hi" -> hi; "gu" -> gu; else -> en }
 
+// Every API refusal passes through here on its way to a banner or a toast
+// (Api.call), so a waiter never reads "can't move X from ready to served as
+// waiter" in English. Unknown messages are left exactly as the server sent
+// them — better English than a wrong translation.
+fun serverErrText(msg: String): String {
+    val m = msg.trim()
+    return when {
+        m.startsWith("payment exceeds") -> S.payMoreThanBill
+        m.startsWith("discount must be") -> S.discountTooBig
+        m.startsWith("order already closed") -> S.billAlreadyClosed
+        m == "wrong PIN" -> S.wrongPin
+        m.startsWith("too many wrong PINs") ->
+            S.tooManyPins(m.substringAfterLast("wait ").removeSuffix("s").ifEmpty { "30" })
+        m.startsWith("db busy") -> S.errBusy
+        m.startsWith("item not found on any open order") -> S.errItemGone
+        m.contains(" already took this bucket") -> S.cookingThis(m.substringBefore(" already took"))
+        m.startsWith("finish your ") && m.contains("bucket first") -> S.oneBucketRule
+        m.contains("goes out with the bhaji") -> S.errWithBhaji
+        m.startsWith("only admin can cancel") -> S.errAdminCancel
+        m == "already cancelled" -> S.errAlreadyCancelled
+        m.endsWith(" is marked out of stock") -> S.errOutOfStock(m.removeSuffix(" is marked out of stock"))
+        m.startsWith("menu item not found") -> S.errDishGone
+        m.startsWith("can't move ") -> S.errStale
+        m.startsWith("server error") -> S.errServer
+        else -> msg
+    }
+}
+
 object S {
     // ---- shared ----
     val back get() = t("Back", "पीछे", "પાછળ")
     val save get() = t("Save", "सेव करो", "સેવ કરો")
     val add get() = t("Add", "जोड़ो", "ઉમેરો")
     val logout get() = t("Logout", "बाहर निकलो", "બહાર નીકળો")
+    fun logoutQ(who: String) = t("Log out $who?", "$who, बाहर निकलें?", "$who, બહાર નીકળવું છે?")
+    val logoutBody get() = t(
+        "The next person logs in with their own PIN.",
+        "अगला व्यक्ति अपने PIN से अंदर आएगा।",
+        "આગળની વ્યક્તિ પોતાના PIN થી અંદર આવશે."
+    )
+    val stayBtn get() = t("Stay", "रुको", "રહો")
 
     // ---- app updates (the app pulls and installs them by itself) ----
     val updateLater get() = t("Later", "बाद में", "પછી")
@@ -38,10 +73,61 @@ object S {
         "કોઈ પણ એપ પોતાના અપડેટ લગાવે એ પહેલાં Android એક વાર પૂછે છે. PavBhaji POS માટે ચાલુ કરો — પછી દર નવું વર્ઝન જાતે આવી જશે, ફરી નહીં પૂછે."
     )
     val updateOpenSettings get() = t("Open settings", "सेटिंग खोलो", "સેટિંગ ખોલો")
+    // The one offline banner. The server is on the internet, so WiFi or
+    // mobile data both work — the words name the problem, not a cure.
     val reconnecting get() = t(
-        "reconnecting to server… check WiFi",
-        "सर्वर से दोबारा जुड़ रहे हैं… WiFi देखो",
-        "સર્વર સાથે ફરી જોડાઈ રહ્યાં છીએ… WiFi જુઓ"
+        "No internet — orders won't go through. Reconnecting by itself…",
+        "इंटरनेट नहीं है — ऑर्डर आगे नहीं जाएँगे। अपने आप दोबारा जुड़ रहा है…",
+        "ઇન્ટરનેટ નથી — ઓર્ડર આગળ નહીં જાય. જાતે ફરી જોડાઈ રહ્યું છે…"
+    )
+    // What a request that never reached the server says (toast / banner).
+    val noNetwork get() = t(
+        "No internet — try again",
+        "इंटरनेट नहीं है — फिर कोशिश करो",
+        "ઇન્ટરનેટ નથી — ફરી પ્રયત્ન કરો"
+    )
+    val noNetworkAll = setOf(
+        "No internet — try again", "इंटरनेट नहीं है — फिर कोशिश करो", "ઇન્ટરનેટ નથી — ફરી પ્રયત્ન કરો"
+    )
+    val offlineShort get() = t("offline", "इंटरनेट नहीं", "ઇન્ટરનેટ નથી")
+    val wrongPin get() = t("Wrong PIN", "गलत PIN", "ખોટો PIN")
+    fun tooManyPins(secs: String) = t(
+        "Too many wrong PINs — wait $secs seconds",
+        "बहुत बार गलत PIN — $secs सेकंड रुको",
+        "ઘણી વાર ખોટો PIN — $secs સેકન્ડ રાહ જુઓ"
+    )
+    val errBusy get() = t("Server is busy — try again", "सर्वर व्यस्त है — फिर कोशिश करो", "સર્વર વ્યસ્ત છે — ફરી પ્રયત્ન કરો")
+    val errServer get() = t("Server problem — try again", "सर्वर में दिक्कत — फिर कोशिश करो", "સર્વરમાં તકલીફ — ફરી પ્રયત્ન કરો")
+    val errItemGone get() = t(
+        "That plate is no longer on an open order — the list will refresh",
+        "यह प्लेट अब किसी खुले ऑर्डर में नहीं — लिस्ट ताज़ा हो रही है",
+        "આ પ્લેટ હવે કોઈ ખુલ્લા ઓર્ડરમાં નથી — લિસ્ટ તાજી થાય છે"
+    )
+    val errStale get() = t(
+        "Someone already changed this — the list will refresh",
+        "किसी ने पहले ही बदल दिया — लिस्ट ताज़ा हो रही है",
+        "કોઈએ પહેલેથી બદલી દીધું — લિસ્ટ તાજી થાય છે"
+    )
+    val errWithBhaji get() = t(
+        "This goes out with the bhaji — nothing for this table is ready yet",
+        "यह भाजी के साथ जाएगा — इस टेबल का अभी कुछ तैयार नहीं",
+        "આ ભાજી સાથે જશે — આ ટેબલનું હજી કંઈ તૈયાર નથી"
+    )
+    val errAdminCancel get() = t(
+        "The kitchen already started this — only admin can cancel it now",
+        "किचन ने यह शुरू कर दिया — अब सिर्फ़ एडमिन रद्द कर सकता है",
+        "રસોડાએ આ શરૂ કરી દીધું — હવે ફક્ત એડમિન રદ કરી શકે"
+    )
+    val errAlreadyCancelled get() = t("Already cancelled", "पहले ही रद्द है", "પહેલેથી રદ છે")
+    fun errOutOfStock(dish: String) = t(
+        "$dish is out of stock — take it out of the cart",
+        "$dish खत्म है — कार्ट से हटाओ",
+        "$dish ખલાસ છે — કાર્ટમાંથી કાઢો"
+    )
+    val errDishGone get() = t(
+        "A dish in the cart was just removed from the menu",
+        "कार्ट की एक डिश अभी मेनू से हटाई गई है",
+        "કાર્ટની એક વાનગી હમણાં જ મેનૂમાંથી હટાવાઈ"
     )
     fun itemsN(n: Long) = t("$n item" + if (n == 1L) "" else "s", "$n आइटम", "$n આઈટમ")
     val now get() = t("now", "अभी", "હમણાં")
@@ -63,18 +149,28 @@ object S {
         else -> raw
     }
     val reasonRequired get() = t(
-        "A reason is required — it goes in the audit log.",
-        "कारण ज़रूरी है — ऑडिट लॉग में जाएगा।",
-        "કારણ જરૂરી છે — ઓડિટ લોગમાં જશે."
+        "Pick a reason — it goes in the audit log.",
+        "कारण चुनो — ऑडिट लॉग में जाएगा।",
+        "કારણ પસંદ કરો — ઓડિટ લોગમાં જશે."
     )
     val reason get() = t("Reason", "कारण", "કારણ")
+    val reasonExtra get() = t("Or type a reason", "या कारण लिखो", "અથવા કારણ લખો")
+    // (what goes in the audit log, what the button says)
+    fun cancelReasons() = listOf(
+        "Customer changed mind" to t("Customer changed mind", "ग्राहक ने मना किया", "ગ્રાહકે ના પાડી"),
+        "Wrong punch" to t("Wrong punch", "गलत पंच हुआ", "ખોટું પંચ થયું"),
+        "Out of stock" to t("Out of stock", "माल खत्म", "માલ ખલાસ"),
+        "Took too long" to t("Took too long", "बहुत देर लगी", "બહુ વાર લાગી"),
+    )
     val cancelItem get() = t("Cancel item", "आइटम रद्द करो", "આઈટમ રદ કરો")
 
-    // ---- connect ----
+    // ---- connect (server setup; reached by a long press on the login logo) ----
+    // The shop server is on the internet: no laptop, no black window. The
+    // only thing a phone can be missing is its own internet.
     val searchingLaptop get() = t(
-        "Looking for the laptop on this WiFi…",
-        "इस WiFi पर लैपटॉप ढूँढ रहे हैं…",
-        "આ WiFi પર લેપટોપ શોધી રહ્યાં છીએ…"
+        "Looking for the shop server…",
+        "दुकान का सर्वर ढूँढ रहे हैं…",
+        "દુકાનનું સર્વર શોધી રહ્યાં છીએ…"
     )
     fun foundServers(n: Int) = t(
         "Found $n servers — tap yours:",
@@ -82,39 +178,43 @@ object S {
         "$n સર્વર મળ્યા — તમારું પસંદ કરો:"
     )
     val notFound get() = t(
-        "Couldn't find the laptop by itself.\nIs it on, black window open, same WiFi?",
-        "लैपटॉप अपने आप नहीं मिला।\nचालू है? काली विंडो खुली है? वही WiFi?",
-        "લેપટોપ જાતે ન મળ્યું.\nચાલુ છે? કાળી વિન્ડો ખુલી છે? એ જ WiFi?"
+        "Couldn't reach the shop server.\nCheck this phone's internet (WiFi or mobile data) and search again.",
+        "दुकान का सर्वर नहीं मिला।\nइस फ़ोन का इंटरनेट (WiFi या मोबाइल डेटा) देखो और फिर ढूँढो।",
+        "દુકાનનું સર્વર ન મળ્યું.\nઆ ફોનનું ઇન્ટરનેટ (WiFi કે મોબાઈલ ડેટા) જુઓ અને ફરી શોધો."
     )
-    val scanQr get() = t("📷  Scan QR on laptop screen", "📷  लैपटॉप की QR स्कैन करो", "📷  લેપટોપનો QR સ્કેન કરો")
+    val scanQr get() = t("📷  Scan the server QR", "📷  सर्वर की QR स्कैन करो", "📷  સર્વરનો QR સ્કેન કરો")
     val scanPrompt get() = t(
-        "Point at the QR on the laptop screen",
-        "लैपटॉप की स्क्रीन पर QR पर कैमरा रखो",
-        "લેપટોપ સ્ક્રીન પરના QR પર કૅમેરો રાખો"
+        "Point at the server's QR code",
+        "सर्वर के QR कोड पर कैमरा रखो",
+        "સર્વરના QR કોડ પર કૅમેરો રાખો"
     )
     val searchAgain get() = t("🔄  Search again", "🔄  फिर ढूँढो", "🔄  ફરી શોધો")
     val orTypeAddr get() = t(
-        "or type the address from the laptop",
-        "या लैपटॉप का पता टाइप करो",
-        "અથવા લેપટોપનું સરનામું ટાઈપ કરો"
+        "or type the server address",
+        "या सर्वर का पता टाइप करो",
+        "અથવા સર્વરનું સરનામું ટાઈપ કરો"
     )
     val serverAddress get() = t("Server address", "सर्वर पता", "સર્વરનું સરનામું")
     val connect get() = t("Connect", "कनेक्ट करो", "કનેક્ટ કરો")
+    val checking get() = t("Checking…", "जाँच रहे हैं…", "ચકાસી રહ્યાં છીએ…")
     val badAddress get() = t("That doesn't look like an address", "यह पता सही नहीं लगता", "આ સરનામું બરાબર નથી લાગતું")
     fun noServerAt(addr: String) = t(
-        "No server at $addr. Same WiFi? Black window open on the laptop?",
-        "$addr पर सर्वर नहीं मिला। वही WiFi? लैपटॉप पर काली विंडो खुली है?",
-        "$addr પર સર્વર ન મળ્યું. એ જ WiFi? લેપટોપ પર કાળી વિન્ડો ખુલી છે?"
+        "No POS server answered at $addr. Check the address and this phone's internet.",
+        "$addr पर कोई POS सर्वर नहीं मिला। पता और इस फ़ोन का इंटरनेट देखो।",
+        "$addr પર કોઈ POS સર્વર ન મળ્યું. સરનામું અને આ ફોનનું ઇન્ટરનેટ જુઓ."
     )
 
     // ---- login ----
     val enterPin get() = t("Enter your PIN", "अपना PIN डालो", "તમારો PIN નાખો")
-    val changeServer get() = t("change", "बदलो", "બદલો")
 
     // ---- waiter serve list ----
     val serveTitle get() = t("Serve", "परोसो", "પીરસો")
     val nothingToCarry get() = t("nothing to carry", "कुछ नहीं ले जाना", "કંઈ લઈ જવાનું નથી")
-    fun toCarry(n: Int) = t("$n to carry · oldest on top", "$n ले जाने हैं · सबसे पुराना ऊपर", "$n લઈ જવાના · સૌથી જૂનું ઉપર")
+    fun toCarry(n: Int) = t(
+        "$n to carry · by table, longest wait on top",
+        "$n ले जाने हैं · टेबल के हिसाब से, सबसे पुराना ऊपर",
+        "$n લઈ જવાના · ટેબલ પ્રમાણે, સૌથી જૂનું ઉપર"
+    )
     fun toCarryTables(n: Int, tables: Int) = t(
         "$n to carry · $tables tables · oldest on top",
         "$n ले जाने हैं · $tables टेबल · सबसे पुराना ऊपर",
@@ -149,9 +249,11 @@ object S {
     val gridParcel get() = t("🥡 PARCEL — counter orders", "🥡 पार्सल — काउंटर ऑर्डर", "🥡 પાર્સલ — કાઉન્ટર ઓર્ડર")
     val freeTable get() = t("free", "खाली", "ખાલી")
     val inKitchen get() = t("in kitchen", "किचन में", "રસોડામાં")
-    fun readyPickup(n: Long) = t("$n READY — pick up", "$n तैयार — ले जाओ", "$n તૈયાર — લઈ જાઓ")
+    fun readyPickup(n: Long) = t("$n READY", "$n तैयार", "$n તૈયાર")
     val collect get() = t("COLLECT", "पैसे लो", "પૈસા લો")
-    fun collectAmt(amt: String) = t("COLLECT $amt", "$amt लो", "$amt લો")
+    // The cashier's two states on the tables grid.
+    val settlePill get() = t("SETTLE", "हिसाब करो", "હિસાબ કરો")
+    val runningPill get() = t("running", "चालू", "ચાલુ")
 
     // ---- table order ----
     val newOrder get() = t("new order", "नया ऑर्डर", "નવો ઓર્ડર")
@@ -160,6 +262,7 @@ object S {
     val sentToKitchen get() = t("SENT TO KITCHEN", "किचन में भेजा हुआ", "રસોડામાં મોકલેલું")
     val newKot get() = t("NEW KOT — NOT SENT YET", "नया KOT — अभी भेजा नहीं", "નવો KOT — હજી મોકલ્યો નથી")
     val noteBtn get() = t("note", "नोट", "નોંધ")
+    val oneLess get() = t("One less", "एक कम", "એક ઓછું")
     val addItems get() = t("ADD ITEMS", "आइटम जोड़ो", "વસ્તુઓ ઉમેરો")
     val sending get() = t("Sending…", "भेज रहे हैं…", "મોકલી રહ્યાં છીએ…")
     fun tryAgain(items: String) = t("Try again — $items", "फिर कोशिश करो — $items", "ફરી પ્રયત્ન કરો — $items")
@@ -282,6 +385,14 @@ object S {
     val tawaCap get() = t("Tawa cap", "तवा कैप", "તવા કેપ")
     val sealAfter get() = t("Seal after (min)", "कितने मिनट में सील", "કેટલી મિનિટે સીલ")
     val archiveItem get() = t("Archive item (hide everywhere)", "आइटम हटाओ (हर जगह छुपेगा)", "આઈટમ હટાવો (બધે છુપાશે)")
+    fun archiveQ(name: String) = t("Archive $name?", "$name हटाएँ?", "$name હટાવવી?")
+    val archiveBody get() = t(
+        "It disappears from every menu and can't be ordered any more. Old bills keep it.",
+        "यह हर मेनू से गायब हो जाएगा और फिर ऑर्डर नहीं हो पाएगा। पुराने बिलों में रहेगा।",
+        "આ દરેક મેનૂમાંથી ગાયબ થઈ જશે અને ફરી ઓર્ડર નહીં થાય. જૂના બિલોમાં રહેશે."
+    )
+    val archiveBtn get() = t("Archive", "हटाओ", "હટાવો")
+    val namePriceNeeded get() = t("Name and a price are needed", "नाम और दाम चाहिए", "નામ અને ભાવ જોઈએ")
     fun newItemIn(cat: String) = t("New item — $cat", "नया आइटम — $cat", "નવી આઈટમ — $cat")
     val newItem get() = t("New item", "नया आइटम", "નવી આઈટમ")
     val newCategory get() = t("New category", "नई कैटेगरी", "નવી કેટેગરી")
@@ -301,6 +412,16 @@ object S {
     )
     val bucketColour get() = t("Bucket colour", "बकेट का रंग", "બકેટનો રંગ")
     val orMixOwn get() = t("or mix your own", "या अपना रंग बनाओ", "અથવા તમારો રંગ બનાવો")
+    fun colourTooClose(names: String) = t(
+        "⚠ Looks like $names — chefs may mix up the buckets. Pick one further away.",
+        "⚠ $names जैसा दिखता है — शेफ़ बकेट में गड़बड़ कर सकते हैं। थोड़ा अलग रंग लो।",
+        "⚠ $names જેવો દેખાય છે — શેફ બકેટમાં ગોટાળો કરી શકે. થોડો અલગ રંગ લો."
+    )
+    fun colourSameAs(names: String) = t(
+        "Same colour as $names — they cook in one bucket.",
+        "$names जैसा ही रंग — एक ही बकेट में बनेंगे।",
+        "$names જેવો જ રંગ — એક જ બકેટમાં બનશે."
+    )
 
     // ---- staff & tables admin ----
     val staffTitle get() = t("Staff & PINs", "स्टाफ़ और PIN", "સ્ટાફ અને PIN")
@@ -325,6 +446,12 @@ object S {
     // ---- cashier / bill ----
     val billTitle get() = t("Bill", "बिल", "બિલ")
     val printBill get() = t("🖨  Print bill", "🖨  बिल छापो", "🖨  બિલ છાપો")
+    val preparingPrint get() = t("Getting the bill…", "बिल तैयार हो रहा…", "બિલ તૈયાર થાય છે…")
+    val printFailed get() = t(
+        "Couldn't load the bill to print — check internet and try again",
+        "छापने के लिए बिल नहीं खुला — इंटरनेट देखो और फिर कोशिश करो",
+        "છાપવા માટે બિલ ન ખૂલ્યું — ઇન્ટરનેટ જુઓ અને ફરી પ્રયત્ન કરો"
+    )
     val billItem get() = t("Item", "आइटम", "આઈટમ")
     val billQty get() = t("Qty", "मात्रा", "જથ્થો")
     val billRate get() = t("Rate", "दाम", "ભાવ")
@@ -355,9 +482,30 @@ object S {
     val allCashChip get() = t("💵 all cash", "💵 पूरा कैश", "💵 આખું કેશ")
     val allOnlineChip get() = t("📲 all online", "📲 पूरा ऑनलाइन", "📲 આખું ઓનલાઈન")
     val onlineAmtLbl get() = t("Online amount (₹)", "ऑनलाइन रकम (₹)", "ઓનલાઈન રકમ (₹)")
-    val splitApply get() = t("✓ split, rest cash", "✓ बाकी कैश", "✓ બાકી કેશ")
+    val splitApply get() = t("split, rest cash", "बाँटो, बाकी कैश", "વહેંચો, બાકી કેશ")
+    val splitEnterAmount get() = t(
+        "Type the online amount first", "पहले ऑनलाइन रकम लिखो", "પહેલાં ઓનલાઈન રકમ લખો"
+    )
+    val splitTooBig get() = t(
+        "Online amount can't be more than the bill",
+        "ऑनलाइन रकम बिल से ज़्यादा नहीं हो सकती",
+        "ઓનલાઈન રકમ બિલ કરતાં વધારે ન હોઈ શકે"
+    )
     val paidTick get() = t("PAID ✓", "पेड ✓", "પેડ ✓")
-    fun payLeft(amt: String) = t("$amt not assigned yet", "$amt अभी बाकी", "$amt હજી બાકી")
+    fun payLeft(amt: String) = t("$amt still to collect", "$amt अभी लेने बाकी", "$amt હજી લેવાના બાકી")
+    val cashReceived get() = t("Cash received (₹)", "मिला कैश (₹)", "મળેલું કેશ (₹)")
+    fun giveBack(amt: String) = t("Give back $amt", "$amt वापस दो", "$amt પાછા આપો")
+    fun cashShort(amt: String) = t("$amt short", "$amt कम", "$amt ઓછા")
+    val pickPayFirst get() = t(
+        "Tap 💵 all cash or 📲 all online first",
+        "पहले 💵 पूरा कैश या 📲 पूरा ऑनलाइन दबाओ",
+        "પહેલાં 💵 આખું કેશ કે 📲 આખું ઓનલાઈન દબાવો"
+    )
+    val billCatchingUp get() = t(
+        "New items just came in — the bill is updating…",
+        "नए आइटम आए हैं — बिल अपडेट हो रहा है…",
+        "નવી આઈટમ આવી — બિલ અપડેટ થાય છે…"
+    )
     // The server's bill refusals, in the cashier's language (billErrorText).
     val payMoreThanBill get() = t(
         "The money entered is more than the bill now. Tap 💵 all cash or 📲 all online again.",
@@ -411,12 +559,17 @@ object S {
         "હમણાં કોઈ પાર્સલ નથી.\nનીચેના બટનથી શરૂ કરો."
     )
     fun openParcels(n: Int) = t("$n open", "$n खुले", "$n ખુલ્લા")
-    val allReadyPill get() = t("ALL READY — hand over", "सब तैयार — दे दो", "બધું તૈયાર — આપી દો")
+    // Parcel card pills say the parcel's STATE: tapping a card opens its
+    // order, not a hand-over or payment step, so the pill must not promise one.
+    val allReadyPill get() = t("ALL READY ✓", "सब तैयार ✓", "બધું તૈયાર ✓")
+    fun amountDue(amt: String) = t("$amt due", "$amt बाकी", "$amt બાકી")
     val sendParcel get() = t("Send parcel to kitchen 🍳", "पार्सल किचन में भेजो 🍳", "પાર્સલ રસોડામાં મોકલો 🍳")
 
     // ---- report / audit ----
     val logBtn get() = t("log", "लॉग", "લોગ")
     val todayBtn get() = t("today", "आज", "આજે")
+    val todayWord get() = t("Today", "आज", "આજે")
+    val yesterdayWord get() = t("Yesterday", "कल", "ગઈકાલે")
     val salesServed get() = t("sales (served)", "बिक्री (परोसा)", "વેચાણ (પીરસેલું)")
     val ordersCard get() = t("orders", "ऑर्डर", "ઓર્ડર")
     val cancelledCard get() = t("cancelled", "रद्द", "રદ")

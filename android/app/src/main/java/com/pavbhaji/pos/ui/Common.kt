@@ -56,7 +56,9 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -70,6 +72,8 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -79,9 +83,25 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.flow.first
 
-fun rupees(paise: Long): String =
-    if (paise % 100 == 0L) "₹${paise / 100}"
-    else "₹${paise / 100}.${(paise % 100).toString().padStart(2, '0')}"
+// The one money formatter (server amounts are paise). Indian grouping, the
+// way the shop writes it — ₹13,660 · ₹1,23,456 — and paise only when there
+// are some: ₹120.50. The web screens print exactly the same.
+fun rupees(paise: Long): String {
+    val p = kotlin.math.abs(paise)
+    val frac = p % 100
+    val s = "₹" + indianDigits(p / 100) +
+        if (frac == 0L) "" else "." + frac.toString().padStart(2, '0')
+    return if (paise < 0) "-$s" else s
+}
+
+// 1234567 → "12,34,567": the last three digits, then pairs.
+fun indianDigits(n: Long): String {
+    val s = n.toString()
+    if (s.length <= 3) return s
+    val head = s.dropLast(3)
+    val pairs = head.reversed().chunked(2).joinToString(",").reversed()
+    return "$pairs,${s.takeLast(3)}"
+}
 
 // Money stays with money-facing roles: chef and waiter screens never show
 // prices. Admin sees them everywhere (including the Floor view, which reuses
@@ -106,6 +126,33 @@ fun clockTime(ms: Long): String {
     cal.timeInMillis = ms
     return "%02d:%02d".format(cal.get(java.util.Calendar.HOUR_OF_DAY), cal.get(java.util.Calendar.MINUTE))
 }
+
+// While `active`, the silent self-update waits for the next time the phone
+// is put down (AppUpdater.applyStaged): an unsent cart or a bill being
+// settled must not vanish because the screen timed out mid-order.
+@Composable
+fun HoldUpdates(active: Boolean) {
+    val key = remember { Any() }
+    DisposableEffect(active) {
+        com.pavbhaji.pos.data.AppUpdater.hold(key, active)
+        onDispose { com.pavbhaji.pos.data.AppUpdater.hold(key, false) }
+    }
+}
+
+// For `ms` after `armedAt` (SystemClock.uptimeMillis()) every touch on this
+// subtree is swallowed before its buttons see it. For controls that just
+// appeared or jumped under a finger aimed at something else: the bottom cart
+// bar grows over the lowest menu row the moment the first dish goes in, and
+// a fast double-tap on that row must not land on the bar's "−" or Send.
+fun Modifier.swallowTapsAfter(armedAt: Long, ms: Long = 400): Modifier =
+    pointerInput(armedAt) {
+        awaitPointerEventScope {
+            while (true) {
+                val e = awaitPointerEvent(PointerEventPass.Initial)
+                if (android.os.SystemClock.uptimeMillis() - armedAt < ms) e.changes.forEach { it.consume() }
+            }
+        }
+    }
 
 // Each screen decides its status-bar icon tint: the app is edge-to-edge, so
 // icons sit on whatever the screen paints up there (red header, dark kitchen,
@@ -133,6 +180,7 @@ fun AppHeader(
 ) {
     if (onBack != null) BackHandler(onBack = onBack)
     StatusBarIcons(darkIcons = false)
+    Column {
     Box(
         Modifier.background(
             Brush.linearGradient(listOf(Pb.headerTop, Pb.headerBottom))
@@ -179,6 +227,11 @@ fun AppHeader(
             actions()
         }
     }
+    // Every screen with this header gets the one offline banner under it —
+    // no screen can forget it, and none shows it twice.
+    val connected by com.pavbhaji.pos.Deps.live.connected.collectAsState()
+    ConnBanner(connected)
+    }
 }
 
 // Compact language switcher living in every screen's top-right corner:
@@ -220,12 +273,40 @@ fun HeaderTextAction(label: String, onClick: () -> Unit) {
     }
 }
 
+// Logout sits in every header right next to the language switch, and one
+// stray tap used to drop the session mid-shift. It asks first; the safe
+// choice ("Stay") is the dismiss.
+@Composable
+fun LogoutAction(onLogout: () -> Unit, tint: Color = Color.White, fontSize: Int = 14) {
+    var ask by remember { mutableStateOf(false) }
+    TextButton(onClick = { ask = true }) {
+        Text(S.logout, color = tint, fontWeight = FontWeight.Bold, fontSize = fontSize.sp)
+    }
+    if (ask) {
+        ConfirmDialog(
+            title = S.logoutQ(com.pavbhaji.pos.Deps.session.staffName),
+            body = S.logoutBody,
+            confirmLabel = S.logout,
+            dismissLabel = S.stayBtn,
+            onConfirm = { ask = false; onLogout() },
+            onDismiss = { ask = false }
+        )
+    }
+}
+
 // Slides in under the header while the WebSocket is down. Amber, not red:
-// it's "hold on", not "something you did failed".
+// it's "hold on", not "something you did failed". It waits a moment before
+// showing, so the half-second dial at app start (or one dropped packet)
+// doesn't flash "no internet" at a waiter; it goes away on its own the
+// moment the line is back.
 @Composable
 fun ConnBanner(connected: Boolean) {
+    var down by remember { mutableStateOf(false) }
+    LaunchedEffect(connected) {
+        if (connected) down = false else { kotlinx.coroutines.delay(1500); down = true }
+    }
     AnimatedVisibility(
-        visible = !connected,
+        visible = down,
         enter = expandVertically() + fadeIn(),
         exit = shrinkVertically() + fadeOut()
     ) {
@@ -233,7 +314,7 @@ fun ConnBanner(connected: Boolean) {
             Modifier
                 .fillMaxWidth()
                 .background(Color(0xFFF7E7C8))
-                .padding(vertical = 7.dp),
+                .padding(horizontal = 14.dp, vertical = 7.dp),
             horizontalArrangement = Arrangement.Center,
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -246,6 +327,7 @@ fun ConnBanner(connected: Boolean) {
             Text(
                 S.reconnecting,
                 color = Color(0xFF6B4A00), fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
+                textAlign = TextAlign.Center,
                 modifier = Modifier.padding(start = 8.dp)
             )
         }
@@ -254,15 +336,19 @@ fun ConnBanner(connected: Boolean) {
 
 // One-line error strip for surfaced API failures — screens keep working, the
 // user just sees why the data may be stale. Pass null to hide.
+// While the offline banner is up it already says "no internet"; a red strip
+// under it saying the same thing again is noise, so that one case is hidden.
 @Composable
 fun ErrorBanner(message: String?, dark: Boolean = false) {
+    val connected by com.pavbhaji.pos.Deps.live.connected.collectAsState()
+    val shown = message?.takeUnless { !connected && it in S.noNetworkAll }
     AnimatedVisibility(
-        visible = message != null,
+        visible = shown != null,
         enter = expandVertically() + fadeIn(),
         exit = shrinkVertically() + fadeOut()
     ) {
-        var last by remember { mutableStateOf(message ?: "") }
-        if (message != null) last = message
+        var last by remember { mutableStateOf(shown ?: "") }
+        if (shown != null) last = shown
         val bg = if (dark) Color(0xFF3A1712) else Pb.dangerBg
         val fg = if (dark) Color(0xFFFFB59E) else Pb.danger
         Row(
@@ -303,7 +389,7 @@ fun Pill(text: String, bg: Color, fg: Color) {
     Surface(color = bg, shape = RoundedCornerShape(99.dp)) {
         Text(
             text, color = fg, fontSize = 10.sp, fontWeight = FontWeight.ExtraBold,
-            maxLines = 1,
+            maxLines = 1, overflow = TextOverflow.Ellipsis,
             modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
         )
     }
@@ -356,7 +442,8 @@ fun BigButton(
     border: BorderStroke? = null,
     enabled: Boolean = true,
     loading: Boolean = false,
-    fontSize: Int = 15
+    fontSize: Int = 15,
+    loadingLabel: String = S.sending
 ) {
     val view = LocalView.current
     val interaction = remember { MutableInteractionSource() }
@@ -385,7 +472,7 @@ fun BigButton(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = fgNow)
                     Text(
-                        S.sending, color = fgNow, fontSize = fontSize.sp, fontWeight = FontWeight.ExtraBold,
+                        loadingLabel, color = fgNow, fontSize = fontSize.sp, fontWeight = FontWeight.ExtraBold,
                         modifier = Modifier.padding(start = 10.dp)
                     )
                 }
@@ -582,9 +669,22 @@ fun PinPad(onSubmit: (String) -> Unit, error: String?) {
     }
 }
 
+// Cancel needs a reason for the audit log. The usual ones are one tap (no
+// phone keyboard mid-rush); typing is optional and only adds detail. The
+// button stays disabled until there is a reason, instead of silently doing
+// nothing. Chip reasons reach the log in English, the owner's language.
 @Composable
 fun ReasonDialog(title: String, onConfirm: (String) -> Unit, onDismiss: () -> Unit) {
-    var reason by remember { mutableStateOf("") }
+    var picked by remember { mutableStateOf<String?>(null) }
+    var extra by remember { mutableStateOf("") }
+    val typed = extra.trim()
+    val chosen = picked
+    val reason = when {
+        chosen != null && typed.isNotEmpty() -> "$chosen — $typed"
+        chosen != null -> chosen
+        typed.length >= 2 -> typed
+        else -> null
+    }
     AlertDialog(
         onDismissRequest = onDismiss,
         shape = RoundedCornerShape(22.dp),
@@ -593,17 +693,44 @@ fun ReasonDialog(title: String, onConfirm: (String) -> Unit, onDismiss: () -> Un
         text = {
             Column {
                 Text(S.reasonRequired, fontSize = 13.sp)
+                S.cancelReasons().chunked(2).forEach { pair ->
+                    Row(
+                        Modifier.fillMaxWidth().padding(top = 6.dp),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        pair.forEach { (audit, label) ->
+                            val sel = picked == audit
+                            Surface(
+                                onClick = { picked = if (sel) null else audit },
+                                shape = RoundedCornerShape(12.dp),
+                                color = if (sel) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.surface,
+                                border = if (sel) null else BorderStroke(1.dp, CardLine),
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Text(
+                                    (if (sel) "✓ " else "") + label,
+                                    fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
+                                    color = if (sel) Color.White else InkDark,
+                                    textAlign = TextAlign.Center, maxLines = 2,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 10.dp)
+                                )
+                            }
+                        }
+                    }
+                }
                 OutlinedTextField(
-                    value = reason, onValueChange = { reason = it },
-                    label = { Text(S.reason) },
+                    value = extra, onValueChange = { extra = it.take(120) },
+                    label = { Text(S.reasonExtra) },
+                    singleLine = true,
                     shape = RoundedCornerShape(12.dp),
-                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
+                    modifier = Modifier.fillMaxWidth().padding(top = 10.dp)
                 )
             }
         },
         confirmButton = {
             Button(
-                onClick = { if (reason.trim().length >= 2) onConfirm(reason.trim()) },
+                onClick = { reason?.let(onConfirm) },
+                enabled = reason != null,
                 shape = RoundedCornerShape(12.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
             ) { Text(S.cancelItem, fontWeight = FontWeight.Bold) }

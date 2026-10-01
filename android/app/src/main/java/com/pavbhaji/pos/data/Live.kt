@@ -21,7 +21,7 @@ private data class TopicMsg(val topic: String = "")
 
 // Keeps one WebSocket to the hub alive and re-dials it forever.
 // Screens collect `topics` to know when to refetch, and `connected`
-// drives the red "reconnecting" banner.
+// drives the amber "no internet" banner under every header.
 class Live(private val session: Session, private val api: Api) {
     val connected = MutableStateFlow(false)
     val topics = MutableSharedFlow<String>(extraBufferCapacity = 64)
@@ -48,6 +48,11 @@ class Live(private val session: Session, private val api: Api) {
                 ws = api.http.newWebSocket(req, object : WebSocketListener() {
                     override fun onOpen(webSocket: WebSocket, response: Response) {
                         sawOpen.set(true); connected.value = true
+                        // Back online: whatever changed while the line was down
+                        // never arrived as a push, so every open screen re-reads
+                        // now — and its "no internet" error clears by itself
+                        // instead of waiting for the next slow poll.
+                        listOf("tables", "kitchen", "menu").forEach { topics.tryEmit(it) }
                     }
                     override fun onMessage(webSocket: WebSocket, text: String) {
                         val t = try { json.decodeFromString<TopicMsg>(text).topic } catch (_: Exception) { "" }

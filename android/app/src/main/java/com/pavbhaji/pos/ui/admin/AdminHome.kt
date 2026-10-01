@@ -25,11 +25,11 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -43,10 +43,8 @@ import com.pavbhaji.pos.data.ApiResult
 import com.pavbhaji.pos.data.ReportDto
 import com.pavbhaji.pos.ui.AppHeader
 import com.pavbhaji.pos.ui.CardLine
-import com.pavbhaji.pos.ui.ConnBanner
 import com.pavbhaji.pos.ui.GoodGreen
 import com.pavbhaji.pos.ui.S
-import com.pavbhaji.pos.ui.HeaderTextAction
 import com.pavbhaji.pos.ui.chef.KitchenScreen
 import com.pavbhaji.pos.ui.rupees
 import com.pavbhaji.pos.ui.waiter.ManagerHome
@@ -58,7 +56,8 @@ private enum class AdminScreen { Home, Floor, Kitchen, Menu, Staff, Tables, Bill
 
 @Composable
 fun AdminHome(onLogout: () -> Unit) {
-    var screen by remember { mutableStateOf(AdminScreen.Home) }
+    // Saved, so an app killed in the background reopens on the same door.
+    var screen by rememberSaveable { mutableStateOf(AdminScreen.Home) }
     val home = { screen = AdminScreen.Home }
     when (screen) {
         AdminScreen.Floor -> ManagerHome(onLogout = {}, onBack = home)
@@ -76,7 +75,6 @@ fun AdminHome(onLogout: () -> Unit) {
 // The whole admin home: one number that matters, six doors, a quiet backup.
 @Composable
 private fun Dashboard(onLogout: () -> Unit, onOpen: (AdminScreen) -> Unit) {
-    val connected by Deps.live.connected.collectAsState()
     var rep by remember { mutableStateOf(ReportDto()) }
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
@@ -106,9 +104,8 @@ private fun Dashboard(onLogout: () -> Unit, onOpen: (AdminScreen) -> Unit) {
         AppHeader(
             title = S.adminTitle,
             subtitle = Deps.session.staffName,
-            actions = { HeaderTextAction(S.logout, onLogout) }
+            actions = { com.pavbhaji.pos.ui.LogoutAction(onLogout) }
         )
-        ConnBanner(connected)
         com.pavbhaji.pos.ui.ErrorBanner(loadError)
         if (kotlin.math.abs(clockSkewMs) > 3 * 60_000) {
             Text(

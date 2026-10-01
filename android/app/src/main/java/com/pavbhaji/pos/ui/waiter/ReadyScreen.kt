@@ -31,8 +31,8 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -54,11 +54,10 @@ import com.pavbhaji.pos.data.ApiResult
 import com.pavbhaji.pos.data.PickupLineDto
 import com.pavbhaji.pos.ui.AppHeader
 import com.pavbhaji.pos.ui.CardLine
-import com.pavbhaji.pos.ui.ConnBanner
 import com.pavbhaji.pos.ui.EmptyState
 import com.pavbhaji.pos.ui.ErrorBanner
 import com.pavbhaji.pos.ui.GoodGreen
-import com.pavbhaji.pos.ui.HeaderTextAction
+import com.pavbhaji.pos.ui.LogoutAction
 import com.pavbhaji.pos.ui.ListSkeleton
 import com.pavbhaji.pos.ui.Pb
 import com.pavbhaji.pos.ui.PinBelowHistory
@@ -75,8 +74,7 @@ import kotlinx.coroutines.launch
 // screen has no buttons. Counter items (drinks, extra pav) ride the same
 // card tinted amber: nothing was cooked, a waiter just carries them.
 @Composable
-fun ReadyScreen(onLogout: () -> Unit, showLogout: Boolean) {
-    val connected by Deps.live.connected.collectAsState()
+fun ReadyScreen(onLogout: () -> Unit, showLogout: Boolean, onBack: (() -> Unit)? = null) {
     var lines by remember { mutableStateOf<List<PickupLineDto>>(emptyList()) }
     var loaded by remember { mutableStateOf(false) }
     var loadError by remember { mutableStateOf<String?>(null) }
@@ -102,13 +100,16 @@ fun ReadyScreen(onLogout: () -> Unit, showLogout: Boolean) {
         AppHeader(
             title = S.readyTitle,
             subtitle = when {
+                !loaded -> if (loadError != null) S.offlineShort else S.loading
                 lines.isEmpty() -> S.nothingToCarry
                 groups.size == 1 -> S.toCarryOneTable(lines.size)
                 else -> S.toCarryTables(lines.size, groups.size)
             },
-            actions = { if (showLogout) HeaderTextAction(S.logout, onLogout) }
+            // Inside the admin's Floor this is a door like any other: the
+            // arrow (and system back) lead home instead of out of the app.
+            onBack = onBack,
+            actions = { if (showLogout) LogoutAction(onLogout) }
         )
-        ConnBanner(connected)
         ErrorBanner(loadError)
         when {
             !loaded -> ListSkeleton(rows = 4, rowHeight = 86.dp)
@@ -195,23 +196,52 @@ private fun TableCarryCard(g: ReadyGroup, modifier: Modifier = Modifier) {
     }
 }
 
+// One trip per table. Sorting purely by age scattered a table across the list
+// (T1 in rows 1, 2 and 7) and put a drink punched early above hot food that
+// came off the tawa later. Now a table's plates sit together, the table that
+// has waited longest on top; inside a table hot kitchen plates come first,
+// drinks and counter items after, anything held for the bhaji last. Tables
+// with nothing carryable yet (all held) sink below the ones a waiter can act on.
+private fun carryOrder(lines: List<PickupLineDto>): List<PickupLineDto> =
+    lines.groupBy { it.tableName }.values
+        .sortedWith(
+            compareBy<List<PickupLineDto>>(
+                { g -> g.all { it.waiting } },
+                { g -> g.filter { !it.waiting }.minOfOrNull { it.sinceMs } ?: g.minOf { it.sinceMs } },
+                { g -> g.first().tableName }
+            )
+        )
+        .flatMap { g ->
+            g.sortedWith(compareBy({ it.waiting }, { it.station == "counter" }, { it.sinceMs }, { it.itemId }))
+        }
+
 // The waiter's ENTIRE app: one flat vertical list — every plate to carry right
-// now, oldest first. Each row reads like a call-out: "2× Cheese Bhaji → T4 ✓".
+// now, a table at a time. Each row reads like a call-out: "2× Cheese Bhaji → T4 ✓".
 // Waiters never take orders (that's the manager's job); they only serve, so
 // there are no tabs, no tables grid, nothing else to learn.
 @Composable
 fun ServeScreen(onLogout: () -> Unit) {
     val scope = rememberCoroutineScope()
-    val connected by Deps.live.connected.collectAsState()
     var lines by remember { mutableStateOf<List<PickupLineDto>>(emptyList()) }
     var served by remember { mutableStateOf<List<PickupLineDto>>(emptyList()) }
     var loaded by remember { mutableStateOf(false) }
     var loadError by remember { mutableStateOf<String?>(null) }
     var toast by remember { mutableStateOf<String?>(null) }
+    // Plates tapped served whose answer is still on the wire. They cross to
+    // the served pile the moment the thumb lands (⏳ until the server says
+    // yes) — on slow 4G a row that sat there looked like a missed tap — and
+    // come back with the reason if the server says no.
+    val inFlight = remember { mutableStateMapOf<Long, PickupLineDto>() }
 
     suspend fun refresh() {
         when (val r = Deps.api.pickup()) {
-            is ApiResult.Ok -> { lines = r.value.lines; served = r.value.served; loadError = null; loaded = true }
+            is ApiResult.Ok -> {
+                // A fetch that started before the tap must not undo it on screen.
+                lines = r.value.lines.filter { it.itemId !in inFlight }
+                served = inFlight.values.filter { f -> r.value.served.none { it.itemId == f.itemId } } +
+                    r.value.served
+                loadError = null; loaded = true
+            }
             is ApiResult.Err -> loadError = r.message
         }
     }
@@ -222,7 +252,7 @@ fun ServeScreen(onLogout: () -> Unit) {
     LaunchedEffect(Unit) { while (true) { delay(15_000); refresh() } }
     toast?.let { LaunchedEffect(it) { delay(2500); toast = null } }
 
-    val sorted = lines.sortedWith(compareBy({ it.sinceMs }, { it.itemId }))
+    val sorted = carryOrder(lines)
     // History renders oldest→newest, so the most recent serve sits directly
     // above the live list — one small scroll up answers "what did I just take?".
     val history = served.reversed()
@@ -237,10 +267,15 @@ fun ServeScreen(onLogout: () -> Unit) {
     Column(Modifier.fillMaxSize()) {
         AppHeader(
             title = S.serveTitle,
-            subtitle = if (lines.isEmpty()) S.nothingToCarry else S.toCarry(lines.size),
-            actions = { HeaderTextAction(S.logout, onLogout) }
+            // Never "nothing to carry" before the list has actually loaded:
+            // offline, that would send a waiter away from food at the pass.
+            subtitle = when {
+                !loaded -> if (loadError != null) S.offlineShort else S.loading
+                lines.isEmpty() -> S.nothingToCarry
+                else -> S.toCarry(lines.size)
+            },
+            actions = { LogoutAction(onLogout) }
         )
-        ConnBanner(connected)
         ErrorBanner(loadError)
         when {
             !loaded -> ListSkeleton(rows = 5, rowHeight = 72.dp)
@@ -261,7 +296,7 @@ fun ServeScreen(onLogout: () -> Unit) {
                     if (history.isNotEmpty()) {
                         item(key = "hdrServed") { SectionLabel(S.servedSection) }
                         items(history.size, key = { "h${history[it].itemId}" }) { i ->
-                            HistoryRow(history[i], Modifier.animateItem())
+                            HistoryRow(history[i], pending = history[i].itemId in inFlight, modifier = Modifier.animateItem())
                         }
                         item(key = "hdrNow") { SectionLabel(S.serveNow) }
                     }
@@ -270,21 +305,32 @@ fun ServeScreen(onLogout: () -> Unit) {
                     }
                     items(sorted.size, key = { "a${sorted[it].itemId}" }) { i ->
                         val l = sorted[i]
+                        // A little air where the next table starts.
+                        val newTable = i > 0 && sorted[i - 1].tableName != l.tableName
                         ServeRow(
                             l,
-                            modifier = Modifier.animateItem(),
+                            modifier = Modifier.animateItem().padding(top = if (newTable) 6.dp else 0.dp),
                             onServe = {
-                                scope.launch {
-                                    when (val r = Deps.api.itemStatus(l.itemId, "served")) {
-                                        is ApiResult.Ok -> {
-                                            // Move the row across the boundary in one
-                                            // step — never a beat where it's nowhere.
-                                            lines = lines.filter { it.itemId != l.itemId }
-                                            served = listOf(l.copy(servedBy = Deps.session.staffName)) + served
+                                if (l.itemId !in inFlight) {
+                                    // Across the boundary in one step, now — never a
+                                    // beat where the plate is nowhere.
+                                    val mine = l.copy(servedBy = Deps.session.staffName)
+                                    inFlight[l.itemId] = mine
+                                    lines = lines.filter { it.itemId != l.itemId }
+                                    served = listOf(mine) + served
+                                    scope.launch {
+                                        when (val r = Deps.api.itemStatus(l.itemId, "served")) {
+                                            is ApiResult.Ok -> {}
+                                            is ApiResult.Err -> {
+                                                // Not served after all: back on the list, and why.
+                                                toast = r.message
+                                                served = served.filter { it.itemId != l.itemId }
+                                                if (lines.none { it.itemId == l.itemId }) lines = lines + l
+                                            }
                                         }
-                                        is ApiResult.Err -> toast = r.message
+                                        inFlight.remove(l.itemId)
+                                        refresh()
                                     }
-                                    refresh()
                                 }
                             }
                         )
@@ -323,8 +369,9 @@ private fun SectionLabel(text: String) {
 
 // A plate that already went out: greyed, no button — pure memory. The table
 // number stays loud because "where did that plate go?" is the question here.
+// pending = tapped, the server hasn't confirmed yet: ⏳ instead of ✓.
 @Composable
-private fun HistoryRow(l: PickupLineDto, modifier: Modifier = Modifier) {
+private fun HistoryRow(l: PickupLineDto, pending: Boolean = false, modifier: Modifier = Modifier) {
     Surface(
         shape = RoundedCornerShape(14.dp),
         color = Color(0xFFF5F1EA),
@@ -335,7 +382,10 @@ private fun HistoryRow(l: PickupLineDto, modifier: Modifier = Modifier) {
             Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text("✓", color = GoodGreen, fontSize = 15.sp, fontWeight = FontWeight.ExtraBold)
+            Text(
+                if (pending) "⏳" else "✓", color = GoodGreen, fontSize = 15.sp, fontWeight = FontWeight.ExtraBold,
+                modifier = Modifier.semantics { contentDescription = if (pending) S.sending else S.statusLabel("served") }
+            )
             Column(Modifier.weight(1f).padding(start = 9.dp)) {
                 Text(
                     "${l.qty}× ${l.name}", fontSize = 14.sp, fontWeight = FontWeight.SemiBold,

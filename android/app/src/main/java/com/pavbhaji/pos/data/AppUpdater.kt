@@ -55,6 +55,10 @@ object AppUpdater {
     private var lastCheck = 0L
     private var installing = false
 
+    // Screens holding unsent work register here (ui/Common.kt HoldUpdates).
+    private val holds: MutableSet<Any> = java.util.concurrent.ConcurrentHashMap.newKeySet()
+    fun hold(key: Any, on: Boolean) { if (on) holds.add(key) else holds.remove(key) }
+
     /** The versionCode of the APK currently running. */
     fun currentVersionCode(ctx: Context): Long = try {
         val pi = ctx.packageManager.getPackageInfo(ctx.packageName, 0)
@@ -171,6 +175,11 @@ object AppUpdater {
      */
     fun applyStaged(ctx: Context) {
         if (installing) return
+        // Somebody is mid-way through something the server doesn't have yet
+        // (an unsent cart, a bill being settled). onStop also fires when the
+        // screen times out or the cashier flips to the UPI app — the swap
+        // would end the process and lose it. The next onStop gets it.
+        if (holds.isNotEmpty()) return
         val apk = stagedNewer(ctx) ?: return
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
             !ctx.packageManager.canRequestPackageInstalls()

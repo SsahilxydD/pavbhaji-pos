@@ -44,7 +44,20 @@
     width:40px; height:40px; border-radius:13px; background:rgba(255,255,255,.16);
     display:grid; place-items:center; font-size:22px;
   }
-  .brand b { font-size:16px; letter-spacing:-.2px; display:block; }
+  .brand b { font-size:15px; letter-spacing:-.3px; display:block; white-space:nowrap; }
+  .brand { gap:8px; }
+  /* EN / हिं / ગુ chip (same as pos.css): an invisible native picker over it */
+  .lang {
+    position:relative; flex:0 0 auto; display:grid; place-items:center;
+    min-width:44px; min-height:36px; padding:0 9px; border-radius:11px; cursor:pointer;
+    font-weight:800; font-size:13.5px; line-height:1;
+    background:rgba(255,255,255,.14); color:#fff; border:1px solid rgba(255,255,255,.28);
+  }
+  .lang select {
+    position:absolute; inset:0; width:100%; height:100%; min-height:0; padding:0; margin:0;
+    opacity:0; cursor:pointer; font-size:16px; border:0;
+  }
+  .lang:focus-within { outline:2px solid #fff; outline-offset:1px; }
   .brand small { font-size:11.5px; }
   aside nav { display:flex; flex-direction:column; gap:3px; flex:1; }
   aside nav button {
@@ -255,7 +268,9 @@
   <aside>
     <div class="brand">
       <div class="tile">🍛</div>
-      <div><b>PavBhaji POS</b><small>admin panel</small></div>
+      <div class="grow" style="min-width:0"><b>PavBhaji POS</b><small id="panelT">admin panel</small></div>
+      <label class="lang"><span id="langMark">EN</span><select id="langSel" aria-label="Language">
+        <option value="en">English</option><option value="hi">हिंदी</option><option value="gu">ગુજરાતી</option></select></label>
     </div>
     <nav id="tabs"></nav>
     <div class="side-foot">
@@ -267,7 +282,8 @@
   <main><div class="content"><div id="view"></div></div></main>
 </div>
 
-<div class="dirtybar" id="dirtyBar" hidden><span id="dirtyN"></span><button class="primary" onclick="saveAll()" id="saveAllBtn">Save all</button></div><div id="toasts"></div>
+<div class="dirtybar" id="dirtyBar" hidden><span id="dirtyN"></span><button class="primary" onclick="saveAll()" id="saveAllBtn">Save all</button></div>
+<div id="toasts"></div>
 
 <script>
 'use strict';
@@ -287,27 +303,126 @@ const toPaise = s => {
 };
 const clock = ms => new Date(ms).toTimeString().slice(0,5);
 
-// Screen text in one place.
-const S = {
-  save: 'Save', saved: 'Saved ✓', saveAll: 'Save all',
-  colour: 'colour', name: 'name', priceRs: 'price ₹', station: 'station',
-  stationHint: 'kitchen = cooked in buckets, counter = waiter hands over',
-  kitchen: '🍳 kitchen', counter: '✋ counter',
-  tawaCap: 'tawa cap', sealMin: 'seal (min)', auto: 'auto', inStock: 'in stock', outOfStock: 'out of stock',
-  outCount: n => n ? n + ' dish' + (n === 1 ? '' : 'es') + ' out of stock' : 'Everything is in stock',
-  stockHint: 'Tap a dish to switch it. It saves at once and greys out on every phone.',
-  collectedToday: 'COLLECTED TODAY', closedBills: n => n + ' closed bill' + (n === 1 ? '' : 's'),
-  served: 'served', discounts: 'discounts', stillOpen: (a, n) => a + ' still open on ' + n + ' table' + (n === 1 ? '' : 's'),
-  refreshes: 'refreshes by itself',
-  orders: 'orders', tablesOpen: 'tables open', platesCooking: 'plates cooking', phonesOnline: 'phones online',
-  openManager: 'Open the Manager screen', managerWhat: 'tables, punching orders, parcels, kitchen',
-  openCashier: 'Open the Cashier screen', cashierWhat: 'open bills (view only for admin) and closed bills',
-  netCollected: '✅ net collected', notCollected: a => a + ' on open tables not collected yet',
-  archive: 'hide everywhere',
-  namePriceNeeded: 'name and a valid ₹ price are needed',
-  unsaved: n => n + ' dish row' + (n === 1 ? '' : 's') + ' not saved',
-  leaveUnsaved: n => n + ' edited dish row' + (n === 1 ? ' is' : 's are') + ' not saved. Leave and lose the changes?',
-};
+// ---- language ----
+// EN / हिं / ગુ like the app (ui/L10n.kt) and the other browser screens:
+// the same localStorage choice, the app's own words where it has them. As
+// in the app, dish/table/staff names and the server's messages stay as they
+// are.
+const LANG_KEY = 'pbpos.lang', LANG_MARK = { en:'EN', hi:'हिं', gu:'ગુ' };
+let lang = 'en';
+try { lang = LANG_MARK[localStorage.getItem(LANG_KEY)] ? localStorage.getItem(LANG_KEY) : 'en'; } catch (e) {}
+const t = (en, hi, gu) => lang === 'hi' ? hi : lang === 'gu' ? gu : en;
+let S = {};
+function strings() {
+  document.documentElement.lang = lang;
+  S = {
+    panel: t('admin panel', 'एडमिन पैनल', 'એડમિન પેનલ'),
+    backup: t('⬇ backup', '⬇ बैकअप', '⬇ બેકઅપ'),
+    logout: t('Logout', 'बाहर निकलो', 'બહાર નીકળો'),
+    tabs: {
+      dashboard: t('Dashboard', 'डैशबोर्ड', 'ડેશબોર્ડ'), stock: t('Stock', 'स्टॉक', 'સ્ટોક'),
+      menu: t('Menu & colours', 'मेनू और रंग', 'મેનૂ અને રંગ'), staff: t('Staff & PINs', 'स्टाफ़ और PIN', 'સ્ટાફ અને PIN'),
+      tables: t('Tables', 'टेबल', 'ટેબલ'), billing: t('Billing', 'बिलिंग', 'બિલિંગ'), bills: t('Bills', 'बिल', 'બિલ'),
+      report: t('Day report', 'दिन की रिपोर्ट', 'દિવસનો રિપોર્ટ'), log: t('Audit log', 'ऑडिट लॉग', 'ઓડિટ લોગ'),
+    },
+    noNet: t('No network — check the internet and try again', 'नेटवर्क नहीं है — इंटरनेट देखो और फिर कोशिश करो', 'નેટવર્ક નથી — ઇન્ટરનેટ જુઓ અને ફરી પ્રયત્ન કરો'),
+    noServer: t('The POS server is not answering — try again', 'POS सर्वर जवाब नहीं दे रहा — फिर कोशिश करो', 'POS સર્વર જવાબ નથી આપતું — ફરી પ્રયત્ન કરો'),
+    expired: t('Session expired — log in again', 'सेशन खत्म — फिर से लॉग इन करो', 'સેશન પૂરું — ફરી લૉગ ઇન કરો'),
+    backupFailed: t('Backup failed', 'बैकअप नहीं हुआ', 'બેકઅપ ન થયો'),
+    backupDone: t('Backup downloaded ✓', 'बैकअप डाउनलोड हो गया ✓', 'બેકઅપ ડાઉનલોડ થયો ✓'),
+    printFail: t('Could not load the bill to print', 'छापने के लिए बिल नहीं खुला', 'છાપવા માટે બિલ ન ખૂલ્યું'),
+    save: t('Save', 'सेव करो', 'સેવ કરો'), saved: t('Saved ✓', 'सेव हो गया ✓', 'સેવ થયું ✓'),
+    saveAll: t('Save all', 'सब सेव करो', 'બધું સેવ કરો'),
+    colour: t('colour', 'रंग', 'રંગ'), name: t('name', 'नाम', 'નામ'), priceRs: t('price ₹', 'दाम ₹', 'ભાવ ₹'),
+    station: t('station', 'स्टेशन', 'સ્ટેશન'),
+    stationHint: t('kitchen = cooked in buckets, counter = waiter hands over', 'किचन = बकेट में बनता है, काउंटर = वेटर सीधा देता है', 'રસોડું = બકેટમાં બને, કાઉન્ટર = વેઈટર સીધું આપે'),
+    kitchen: t('🍳 kitchen', '🍳 किचन', '🍳 રસોડું'), counter: t('✋ counter', '✋ काउंटर', '✋ કાઉન્ટર'),
+    tawaCap: t('tawa cap', 'तवा कैप', 'તવા કેપ'), sealMin: t('seal (min)', 'सील (मिनट)', 'સીલ (મિનિટ)'),
+    auto: t('auto', 'अपने आप', 'આપોઆપ'),
+    inStock: t('in stock', 'स्टॉक में', 'સ્ટોકમાં'), outOfStock: t('out of stock', 'खत्म', 'ખલાસ'),
+    outCount: n => n ? t(n + ' dish' + (n === 1 ? '' : 'es') + ' out of stock', n + ' डिश खत्म', n + ' ડિશ ખલાસ')
+                     : t('Everything is in stock', 'सब स्टॉक में है', 'બધું સ્ટોકમાં છે'),
+    stockHint: t('Tap a dish to switch it. It saves at once and greys out on every phone.',
+                 'डिश दबाओ तो बदलेगी। तुरंत सेव होती है और हर फ़ोन पर ग्रे हो जाती है।',
+                 'ડિશ દબાવો એટલે બદલાશે. તરત સેવ થાય છે અને દરેક ફોન પર ગ્રે થઈ જાય છે.'),
+    collectedToday: t('COLLECTED TODAY', 'आज आए पैसे', 'આજે આવેલા પૈસા'),
+    closedBills: n => t(n + ' closed bill' + (n === 1 ? '' : 's'), n + ' बंद बिल', n + ' બંધ બિલ'),
+    served: t('served', 'परोसा', 'પીરસ્યું'), discounts: t('discounts', 'छूट', 'છૂટ'),
+    stillOpen: (a, n) => t(a + ' still open on ' + n + ' table' + (n === 1 ? '' : 's'), a + ' अभी ' + n + ' टेबल पर खुला', a + ' હજી ' + n + ' ટેબલ પર ખુલ્લું'),
+    refreshes: t('refreshes by itself', 'अपने आप ताज़ा होता है', 'આપોઆપ તાજું થાય છે'),
+    orders: t('orders', 'ऑर्डर', 'ઓર્ડર'), tablesOpen: t('tables open', 'खुले टेबल', 'ખુલ્લા ટેબલ'),
+    platesCooking: t('plates cooking', 'बन रही प्लेट', 'બનતી પ્લેટ'), phonesOnline: t('phones online', 'ऑनलाइन फ़ोन', 'ઓનલાઈન ફોન'),
+    openManager: t('Open the Manager screen', 'मैनेजर स्क्रीन खोलो', 'મેનેજર સ્ક્રીન ખોલો'),
+    managerWhat: t('tables, punching orders, parcels, kitchen', 'टेबल, ऑर्डर पंच, पार्सल, किचन', 'ટેબલ, ઓર્ડર પંચ, પાર્સલ, રસોડું'),
+    openCashier: t('Open the Cashier screen', 'कैशियर स्क्रीन खोलो', 'કેશિયર સ્ક્રીન ખોલો'),
+    cashierWhat: t('open bills (view only for admin) and closed bills', 'खुले बिल (एडमिन के लिए सिर्फ़ देखना) और बंद बिल', 'ખુલ્લા બિલ (એડમિન માટે ફક્ત જોવા) અને બંધ બિલ'),
+    netCollected: t('✅ net collected', '✅ कुल आए पैसे', '✅ કુલ આવેલા પૈસા'),
+    notCollected: a => t(a + ' on open tables not collected yet', a + ' खुले टेबलों पर अभी बाकी', a + ' ખુલ્લા ટેબલ પર હજી બાકી'),
+    archive: t('hide everywhere', 'हर जगह छुपाओ', 'બધે છુપાવો'),
+    archiveQ: n => t('Hide "' + n + '" everywhere? (it stays in old orders and reports)', '"' + n + '" हर जगह छुपाएँ? (पुराने ऑर्डर और रिपोर्ट में रहेगा)', '"' + n + '" બધે છુપાવવું? (જૂના ઓર્ડર અને રિપોર્ટમાં રહેશે)'),
+    namePriceNeeded: t('name and a valid ₹ price are needed', 'नाम और सही ₹ दाम चाहिए', 'નામ અને સાચો ₹ ભાવ જોઈએ'),
+    unsaved: n => t(n + ' dish row' + (n === 1 ? '' : 's') + ' not saved', n + ' डिश लाइन सेव नहीं हुई', n + ' ડિશ લાઈન સેવ નથી થઈ'),
+    leaveUnsaved: n => t(n + ' edited dish row' + (n === 1 ? ' is' : 's are') + ' not saved. Leave and lose the changes?',
+                         n + ' बदली हुई डिश लाइन सेव नहीं हुई। छोड़कर बदलाव खो दें?',
+                         n + ' બદલેલી ડિશ લાઈન સેવ નથી થઈ. છોડીને ફેરફાર ગુમાવવા?'),
+    newDish: t('new dish name', 'नई डिश का नाम', 'નવી ડિશનું નામ'),
+    addTo: c => t('+ add to ' + c, '+ ' + c + ' में जोड़ो', '+ ' + c + ' માં ઉમેરો'),
+    newCat: t('new category name', 'नई कैटेगरी का नाम', 'નવી કેટેગરીનું નામ'),
+    addCat: t('+ add category', '+ कैटेगरी जोड़ो', '+ કેટેગરી ઉમેરો'),
+    role: r => ({ waiter: t('waiter', 'वेटर', 'વેઈટર'), manager: t('manager', 'मैनेजर', 'મેનેજર'), chef: t('chef', 'शेफ़', 'શેફ'),
+                  admin: t('admin', 'एडमिन', 'એડમિન'), cashier: t('cashier', 'कैशियर', 'કેશિયર'),
+                  parcel: t('parcel manager', 'पार्सल मैनेजर', 'પાર્સલ મેનેજર') })[r] || r,
+    resetPin: t('reset PIN', 'PIN बदलो', 'PIN બદલો'), active: t('active', 'चालू', 'ચાલુ'),
+    pin4: t('PIN (4 digits)', 'PIN (4 अंक)', 'PIN (4 આંકડા)'),
+    addStaff: t('+ add staff', '+ स्टाफ़ जोड़ो', '+ સ્ટાફ ઉમેરો'),
+    staffHint: t('A PIN is that person\'s signature — one each, never shared. Deactivating keeps their history.',
+                 'PIN उस व्यक्ति का दस्तख़त है — हर एक का अलग, कभी शेयर नहीं। बंद करने पर उसका इतिहास रहता है।',
+                 'PIN એ વ્યક્તિની સહી છે — દરેકનો અલગ, ક્યારેય શેર નહીં. બંધ કરવાથી ઇતિહાસ રહે છે.'),
+    newPinFor: n => t('New 4-digit PIN for ' + n + ':', n + ' का नया 4 अंकों का PIN:', n + ' નો નવો 4 આંકડાનો PIN:'),
+    pin4only: t('4 digits, numbers only', 'सिर्फ़ 4 अंक', 'ફક્ત 4 આંકડા'),
+    pinChanged: n => t('PIN changed for ' + n, n + ' का PIN बदल गया', n + ' નો PIN બદલાયો'),
+    namePinNeeded: t('name + 4-digit PIN needed', 'नाम + 4 अंकों का PIN चाहिए', 'નામ + 4 આંકડાનો PIN જોઈએ'),
+    rename: t('rename', 'नाम बदलो', 'નામ બદલો'), parcel: t('parcel', 'पार्सल', 'પાર્સલ'),
+    tableNameEg: t('name (T11 or P4)', 'नाम (जैसे T11 या P4)', 'નામ (જેમ કે T11 કે P4)'),
+    dineIn: t('🍽 dine-in', '🍽 डाइन-इन', '🍽 ડાઈન-ઈન'), parcelOpt: t('🥡 parcel', '🥡 पार्सल', '🥡 પાર્સલ'),
+    addTable: t('+ add table', '+ टेबल जोड़ो', '+ ટેબલ ઉમેરો'),
+    renameQ: o => t('New name for ' + o + ':', o + ' का नया नाम:', o + ' નું નવું નામ:'),
+    shopName: t('Shop name', 'दुकान का नाम', 'દુકાનનું નામ'), phone: t('Phone', 'फ़ोन', 'ફોન'),
+    phonePh: t('printed under the shop name', 'दुकान के नाम के नीचे छपेगा', 'દુકાનના નામ નીચે છપાશે'),
+    footer: t('Footer line', 'नीचे की लाइन', 'નીચેની લાઈન'),
+    billingHint: t('These three lines print on every bill. The cashier prints from the Cashier screen or the app (any printer the phone can see, or save as PDF to share on WhatsApp); 🖨 under Bills reprints any closed bill.',
+                   'ये तीन लाइनें हर बिल पर छपती हैं। कैशियर, कैशियर स्क्रीन या ऐप से छापता है (फ़ोन जो भी प्रिंटर देखे, या PDF बनाकर WhatsApp पर भेजो); बिल में 🖨 से कोई भी बंद बिल दोबारा छापो।',
+                   'આ ત્રણ લાઈન દરેક બિલ પર છપાય છે. કેશિયર, કેશિયર સ્ક્રીન કે એપથી છાપે છે (ફોન જે પ્રિન્ટર જુએ, કે PDF બનાવી WhatsApp પર મોકલો); બિલમાં 🖨 થી કોઈ પણ બંધ બિલ ફરી છાપો.'),
+    billingSaved: t('Saved ✓ — the next bill prints with the new header', 'सेव ✓ — अगला बिल नए हेडर के साथ छपेगा', 'સેવ ✓ — આગલું બિલ નવા હેડર સાથે છપાશે'),
+    today: t('today', 'आज', 'આજે'),
+    billsN: n => t(n + ' bill' + (n === 1 ? '' : 's'), n + ' बिल', n + ' બિલ'),
+    noBills: t('No bills for this day.', 'इस दिन का कोई बिल नहीं।', 'આ દિવસનું કોઈ બિલ નથી.'),
+    billsHint: t('Every closed table\'s bill lives here — items, discount and how it was paid. 🖨 reprints it.',
+                 'हर बंद टेबल का बिल यहाँ है — आइटम, छूट और पेमेंट कैसे हुआ। 🖨 से दोबारा छापो।',
+                 'દરેક બંધ ટેબલનું બિલ અહીં છે — આઈટમ, છૂટ અને પેમેન્ટ કેવી રીતે થયું. 🖨 થી ફરી છાપો.'),
+    forItems: t('click for items', 'आइटम देखने को दबाओ', 'આઈટમ જોવા દબાવો'),
+    reprint: t('Print bill', 'बिल छापो', 'બિલ છાપો'),
+    salesServed: t('sales (served)', 'बिक्री (परोसा)', 'વેચાણ (પીરસેલું)'),
+    cancelled: t('cancelled', 'रद्द', 'રદ'),
+    cashDrawer: t('💵 cash in drawer', '💵 गल्ले में कैश', '💵 ગલ્લામાં કેશ'),
+    onlineUpi: t('📲 online / UPI', '📲 ऑनलाइन / UPI', '📲 ઓનલાઈન / UPI'),
+    discountsGiven: t('discounts given', 'दी गई छूट', 'આપેલી છૂટ'),
+    stillOpenDate: n => t('⚠ ' + n + ' order(s) still open for this date', '⚠ इस दिन के ' + n + ' ऑर्डर अभी खुले हैं', '⚠ આ દિવસના ' + n + ' ઓર્ડર હજી ખુલ્લા છે'),
+    soldSection: t('Sold (served items)', 'बिका (परोसे आइटम)', 'વેચાયું (પીરસેલી વસ્તુઓ)'),
+    nothing: t('nothing yet', 'अभी कुछ नहीं', 'હજી કંઈ નથી'),
+    total: t('TOTAL', 'कुल', 'કુલ'),
+    byWaiter: t('By waiter', 'वेटर के हिसाब से', 'વેઈટર પ્રમાણે'),
+    itemsN: n => t(n + ' item' + (n === 1 ? '' : 's'), n + ' आइटम', n + ' આઈટમ'),
+    cancelledSection: t('Cancelled', 'रद्द', 'રદ'),
+    logTypes: { '': t('all', 'सब', 'બધા'), orders: t('orders', 'ऑर्डर', 'ઓર્ડર'), kitchen: t('kitchen', 'किचन', 'રસોડું'),
+                serving: t('serving', 'परोसना', 'પીરસવું'), cancel: t('cancelled', 'रद्द', 'રદ'),
+                billing: t('billing', 'बिलिंग', 'બિલિંગ'), staff: t('staff & logins', 'स्टाफ़ और लॉगिन', 'સ્ટાફ અને લૉગિન') },
+    nothingFilter: t('nothing in this filter', 'इस फ़िल्टर में कुछ नहीं', 'આ ફિલ્ટરમાં કંઈ નથી'),
+    loadOlder: t('Load older', 'पुराने देखो', 'જૂના જુઓ'),
+    system: t('system', 'सिस्टम', 'સિસ્ટમ'),
+  };
+}
+strings();
 
 // Non-blocking feedback instead of alert(): slides up bottom-right, self-clears.
 function toast(msg, kind) {
@@ -323,9 +438,9 @@ async function api(method, path, body) {
   const r = await fetch(path, {
     method, headers: { 'Content-Type':'application/json', ...(token ? {'Authorization':'Bearer '+token} : {}) },
     body: body === undefined ? undefined : JSON.stringify(body)
-  }).catch(() => { throw new Error('No network — check the internet and try again'); });
-  if (r.status === 502 || r.status === 503 || r.status === 504) throw new Error('The POS server is not answering — try again');
-  if (r.status === 401 && token) { logout(); throw new Error('session expired'); }
+  }).catch(() => { throw new Error(S.noNet); });
+  if (r.status === 502 || r.status === 503 || r.status === 504) throw new Error(S.noServer);
+  if (r.status === 401 && token) { logout(); throw new Error(S.expired); }
   const data = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error(data.error || ('server error ' + r.status));
   return data;
@@ -345,27 +460,43 @@ function logout() {
 $('logoutBtn').onclick = logout;
 $('backupBtn').onclick = async () => {
   const r = await fetch('/api/admin/backup', { headers:{'Authorization':'Bearer '+token} });
-  if (!r.ok) { toast('backup failed', 'bad'); return; }
+  if (!r.ok) { toast(S.backupFailed, 'bad'); return; }
   const blob = await r.blob();
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
   a.download = (r.headers.get('Content-Disposition')||'').match(/filename="(.+)"/)?.[1] || 'pbpos-backup.db';
   a.click(); URL.revokeObjectURL(a.href);
-  toast('Backup downloaded ✓', 'ok');
+  toast(S.backupDone, 'ok');
 };
 
 const TABS = {
-  dashboard:['📊','Dashboard'], stock:['📦','Stock'], menu:['🎨','Menu & colours'], staff:['👥','Staff & PINs'],
-  tables:['🪑','Tables'], billing:['🧾','Billing'], bills:['💳','Bills'],
-  report:['📈','Day report'], log:['📜','Audit log']
+  dashboard:'📊', stock:'📦', menu:'🎨', staff:'👥', tables:'🪑', billing:'🧾', bills:'💳', report:'📈', log:'📜'
+};
+
+// the language chip in the sidebar: re-words the whole page in place
+function paintChrome() {
+  $('langSel').value = lang;
+  $('langMark').textContent = LANG_MARK[lang];
+  $('panelT').textContent = S.panel;
+  $('backupBtn').textContent = S.backup;
+  $('logoutBtn').textContent = S.logout;
+  $('saveAllBtn').textContent = S.saveAll;
+}
+$('langSel').onchange = function () {
+  if (tab === 'menu' && dirtyRows().length && !confirm(S.leaveUnsaved(dirtyRows().length))) { this.value = lang; return; }
+  lang = this.value;
+  try { localStorage.setItem(LANG_KEY, lang); } catch (e) {}
+  strings(); paintChrome();
+  const keep = tab; tab = '';
+  show(keep);
 };
 function show(t) {
   // menu rows edited but not saved: ask before the tab switch throws them away
   if (tab === 'menu' && t !== 'menu' && dirtyRows().length && !confirm(S.leaveUnsaved(dirtyRows().length))) return;
   $('dirtyBar').hidden = true; document.body.classList.remove('dirty');
   tab = t; clearInterval(dashTimer);
-  $('tabs').innerHTML = Object.entries(TABS).map(([k,[ic,v]]) =>
-    `<button class="${k===tab?'on':''}" onclick="show('${k}')" ${k===tab?'aria-current="page"':''}><span class="ic">${ic}</span>${v}</button>`).join('');
+  $('tabs').innerHTML = Object.entries(TABS).map(([k,ic]) =>
+    `<button class="${k===tab?'on':''}" onclick="show('${k}')" ${k===tab?'aria-current="page"':''}><span class="ic">${ic}</span>${esc(S.tabs[k])}</button>`).join('');
   // on a phone the strip scrolls sideways: keep the page you're on in view
   $('tabs').querySelector('.on')?.scrollIntoView({ block:'nearest', inline:'center' });
   ({dashboard, stock, menu, staff, tables, billing, bills, report, log})[t]();
@@ -474,14 +605,14 @@ async function menu() {
         <button class="icon" title="${esc(S.archive)}" aria-label="${esc(S.archive)}" onclick="archiveItem(${i.id}, '${esc(i.name)}')">🗑</button>
       </div>`).join('')}
       <div class="addbar">
-        <input class="grow" placeholder="new dish name" id="nn${cat.id}">
-        <input class="num" placeholder="₹" id="np${cat.id}">
-        <select id="ns${cat.id}"><option value="kitchen">🍳 kitchen</option><option value="counter">✋ counter</option></select>
-        <button class="primary" onclick="addItem(${cat.id})">+ add to ${esc(cat.name)}</button>
+        <input class="grow" placeholder="${esc(S.newDish)}" id="nn${cat.id}">
+        <input class="num" placeholder="₹" inputmode="decimal" id="np${cat.id}">
+        <select id="ns${cat.id}"><option value="kitchen">${esc(S.kitchen)}</option><option value="counter">${esc(S.counter)}</option></select>
+        <button class="primary" onclick="addItem(${cat.id})">${esc(S.addTo(cat.name))}</button>
       </div>
     </div>`).join('') + `
-    <div class="card addbar" style="margin-top:2px"><input class="grow" id="newcat" placeholder="new category name">
-      <button class="primary" onclick="addCat()">+ add category</button></div>`;
+    <div class="card addbar" style="margin-top:2px"><input class="grow" id="newcat" placeholder="${esc(S.newCat)}">
+      <button class="primary" onclick="addCat()">${esc(S.addCat)}</button></div>`;
 }
 async function saveItem(id, btn) {
   const row = btn.closest('.row');
@@ -536,12 +667,12 @@ document.addEventListener('change', async e => {
   }
 });
 async function archiveItem(id, name) {
-  if (!confirm('Hide "'+name+'" everywhere? (it stays in old orders and reports)')) return;
+  if (!confirm(S.archiveQ(name))) return;
   try { await api('PATCH','/api/admin/menu-items/'+id, { active:false }); menu(); } catch (e) { toast(e.message, 'bad'); }
 }
 async function addItem(catId) {
   const name = $('nn'+catId).value.trim(), price = toPaise($('np'+catId).value);
-  if (!name || price === null) { toast('name and ₹ price needed', 'bad'); return; }
+  if (!name || price === null) { toast(S.namePriceNeeded, 'bad'); return; }
   try {
     await api('POST','/api/admin/menu-items', { categoryId:catId, name, price, colour:'', station:$('ns'+catId).value });
     menu();
@@ -558,31 +689,31 @@ async function staff() {
   $('view').innerHTML = `<div class="card">` + s.staff.map(p => `
     <div class="row">
       <b class="grow">${esc(p.name)}</b>
-      <span class="mut">${esc(p.role)}</span>
-      <button onclick="resetPin(${p.id}, '${esc(p.name)}')">reset PIN</button>
-      <label class="ck"><input type="checkbox" class="sw" ${p.active?'checked':''} onchange="staffActive(${p.id}, this)"> active</label>
+      <span class="mut">${esc(S.role(p.role))}</span>
+      <button onclick="resetPin(${p.id}, '${esc(p.name)}')">${esc(S.resetPin)}</button>
+      <label class="ck"><input type="checkbox" class="sw" ${p.active?'checked':''} onchange="staffActive(${p.id}, this)"> ${esc(S.active)}</label>
     </div>`).join('') + `
     <div class="addbar">
-      <input id="stn" placeholder="name" class="grow">
-      <input id="stp" placeholder="PIN (4 digits)" maxlength="4" inputmode="numeric" class="num">
-      <select id="str"><option>waiter</option><option>manager</option><option>chef</option><option>cashier</option><option>parcel</option><option>admin</option></select>
-      <button class="primary" onclick="addStaff()">+ add staff</button>
+      <input id="stn" placeholder="${esc(S.name)}" class="grow">
+      <input id="stp" placeholder="${esc(S.pin4)}" maxlength="4" inputmode="numeric" class="num" style="width:130px">
+      <select id="str">${['waiter','manager','chef','cashier','parcel','admin'].map(r => `<option value="${r}">${esc(S.role(r))}</option>`).join('')}</select>
+      <button class="primary" onclick="addStaff()">${esc(S.addStaff)}</button>
     </div></div>
-    <p class="hint">A PIN is that person's signature — one each, never shared. Deactivating keeps their history.</p>`;
+    <p class="hint">${esc(S.staffHint)}</p>`;
 }
 async function staffActive(id, cb) {
   try { await api('PATCH','/api/admin/staff/'+id, { active: cb.checked }); }
   catch (e) { toast(e.message, 'bad'); cb.checked = !cb.checked; }
 }
 async function resetPin(id, name) {
-  const pin = prompt('New 4-digit PIN for '+name+':'); if (pin === null) return;
-  if (!/^\d{4}$/.test(pin.trim())) { toast('4 digits, numbers only', 'bad'); return; }
-  try { await api('PATCH','/api/admin/staff/'+id, { pin: pin.trim() }); toast('PIN changed for '+name, 'ok'); }
+  const pin = prompt(S.newPinFor(name)); if (pin === null) return;
+  if (!/^\d{4}$/.test(pin.trim())) { toast(S.pin4only, 'bad'); return; }
+  try { await api('PATCH','/api/admin/staff/'+id, { pin: pin.trim() }); toast(S.pinChanged(name), 'ok'); }
   catch (e) { toast(e.message, 'bad'); }
 }
 async function addStaff() {
   const name = $('stn').value.trim(), pin = $('stp').value.trim(), role = $('str').value;
-  if (!name || !/^\d{4}$/.test(pin)) { toast('name + 4-digit PIN needed', 'bad'); return; }
+  if (!name || !/^\d{4}$/.test(pin)) { toast(S.namePinNeeded, 'bad'); return; }
   try { await api('POST','/api/admin/staff', { name, pin, role }); staff(); } catch (e) { toast(e.message, 'bad'); }
 }
 
@@ -592,14 +723,14 @@ async function tables() {
   $('view').innerHTML = `<div class="card">` + t.tables.map(x => `
     <div class="row">
       <span>${x.kind==='parcel'?'🥡':'🍽'}</span>
-      <b class="grow">${esc(x.name)} ${x.kind==='parcel'?'<span class="mut">parcel</span>':''}</b>
-      <button onclick="renameTable(${x.id}, '${esc(x.name)}')">rename</button>
-      <label class="ck"><input type="checkbox" class="sw" ${x.active?'checked':''} onchange="tableActive(${x.id}, this)"> active</label>
+      <b class="grow">${esc(x.name)} ${x.kind==='parcel'?`<span class="mut">${esc(S.parcel)}</span>`:''}</b>
+      <button onclick="renameTable(${x.id}, '${esc(x.name)}')">${esc(S.rename)}</button>
+      <label class="ck"><input type="checkbox" class="sw" ${x.active?'checked':''} onchange="tableActive(${x.id}, this)"> ${esc(S.active)}</label>
     </div>`).join('') + `
     <div class="addbar">
-      <input id="tbn" placeholder="name (T11 or P4)" class="grow">
-      <select id="tbk"><option value="dine">🍽 dine-in</option><option value="parcel">🥡 parcel</option></select>
-      <button class="primary" onclick="addTable()">+ add table</button>
+      <input id="tbn" placeholder="${esc(S.tableNameEg)}" class="grow">
+      <select id="tbk"><option value="dine">${esc(S.dineIn)}</option><option value="parcel">${esc(S.parcelOpt)}</option></select>
+      <button class="primary" onclick="addTable()">${esc(S.addTable)}</button>
     </div></div>`;
 }
 async function tableActive(id, cb) {
@@ -607,7 +738,7 @@ async function tableActive(id, cb) {
   catch (e) { toast(e.message, 'bad'); cb.checked = !cb.checked; }
 }
 async function renameTable(id, old) {
-  const name = prompt('New name for '+old+':', old); if (!name || !name.trim()) return;
+  const name = prompt(S.renameQ(old), old); if (!name || !name.trim()) return;
   try { await api('PATCH','/api/admin/tables/'+id, { name: name.trim() }); tables(); } catch (e) { toast(e.message, 'bad'); }
 }
 async function addTable() {
@@ -619,21 +750,19 @@ async function addTable() {
 async function billing() {
   const d = await api('GET','/api/admin/bill-settings');
   $('view').innerHTML = `<div class="card">
-    <div class="row"><span style="min-width:110px">Shop name</span><input id="bsn" class="grow" value="${esc(d.shopName)}"></div>
-    <div class="row"><span style="min-width:110px">Phone</span><input id="bsp" class="grow" value="${esc(d.shopPhone)}" placeholder="printed under the shop name"></div>
-    <div class="row"><span style="min-width:110px">Footer line</span><input id="bsf" class="grow" value="${esc(d.billFooter)}"></div>
-    <div class="addbar"><button class="primary" onclick="saveBilling()">Save</button></div>
+    <div class="row"><span style="min-width:110px">${esc(S.shopName)}</span><input id="bsn" class="grow" value="${esc(d.shopName)}"></div>
+    <div class="row"><span style="min-width:110px">${esc(S.phone)}</span><input id="bsp" class="grow" value="${esc(d.shopPhone)}" placeholder="${esc(S.phonePh)}"></div>
+    <div class="row"><span style="min-width:110px">${esc(S.footer)}</span><input id="bsf" class="grow" value="${esc(d.billFooter)}"></div>
+    <div class="addbar"><button class="primary" onclick="saveBilling()">${esc(S.save)}</button></div>
   </div>
-  <p class="hint">These three lines print on every bill. The cashier prints bills from their phone
-  (any printer the phone can see, or save-as-PDF to share on WhatsApp); a browser on this laptop
-  can print one too by opening <b>/bill/&lt;order id&gt;</b>.</p>`;
+  <p class="hint">${esc(S.billingHint)}</p>`;
 }
 async function saveBilling() {
   try {
     await api('POST','/api/admin/bill-settings', {
       shopName:$('bsn').value.trim(), shopPhone:$('bsp').value.trim(), billFooter:$('bsf').value.trim()
     });
-    toast('Saved ✓ — next bill prints with the new header', 'ok');
+    toast(S.billingSaved, 'ok');
   } catch (e) { toast(e.message, 'bad'); }
 }
 
@@ -646,22 +775,22 @@ async function bills() {
   $('view').innerHTML = `
     <div class="datebar">
       <button onclick="shiftBills(-1)">◀</button><b>${d.date}</b><button onclick="shiftBills(1)">▶</button>
-      <button onclick="billsDate='';bills()">today</button>
-      <span class="mut">${d.bills.length} bills · 💵 ${rupees(cashSum)} · 📲 ${rupees(onlineSum)}</span>
+      <button onclick="billsDate='';bills()">${esc(S.today)}</button>
+      <span class="mut">${esc(S.billsN(d.bills.length))} · 💵 ${rupees(cashSum)} · 📲 ${rupees(onlineSum)}</span>
     </div>
     <div class="card">` + (d.bills.length ? d.bills.map(b => `
-      <div class="row" style="cursor:pointer" onclick="toggleBill(this, ${b.orderId})" title="click for items">
+      <div class="row" style="cursor:pointer" onclick="toggleBill(this, ${b.orderId})" title="${esc(S.forItems)}">
         <b style="min-width:44px">#${b.orderNo}</b>
         <span class="grow">${esc(b.customerName || b.tableName)}
           <span class="mut">· ${clock(b.closedAt)} · ${esc(b.closedByName)}${b.customerName?' · '+esc(b.tableName):''}</span></span>
         ${b.discount>0?`<span class="amber" title="${esc(b.discountNote)}">−${rupees(b.discount)}</span>`:''}
         <span class="mut">${b.paidCash>0?'💵 '+rupees(b.paidCash):''} ${b.paidOnline>0?'📲 '+rupees(b.paidOnline):''}</span>
         <b>${rupees(b.total)}</b>
-        <button class="icon" onclick="event.stopPropagation();printBill(${b.orderId})">🖨</button>
+        <button class="icon" title="${esc(S.reprint)}" aria-label="${esc(S.reprint)}" onclick="event.stopPropagation();printBill(${b.orderId})">🖨</button>
       </div>
       <div hidden style="padding:4px 8px 10px 52px"></div>`).join('')
-    : '<p class="mut">no bills for this day</p>') + `</div>
-    <p class="hint">Every closed table's bill lives here — items, discount and how it was paid. 🖨 reprints it.</p>`;
+    : `<p class="mut">${esc(S.noBills)}</p>`) + `</div>
+    <p class="hint">${esc(S.billsHint)}</p>`;
 }
 // Reprint without leaving the page or putting the session token in a URL
 // (it used to window.open('/bill/…?token=…')): fetch the bill with the
@@ -669,8 +798,8 @@ async function bills() {
 async function printBill(orderId) {
   let r;
   try { r = await fetch('/bill/' + orderId, { headers: { 'Authorization': 'Bearer ' + token } }); }
-  catch (e) { toast('No network — check the internet and try again', 'bad'); return; }
-  if (!r.ok) { toast('Could not load the bill to print', 'bad'); return; }
+  catch (e) { toast(S.noNet, 'bad'); return; }
+  if (!r.ok) { toast(S.printFail, 'bad'); return; }
   const html = await r.text();
   $('printFrame')?.remove();
   const f = document.createElement('iframe');
@@ -720,29 +849,29 @@ async function report() {
   const got = (d.paidCash || 0) + (d.paidOnline || 0);
   const lines = (arr, cls) => arr.length
     ? arr.map(l => `<tr><td>${l.qty}× ${esc(l.name)}</td><td class="r ${cls||''}">${rupees(l.value)}</td></tr>`).join('')
-    : '<tr><td class="mut">nothing</td><td></td></tr>';
+    : `<tr><td class="mut">${esc(S.nothing)}</td><td></td></tr>`;
   $('view').innerHTML = `
     <div class="datebar">
       <button onclick="shiftRep(-1)">◀</button><b>${d.date}</b><button onclick="shiftRep(1)">▶</button>
-      <button onclick="repDate='';report()">today</button>
+      <button onclick="repDate='';report()">${esc(S.today)}</button>
     </div>
     <div class="stats">
-      <div class="stat green"><span class="lbl">sales (served)</span><b>${rupees(d.soldTotal)}</b></div>
-      <div class="stat"><span class="lbl">orders</span><b>${d.ordersOpened}</b></div>
-      <div class="stat red"><span class="lbl">cancelled</span><b>${rupees(d.cancelledTotal)}</b></div>
+      <div class="stat green"><span class="lbl">${esc(S.salesServed)}</span><b>${rupees(d.soldTotal)}</b></div>
+      <div class="stat"><span class="lbl">${esc(S.orders)}</span><b>${d.ordersOpened}</b></div>
+      <div class="stat red"><span class="lbl">${esc(S.cancelled)}</span><b>${rupees(d.cancelledTotal)}</b></div>
     </div>
     <div class="stats" style="margin-top:10px">
       <div class="stat green"><span class="lbl">${esc(S.netCollected)}</span><b>${rupees(got)}</b></div>
-      <div class="stat"><span class="lbl">💵 cash in drawer</span><b>${rupees(d.paidCash||0)}</b></div>
-      <div class="stat"><span class="lbl">📲 online / UPI</span><b>${rupees(d.paidOnline||0)}</b></div>
-      <div class="stat amber"><span class="lbl">discounts given</span><b>${rupees(d.discountTotal||0)}</b></div>
+      <div class="stat"><span class="lbl">${esc(S.cashDrawer)}</span><b>${rupees(d.paidCash||0)}</b></div>
+      <div class="stat"><span class="lbl">${esc(S.onlineUpi)}</span><b>${rupees(d.paidOnline||0)}</b></div>
+      <div class="stat amber"><span class="lbl">${esc(S.discountsGiven)}</span><b>${rupees(d.discountTotal||0)}</b></div>
     </div>
-    ${d.ordersOpen>0?`<p class="redtx" style="margin-top:10px">⚠ ${d.ordersOpen} order(s) still open for this date${open && open.n ? ' — ' + esc(S.notCollected(rupees(open.total))) : ''}</p>`:''}
-    <h2>Sold (served items)</h2><div class="card"><table>${lines(d.sold)}
-      <tr><th>TOTAL</th><th class="r green" style="font-size:14px">${rupees(d.soldTotal)}</th></tr></table></div>
-    <h2>By waiter</h2><div class="card"><table>${d.waiters.map(w =>
-      `<tr><td>${esc(w.name)} <span class="mut">(${w.qty} items)</span></td><td class="r">${rupees(w.value)}</td></tr>`).join('') || '<tr><td class="mut">nothing</td></tr>'}</table></div>
-    <h2>Cancelled</h2><div class="card"><table>${lines(d.cancelled,'redtx')}</table>
+    ${d.ordersOpen>0?`<p class="redtx" style="margin-top:10px">${esc(S.stillOpenDate(d.ordersOpen))}${open && open.n ? ' — ' + esc(S.notCollected(rupees(open.total))) : ''}</p>`:''}
+    <h2>${esc(S.soldSection)}</h2><div class="card"><table>${lines(d.sold)}
+      <tr><th>${esc(S.total)}</th><th class="r green" style="font-size:14px">${rupees(d.soldTotal)}</th></tr></table></div>
+    <h2>${esc(S.byWaiter)}</h2><div class="card"><table>${d.waiters.map(w =>
+      `<tr><td>${esc(w.name)} <span class="mut">(${esc(S.itemsN(w.qty))})</span></td><td class="r">${rupees(w.value)}</td></tr>`).join('') || `<tr><td class="mut">${esc(S.nothing)}</td></tr>`}</table></div>
+    <h2>${esc(S.cancelledSection)}</h2><div class="card"><table>${lines(d.cancelled,'redtx')}</table>
       ${d.cancelLog.map(c => `<p class="mut" style="margin-top:6px">${clock(c.at)} · ${esc(c.by)}: ${esc(c.detail)}</p>`).join('')}</div>`;
 }
 function shiftRep(days) {
@@ -754,19 +883,19 @@ function shiftRep(days) {
 
 // ---- audit log ----
 let logEvents = [], logType = '';
-const LOG_TYPES = { '':'All', orders:'Orders', kitchen:'Kitchen', serving:'Serving', cancel:'Cancelled', billing:'Billing', staff:'Staff & logins' };
+const LOG_TYPES = ['', 'orders', 'kitchen', 'serving', 'cancel', 'billing', 'staff'];
 async function log() {
   const d = await api('GET','/api/admin/audit' + (logType ? '?type='+logType : ''));
   logEvents = d.events; paintLog();
 }
 function paintLog() {
-  $('view').innerHTML = `<div class="pillnav">` + Object.entries(LOG_TYPES).map(([k,v]) =>
-    `<button class="${logType===k?'on':''}" onclick="logType='${k}';log()">${v}</button>`).join('') +
+  $('view').innerHTML = `<div class="pillnav">` + LOG_TYPES.map(k =>
+    `<button class="${logType===k?'on':''}" onclick="logType='${k}';log()">${esc(S.logTypes[k])}</button>`).join('') +
     `</div><div class="card">` + (logEvents.length ? logEvents.map(e => `
     <div class="row"><span class="mut" style="min-width:46px">${clock(e.at)}</span>
-      <b>${esc(e.by || 'system')}</b><span class="mut">${esc(e.action)}</span>
-      <span class="grow">${esc(e.detail)}</span></div>`).join('') : '<p class="mut">nothing in this filter</p>') +
-    `</div><button onclick="olderLog()" style="width:100%">Load older</button>`;
+      <b>${esc(e.by || S.system)}</b><span class="mut">${esc(e.action)}</span>
+      <span class="grow">${esc(e.detail)}</span></div>`).join('') : `<p class="mut">${esc(S.nothingFilter)}</p>`) +
+    `</div><button onclick="olderLog()" style="width:100%">${esc(S.loadOlder)}</button>`;
 }
 async function olderLog() {
   if (!logEvents.length) { log(); return; }
@@ -776,13 +905,14 @@ async function olderLog() {
 
 // ---- the session from the PIN pad at "/" ---------------------------------
 (function adopt() {
-  let t = null, s = null;
-  try { t = localStorage.getItem(TOK); s = JSON.parse(localStorage.getItem(WHO) || 'null'); }
+  let tk = null, s = null;
+  try { tk = localStorage.getItem(TOK); s = JSON.parse(localStorage.getItem(WHO) || 'null'); }
   catch (e) { /* corrupt storage: treat as logged out */ }
-  if (!t || !s || s.role !== 'admin') { location.replace('/'); return; }
-  token = t; me = s;
+  if (!tk || !s || s.role !== 'admin') { location.replace('/'); return; }
+  token = tk; me = s;
   $('app').hidden = false;
   $('who').textContent = me.name;
+  paintChrome();
   show('dashboard');
 })();
 </script>

@@ -436,6 +436,16 @@ label.fld span { display:block; font-size:12px; font-weight:700; color:var(--ink
 }
 .datenav b { font-size:15px; padding:0 4px; font-variant-numeric:tabular-nums; }
 
+/* ---------- printing a bill without leaving the screen ----------
+   The /bill page sits in a hidden frame and is printed from there. Should
+   a browser print the whole page instead (iOS Safari does), paper shows
+   only that frame. */
+#printFrame { position:fixed; left:-10000px; top:0; width:360px; height:600px; border:0; }
+@media print {
+  body.has-print > *:not(#printFrame) { display:none !important; }
+  body.has-print #printFrame { position:static; width:100%; }
+}
+
 /* ---------- dialog (discount, confirm close, blockers) ---------- */
 .modal {
   position:fixed; inset:0; z-index:70; background:rgba(40,22,10,.45);

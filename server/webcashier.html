@@ -93,6 +93,7 @@ function strings() {
     gotCash: t('Cash given:', 'कैश मिला:', 'કેશ મળ્યા:'),
     giveBack: function (a) { return t('give back ' + a, a + ' वापस दो', a + ' પાછા આપો'); },
     print: t('🖨  Print bill', '🖨  बिल छापो', '🖨  બિલ છાપો'),
+    printFail: t('Could not load the bill to print — try again', 'छापने के लिए बिल नहीं खुला — फिर कोशिश करो', 'છાપવા માટે બિલ ન ખૂલ્યું — ફરી પ્રયત્ન કરો'),
     closeAmt: function (a) { return t('Close · ' + a, 'बंद करो · ' + a, 'બંધ કરો · ' + a); },
     payFirst: function (a) { return t('Payment first · ' + a + ' due', 'पहले पेमेंट · ' + a + ' बाकी', 'પહેલાં પેમેન્ટ · ' + a + ' બાકી'); },
     billStale: t('Items changed — refreshing the bill…', 'आइटम बदले — बिल ताज़ा हो रहा है…', 'આઈટમ બદલાઈ — બિલ તાજું થાય છે…'),
@@ -260,10 +261,38 @@ function failView(e, again) {
   $('againBtn').onclick = again;
 }
 
-// The printable bill is a plain GET the browser navigates to, and a navigation
-// can't carry an Authorization header — the server also accepts ?token= for
-// exactly this case.
-function printBill(orderId) { window.open('/bill/' + orderId + '?token=' + encodeURIComponent(token), '_blank'); }
+// Print without leaving the bill. It used to window.open('/bill/…?token=…'):
+// a new tab with no way back (in an iPhone home-screen app it jumped out to
+// Safari) and the session token in the browser history. Now the bill page is
+// fetched with the session in a header — no token in any URL — put into a
+// hidden same-origin frame, and printed from there; the cashier stays on the
+// bill. (iOS Safari prints the top page rather than a frame, so pos.css
+// shows only that frame on paper — see #printFrame.)
+async function printBill(orderId) {
+  var r;
+  try {
+    r = await fetch('/bill/' + orderId, { headers: { 'Authorization': 'Bearer ' + token } });
+  } catch (e) { toast(S.noNet, 'bad'); return; }
+  if (!r.ok) { toast(S.printFail, 'bad'); return; }
+  var html = await r.text();
+  var old = $('printFrame');
+  if (old) old.remove();
+  var f = document.createElement('iframe');
+  f.id = 'printFrame';
+  f.title = S.print;
+  f.setAttribute('aria-hidden', 'true');
+  f.tabIndex = -1;
+  f.onload = function () {
+    try {
+      f.style.height = f.contentDocument.documentElement.scrollHeight + 'px';
+      f.contentWindow.focus();
+      f.contentWindow.print();
+    } catch (e) { window.print(); }
+  };
+  f.srcdoc = html;
+  document.body.classList.add('has-print');
+  document.body.appendChild(f);
+}
 
 // ---------------------------------------------------------------- shell state
 var tab = 'open';      // lit tab in the strip

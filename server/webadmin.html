@@ -166,6 +166,13 @@
   .toast.bad { background:var(--danger); }
   @keyframes toastin { from { opacity:0; transform:translateY(8px);} to { opacity:1; transform:none;} }
 
+  /* reprint from a hidden frame (see printBill); paper shows only that frame */
+  #printFrame { position:fixed; left:-10000px; top:0; width:360px; height:600px; border:0; }
+  @media print {
+    body.has-print > *:not(#printFrame) { display:none !important; }
+    body.has-print #printFrame { position:static; width:100%; }
+  }
+
   /* ---------- narrow screens: sidebar becomes a top bar ---------- */
   @media (max-width:860px) {
     .shell { flex-direction:column; }
@@ -493,12 +500,35 @@ async function bills() {
         ${b.discount>0?`<span class="amber" title="${esc(b.discountNote)}">−${rupees(b.discount)}</span>`:''}
         <span class="mut">${b.paidCash>0?'💵 '+rupees(b.paidCash):''} ${b.paidOnline>0?'📲 '+rupees(b.paidOnline):''}</span>
         <b>${rupees(b.total)}</b>
-        <button class="icon" onclick="event.stopPropagation();window.open('/bill/${b.orderId}?token='+token)">🖨</button>
+        <button class="icon" onclick="event.stopPropagation();printBill(${b.orderId})">🖨</button>
       </div>
       <div hidden style="padding:4px 8px 10px 52px"></div>`).join('')
     : '<p class="mut">no bills for this day</p>') + `</div>
     <p class="hint">Every closed table's bill lives here — items, discount and how it was paid. 🖨 reprints it.</p>`;
 }
+// Reprint without leaving the page or putting the session token in a URL
+// (it used to window.open('/bill/…?token=…')): fetch the bill with the
+// session in a header, print it from a hidden frame.
+async function printBill(orderId) {
+  let r;
+  try { r = await fetch('/bill/' + orderId, { headers: { 'Authorization': 'Bearer ' + token } }); }
+  catch (e) { toast('No network — check the internet and try again', 'bad'); return; }
+  if (!r.ok) { toast('Could not load the bill to print', 'bad'); return; }
+  const html = await r.text();
+  $('printFrame')?.remove();
+  const f = document.createElement('iframe');
+  f.id = 'printFrame'; f.setAttribute('aria-hidden', 'true'); f.tabIndex = -1;
+  f.onload = () => {
+    try {
+      f.style.height = f.contentDocument.documentElement.scrollHeight + 'px';
+      f.contentWindow.focus(); f.contentWindow.print();
+    } catch (e) { window.print(); }
+  };
+  f.srcdoc = html;
+  document.body.classList.add('has-print');
+  document.body.appendChild(f);
+}
+
 async function toggleBill(rowEl, orderId) {
   const box = rowEl.nextElementSibling;
   if (!box.hidden) { box.hidden = true; return; }

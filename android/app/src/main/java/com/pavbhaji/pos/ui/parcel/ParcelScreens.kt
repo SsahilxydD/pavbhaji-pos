@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
@@ -63,6 +64,7 @@ import com.pavbhaji.pos.ui.items as itemsLabel
 import com.pavbhaji.pos.ui.rupees
 import com.pavbhaji.pos.ui.swallowTapsAfter
 import com.pavbhaji.pos.ui.waiter.CartLine
+import com.pavbhaji.pos.ui.waiter.CategoryChips
 import com.pavbhaji.pos.ui.waiter.CartSaver
 import com.pavbhaji.pos.ui.waiter.cartAddOne
 import com.pavbhaji.pos.ui.waiter.cartRemoveOne
@@ -305,7 +307,18 @@ fun AddParcelScreen(onDone: (Long) -> Unit, onBack: () -> Unit) {
     Column(Modifier.fillMaxSize()) {
         AppHeader(title = "🥡 " + S.newParcel.trimStart('＋', ' '), subtitle = S.newOrder, onBack = leave)
 
-        LazyColumn(Modifier.weight(1f).padding(horizontal = 12.dp)) {
+        // Category chips, as on the table screen. The list below is: the
+        // customer card, the ADD ITEMS header, then category by category.
+        val listState = rememberLazyListState()
+        val catFirstIndex = remember(menu) {
+            var i = 2
+            buildMap {
+                menu.forEach { c -> if (c.items.isNotEmpty()) { put(c.id, i); i += 1 + c.items.size } }
+            }
+        }
+        CategoryChips(menu, catFirstIndex, listState)
+
+        LazyColumn(Modifier.weight(1f).padding(horizontal = 12.dp), state = listState) {
             // ---- customer details ----
             item {
                 Surface(

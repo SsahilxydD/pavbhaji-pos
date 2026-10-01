@@ -9,6 +9,11 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.lazy.LazyListScope
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -37,6 +42,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
@@ -243,6 +249,19 @@ fun TableOrderScreen(tableId: Long, tableName: String, onBack: () -> Unit) {
         // first KOT) go to the top, where its tickets are. Waits for layout.
         LaunchedEffect(o?.id) { if (o != null && cart.isEmpty()) listState.scrollToItem(0) }
 
+        // Where each menu category starts in the list below (same order as
+        // the items: tickets, the ADD ITEMS header, then category by
+        // category), for the chips that jump there.
+        val catFirstIndex = remember(o, menu) {
+            var i = 0
+            if (o != null) { i += 1; o.tickets.forEach { i += 1 + it.items.size } }
+            i += 1
+            buildMap {
+                menu.forEach { c -> if (c.items.isNotEmpty()) { put(c.id, i); i += 1 + c.items.size } }
+            }
+        }
+        if (loaded) CategoryChips(menu, catFirstIndex, listState)
+
         Box(Modifier.weight(1f)) {
             if (!loaded) {
                 ListSkeleton(rows = 5, rowHeight = 56.dp)
@@ -422,6 +441,49 @@ fun TableOrderScreen(tableId: Long, tableName: String, onBack: () -> Unit) {
             },
             dismissButton = { TextButton(onClick = { noteEditIdx = null }) { Text(S.back) } }
         )
+    }
+}
+
+// A row of category chips pinned above the menu: one tap jumps the list to
+// that category (drinks used to be three flings down a 50-dish list). The
+// chip of the category on screen is filled and kept in view.
+@Composable
+fun CategoryChips(menu: List<CategoryDto>, firstIndex: Map<Long, Int>, listState: LazyListState) {
+    val cats = menu.filter { firstIndex.containsKey(it.id) }
+    if (cats.size < 2) return
+    val scope = rememberCoroutineScope()
+    val current by remember(firstIndex, cats) {
+        derivedStateOf {
+            val top = listState.firstVisibleItemIndex
+            cats.lastOrNull { (firstIndex[it.id] ?: Int.MAX_VALUE) <= top }?.id
+        }
+    }
+    val rowState = rememberLazyListState()
+    LaunchedEffect(current) {
+        val i = cats.indexOfFirst { it.id == current }
+        if (i >= 0) rowState.animateScrollToItem(i)
+    }
+    LazyRow(
+        state = rowState,
+        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 2.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        modifier = Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surface)
+    ) {
+        items(cats, key = { it.id }) { c ->
+            val sel = c.id == current
+            Surface(
+                onClick = { scope.launch { listState.animateScrollToItem(firstIndex.getValue(c.id)) } },
+                shape = RoundedCornerShape(99.dp),
+                color = if (sel) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surface,
+                border = if (sel) null else androidx.compose.foundation.BorderStroke(1.dp, CardLine)
+            ) {
+                Text(
+                    c.name, fontSize = 13.sp, fontWeight = FontWeight.Bold, maxLines = 1,
+                    color = if (sel) Color.White else InkDark,
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp)
+                )
+            }
+        }
     }
 }
 

@@ -13,7 +13,9 @@
 
 <div class="top">
   <div class="tile">🍽</div>
-  <div class="ttl"><b>Manager</b><small id="who"></small></div>
+  <div class="ttl"><b id="ttlT">Manager</b><small id="who"></small></div>
+  <label class="lang"><span id="langMark">EN</span><select id="langSel" aria-label="Language">
+    <option value="en">English</option><option value="hi">हिंदी</option><option value="gu">ગુજરાતી</option></select></label>
   <button id="logoutBtn">logout</button>
   <div class="net" id="net" hidden></div>
 </div>
@@ -33,45 +35,111 @@ try { me = JSON.parse(localStorage.getItem(WHO) || 'null'); } catch (e) { me = n
 // hand-types /manager gets sent home instead of staring at dead buttons.
 if (!token || !me || (me.role !== 'manager' && me.role !== 'admin')) location.replace('/');
 
-// New screen text sits here in one place, so a later EN / हिं / ગુ switch only
-// has to swap this table.
-var S = {
-  noNet: 'Network nahi hai — dobara try karo',
-  slowNet: 'Network bahut slow hai — dobara try karo',
-  noServer: 'Server se jawab nahi aaya — dobara try karo',
-  netDown: '⚠ Net nahi hai · last update ',
-  retry: '↻ Dobara try karo',
-  retryShort: '↻ Dobara',
-  sending: 'Bhej rahe…',
-  wait: 'Bhej rahe hain — ek second',
-  resend: '↻ Dobara bhejo',
-  unsureBar: '⚠ Jawab nahi aaya — ho sakta hai KOT kitchen pahunch gaya ho. ' +
-             '"Dobara bhejo" dabao: double KOT nahi banega.',
-  locked: 'Pehle ye KOT bhejo — net aate hi "Dobara bhejo" dabao',
-  leaveTitle: 'KOT ka jawab nahi aaya',
-  leaveBody: 'Ho sakta hai ye KOT kitchen pahunch gaya ho. Chhod ke dobara punch kiya to ' +
-             'kitchen do baar bana dega — pehle table pe check karo.',
-  stay: 'Ruko',
-  leave: 'Chhod do',
-  khatam: 'khatam',
-  isKhatam: function (n) { return n + ' khatam hai'; },
-  wentKhatam: function (n) { return n + ' abhi khatam ho gaya — cart me hai'; },
-  khatamTitle: 'Ye khatam ho gaya',
-  khatamHint: 'Customer ko bata do. Inke saath poora KOT ruk jayega — inhe hata ke baaki bhejo.',
-  khatamHintAll: 'Customer ko bata do. Cart me aur kuch nahi hai.',
-  dropAndSend: 'Hata ke bhejo',
-  drop: 'Hata do',
-  cartHint: '📝 note · cart ›',
-  cartTitle: 'Naya KOT — abhi bheja nahi',
-  addNote: 'note',
-  noteFor: function (n) { return 'Note · ' + n; },
-  notePh: 'kam teekha, bina pyaaz…',
-  noteHint: 'Kitchen ko KOT pe yahi likha dikhega.',
-  noteLong: 'Note bahut lamba hai — chhota likho',
-  save: 'Save',
-  search: '🔍 Dhoondo',
-  noMatch: 'Is naam ki koi dish nahi mili'
-};
+// ---------------------------------------------------------------- language
+// EN / हिं / ગુ — the app's three (ui/L10n.kt), in the app's own words
+// wherever it has them. The choice is kept in this browser (shared by every
+// screen) and the page redraws in place, so a half-punched cart survives a
+// switch. Not translated, as in the app: dish, table and staff names (the
+// owner's data), the note chips (they are what the kitchen reads on the KOT)
+// and the server's own error messages.
+var LANG_KEY = 'pbpos.lang', LANG_MARK = { en:'EN', hi:'हिं', gu:'ગુ' };
+var lang = 'en';
+try { lang = LANG_MARK[localStorage.getItem(LANG_KEY)] ? localStorage.getItem(LANG_KEY) : 'en'; } catch (e) {}
+function t(en, hi, gu) { return lang === 'hi' ? hi : lang === 'gu' ? gu : en; }
+
+var S = {};
+function strings() {
+  document.documentElement.lang = lang;
+  S = {
+    title: t('Manager', 'मैनेजर', 'મેનેજર'),
+    logout: t('Logout', 'बाहर निकलो', 'બહાર નીકળો'),
+    back: t('Back', 'पीछे', 'પાછળ'),
+    save: t('Save', 'सेव करो', 'સેવ કરો'),
+    noNet: t('No network — try again', 'नेटवर्क नहीं है — फिर कोशिश करो', 'નેટવર્ક નથી — ફરી પ્રયત્ન કરો'),
+    slowNet: t('The network is very slow — try again', 'नेटवर्क बहुत धीमा है — फिर कोशिश करो', 'નેટવર્ક બહુ ધીમું છે — ફરી પ્રયત્ન કરો'),
+    noServer: t('The server is not answering — try again', 'सर्वर से जवाब नहीं आया — फिर कोशिश करो', 'સર્વરનો જવાબ ન આવ્યો — ફરી પ્રયત્ન કરો'),
+    expired: t('Session expired — log in again', 'सेशन खत्म — फिर से लॉग इन करो', 'સેશન પૂરું — ફરી લૉગ ઇન કરો'),
+    netDown: t('⚠ No network · last update ', '⚠ नेट नहीं है · आख़िरी अपडेट ', '⚠ નેટ નથી · છેલ્લું અપડેટ '),
+    retry: t('↻ Try again', '↻ फिर कोशिश करो', '↻ ફરી પ્રયત્ન કરો'),
+    retryShort: t('↻ Retry', '↻ फिर से', '↻ ફરી'),
+    sending: t('Sending…', 'भेज रहे हैं…', 'મોકલી રહ્યાં છીએ…'),
+    wait: t('Sending — one second', 'भेज रहे हैं — एक सेकंड', 'મોકલી રહ્યાં છીએ — એક સેકન્ડ'),
+    resend: t('↻ Send again', '↻ फिर से भेजो', '↻ ફરી મોકલો'),
+    unsureBar: t('⚠ No reply — this KOT may already be in the kitchen. Tap "Send again": it will not make a double KOT.',
+                 '⚠ जवाब नहीं आया — हो सकता है KOT किचन पहुँच गया हो। "फिर से भेजो" दबाओ: डबल KOT नहीं बनेगा।',
+                 '⚠ જવાબ ન આવ્યો — કદાચ KOT રસોડામાં પહોંચી ગયો હોય. "ફરી મોકલો" દબાવો: ડબલ KOT નહીં બને.'),
+    locked: t('Send this KOT first — tap "Send again" when the net is back',
+              'पहले यह KOT भेजो — नेट आते ही "फिर से भेजो" दबाओ',
+              'પહેલાં આ KOT મોકલો — નેટ આવે એટલે "ફરી મોકલો" દબાવો'),
+    leaveTitle: t('No reply for this KOT', 'इस KOT का जवाब नहीं आया', 'આ KOTનો જવાબ ન આવ્યો'),
+    leaveBody: t('This KOT may already be in the kitchen. Leave it and punch it again, and the kitchen cooks it twice — check the table first.',
+                 'हो सकता है यह KOT किचन पहुँच गया हो। छोड़कर दोबारा पंच किया तो किचन दो बार बना देगा — पहले टेबल पर देख लो।',
+                 'કદાચ આ KOT રસોડામાં પહોંચી ગયો હોય. છોડીને ફરી પંચ કર્યો તો રસોડું બે વાર બનાવશે — પહેલાં ટેબલ પર જોઈ લો.'),
+    stay: t('Stay', 'रुको', 'રોકાઓ'),
+    leave: t('Leave it', 'छोड़ दो', 'છોડી દો'),
+    khatam: t('out of stock', 'खत्म', 'ખલાસ'),
+    isKhatam: function (n) { return t(n + ' is out of stock', n + ' खत्म है', n + ' ખલાસ છે'); },
+    wentKhatam: function (n) { return t(n + ' just ran out — it is in the cart', n + ' अभी खत्म हो गया — कार्ट में है', n + ' હમણાં ખલાસ થયું — કાર્ટમાં છે'); },
+    khatamTitle: t('This ran out', 'यह खत्म हो गया', 'આ ખલાસ થઈ ગયું'),
+    khatamHint: t('Tell the customer. With these in it the whole KOT is refused — take them out and send the rest.',
+                  'ग्राहक को बता दो। इनके साथ पूरा KOT रुक जाएगा — इन्हें हटाकर बाकी भेजो।',
+                  'ગ્રાહકને કહી દો. આની સાથે આખો KOT અટકી જશે — આને કાઢીને બાકી મોકલો.'),
+    khatamHintAll: t('Tell the customer. Nothing else is in the cart.', 'ग्राहक को बता दो। कार्ट में और कुछ नहीं है।', 'ગ્રાહકને કહી દો. કાર્ટમાં બીજું કંઈ નથી.'),
+    dropAndSend: t('Remove and send', 'हटाकर भेजो', 'કાઢીને મોકલો'),
+    drop: t('Remove', 'हटा दो', 'કાઢી નાખો'),
+    cartHint: t('📝 note · cart ›', '📝 नोट · कार्ट ›', '📝 નોંધ · કાર્ટ ›'),
+    cartTitle: t('NEW KOT — NOT SENT YET', 'नया KOT — अभी भेजा नहीं', 'નવો KOT — હજી મોકલ્યો નથી'),
+    addNote: t('note', 'नोट', 'નોંધ'),
+    noteFor: function (n) { return t('Note for ' + n, n + ' के लिए नोट', n + ' માટે નોંધ'); },
+    notePh: t('less spicy, no onion…', 'कम तीखा, बिना प्याज़…', 'ઓછું તીખું, ડુંગળી વગર…'),
+    noteHint: t('The kitchen sees exactly this on the KOT.', 'किचन को KOT पर यही लिखा दिखेगा।', 'રસોડાને KOT પર આ જ લખેલું દેખાશે.'),
+    noteLong: t('The note is too long — keep it short', 'नोट बहुत लंबा है — छोटा लिखो', 'નોંધ બહુ લાંબી છે — ટૂંકી લખો'),
+    search: t('🔍 Search', '🔍 ढूँढो', '🔍 શોધો'),
+    noMatch: t('No dish by that name', 'इस नाम की कोई डिश नहीं मिली', 'આ નામની કોઈ ડિશ ન મળી'),
+    tabTables: t('Tables', 'टेबल', 'ટેબલ'),
+    tabParcel: t('Parcels', 'पार्सल', 'પાર્સલ'),
+    tabKitchen: t('Kitchen', 'किचन', 'રસોડું'),
+    runningParcels: t('Running parcels', 'चल रहे पार्सल', 'ચાલુ પાર્સલ'),
+    items: function (n) { return t(n + ' item' + (n === 1 ? '' : 's'), n + ' आइटम', n + ' આઈટમ'); },
+    cooking: function (n) { return t(n + ' cooking', n + ' बन रहे', n + ' બની રહ્યા'); },
+    readyN: function (n) { return t(n + ' ready', n + ' तैयार', n + ' તૈયાર'); },
+    free: t('free', 'खाली', 'ખાલી'),
+    backTables: t('‹ Tables', '‹ टेबल', '‹ ટેબલ'),
+    noOrder: t('No order on this table yet.', 'इस टेबल पर अभी कोई ऑर्डर नहीं।', 'આ ટેબલ પર હજી કોઈ ઓર્ડર નથી.'),
+    orderNo: function (n) { return t('Order #' + n, 'ऑर्डर #' + n, 'ઓર્ડર #' + n); },
+    status: function (raw) {
+      return ({ pending: t('pending', 'बाकी', 'બાકી'), preparing: t('preparing', 'बन रहा', 'બની રહ્યું'),
+                ready: t('ready', 'तैयार', 'તૈયાર'), served: t('served', 'परोसा', 'પીરસ્યું'),
+                cancelled: t('cancelled', 'रद्द', 'રદ') })[raw] || raw;
+    },
+    cancel: t('cancel', 'रद्द', 'રદ'),
+    total: t('Total', 'कुल', 'કુલ'),
+    addItems: t('+ Add items', '+ आइटम जोड़ो', '+ વસ્તુઓ ઉમેરો'),
+    cancelPrompt: function (n) {
+      return t('Cancel "' + n + '" — why? (at least 2 letters)', '"' + n + '" रद्द — क्यों? (कम से कम 2 अक्षर)', '"' + n + '" રદ — કેમ? (ઓછામાં ઓછા 2 અક્ષર)');
+    },
+    cancelled: t('Cancelled', 'रद्द हो गया', 'રદ થઈ ગયું'),
+    sendKitchen: t('Send to kitchen', 'किचन में भेजो', 'રસોડામાં મોકલો'),
+    sentToast: t('Sent to kitchen ✓', 'किचन में भेज दिया ✓', 'રસોડામાં મોકલ્યું ✓'),
+    parcelPlaced: t('Parcel placed ✓', 'पार्सल लग गया ✓', 'પાર્સલ લાગી ગયો ✓'),
+    newParcel: t('New parcel', 'नया पार्सल', 'નવો પાર્સલ'),
+    custName: t('Customer name *', 'ग्राहक का नाम *', 'ગ્રાહકનું નામ *'),
+    namePh: t('name', 'नाम', 'નામ'),
+    custPhone: t('Phone (optional)', 'फ़ोन (ज़रूरी नहीं)', 'ફોન (જરૂરી નથી)'),
+    chooseItems: t('Choose items ›', 'आइटम चुनो ›', 'વસ્તુઓ પસંદ કરો ›'),
+    parcelHint: t('Once placed, the parcel shows on the Tables screen under "Running parcels".',
+                  'पार्सल लगने के बाद वो टेबल स्क्रीन पर "चल रहे पार्सल" में दिखेगा।',
+                  'પાર્સલ લાગ્યા પછી તે ટેબલ સ્ક્રીન પર "ચાલુ પાર્સલ"માં દેખાશે.'),
+    nameNeeded: t('Customer name is required', 'ग्राहक का नाम ज़रूरी है', 'ગ્રાહકનું નામ જરૂરી છે'),
+    kitchenEmpty: t('No buckets — nothing to cook 👨‍🍳', 'कोई बकेट नहीं — कुछ नहीं पकाना 👨‍🍳', 'કોઈ બકેટ નથી — કંઈ રાંધવાનું નથી 👨‍🍳'),
+    kitchenHd: t('On the tawa / in the queue', 'तवे पर / कतार में', 'તવા પર / કતારમાં'),
+    bucket: function (raw) {
+      return ({ open: t('filling', 'भर रहा', 'ભરાય છે'), full: t('full', 'भरा', 'ભરેલું'),
+                taken: t('on the tawa', 'तवे पर', 'તવા પર') })[raw] || raw;
+    }
+  };
+}
+strings();
 
 var $ = function (id) { return document.getElementById(id); };
 var esc = function (s) {
@@ -113,6 +181,22 @@ function signOut(silent) {
 }
 $('logoutBtn').onclick = function () { confirmLeave(function () { signOut(false); }); };
 $('who').textContent = me.name;
+
+// The language chip. Redraws whatever is on screen in the new language —
+// the cart, the search box and the scroll position stay as they are.
+function paintChrome() {
+  $('langSel').value = lang;
+  $('langMark').textContent = LANG_MARK[lang];
+  $('logoutBtn').textContent = S.logout;
+  if (!pane) $('ttlT').textContent = S.title;
+}
+$('langSel').onchange = function () {
+  lang = this.value;
+  try { localStorage.setItem(LANG_KEY, lang); } catch (e) {}
+  strings();
+  paintChrome();
+  redraw();
+};
 
 // ---------------------------------------------------------------- network
 // Phones on shop WiFi or mobile data drop out mid-rush. Every call gives up
@@ -170,7 +254,7 @@ async function api(method, path, body) {
   // Caddy answers these itself when the POS server behind it is down.
   if (r.status === 502 || r.status === 503 || r.status === 504) { netFail(); throw netError(S.noServer); }
   netOk();
-  if (r.status === 401) { signOut(true); throw new Error('session expired'); }
+  if (r.status === 401) { signOut(true); throw new Error(S.expired); }
   var d = await r.json().catch(function () { return {}; });
   if (!r.ok) {
     var e = new Error(d.error || ('server error ' + r.status));
@@ -244,12 +328,26 @@ var pane = '';   // 'table' | 'picker' — a late refresh must not yank the pick
 // the new tab's.
 var nav = 0;
 
-var TABS = { tables:['🪑','Tables'], parcel:['🥡','Parcel'], kitchen:['🔥','Kitchen'] };
+var TABS = { tables:'🪑', parcel:'🥡', kitchen:'🔥' };
 function paintTabs() {
+  var label = { tables:S.tabTables, parcel:S.tabParcel, kitchen:S.tabKitchen };
   $('tabs').innerHTML = Object.keys(TABS).map(function (k) {
     return '<button class="' + (k === tab ? 'on' : '') + '" data-tab="' + k + '">' +
-           TABS[k][0] + ' ' + TABS[k][1] + '</button>';
+           TABS[k] + ' ' + esc(label[k]) + '</button>';
   }).join('');
+}
+
+function redraw() {
+  paintTabs();
+  if (pane === 'picker') { paintPickerText(); return; }
+  if (pane === 'table') { paintTable(); return; }
+  if (tab === 'parcel') {
+    var nm = $('pcName') ? $('pcName').value : '', ph = $('pcPhone') ? $('pcPhone').value : '';
+    parcel();
+    $('pcName').value = nm; $('pcPhone').value = ph;
+    return;
+  }
+  if (repaint) repaint().catch(function () {});
 }
 $('tabs').addEventListener('click', function (e) {
   var b = e.target.closest('button[data-tab]');
@@ -295,8 +393,8 @@ async function tables() {
     var list = (d.tables || []).filter(function (t) { return t.kind !== 'parcel'; });
     var parcels = (d.tables || []).filter(function (t) { return t.kind === 'parcel' && t.order; });
     $('view').innerHTML =
-      '<h2>Tables</h2><div class="grid">' + list.map(tableTile).join('') + '</div>' +
-      (parcels.length ? '<h2>Chal rahe parcel</h2><div class="grid">' + parcels.map(tableTile).join('') + '</div>' : '');
+      '<h2>' + esc(S.tabTables) + '</h2><div class="grid">' + list.map(tableTile).join('') + '</div>' +
+      (parcels.length ? '<h2>' + esc(S.runningParcels) + '</h2><div class="grid">' + parcels.map(tableTile).join('') + '</div>' : '');
   };
   var my = nav;
   repaint = paint;
@@ -311,11 +409,11 @@ function tableTile(t) {
   return '<button class="tile-btn' + (o ? ' busy' : '') + '" data-table="' + t.id + '" data-name="' + esc(t.name) + '">' +
     '<span class="nm">' + (t.kind === 'parcel' ? '🥡 ' : '') + esc(t.name) + '</span>' +
     (o
-      ? '<span class="sub">#' + o.orderNo + ' · ' + clock(o.openedAt) + ' · ' + o.itemCount + ' plate</span>' +
-        (o.pendingCount ? '<span class="sub">⏳ ' + o.pendingCount + ' banna baaki</span>' : '') +
-        (o.readyCount ? '<span class="sub">✅ ' + o.readyCount + ' ready</span>' : '') +
+      ? '<span class="sub">#' + o.orderNo + ' · ' + clock(o.openedAt) + ' · ' + esc(S.items(o.itemCount)) + '</span>' +
+        (o.pendingCount ? '<span class="sub">⏳ ' + esc(S.cooking(o.pendingCount)) + '</span>' : '') +
+        (o.readyCount ? '<span class="sub">✅ ' + esc(S.readyN(o.readyCount)) + '</span>' : '') +
         '<span class="amt">' + rupees(o.total) + '</span>'
-      : '<span class="sub">khaali</span><span class="amt" style="color:var(--ink3)">—</span>') +
+      : '<span class="sub">' + esc(S.free) + '</span><span class="amt" style="color:var(--ink3)">—</span>') +
     '</button>';
 }
 
@@ -352,18 +450,18 @@ function paintTable() {
   pane = 'table'; clearInterval(timer);   // the picker's menu poll, if we came from there
   var o = openTable.order;
   var html = '<div class="row" style="margin-bottom:12px">' +
-    '<button class="ghost" id="backBtn" style="min-height:42px;padding:9px 14px">‹ Tables</button>' +
+    '<button class="ghost" id="backBtn" style="min-height:42px;padding:9px 14px">' + esc(S.backTables) + '</button>' +
     '<b class="grow" style="font-size:17px;text-align:center">' + esc(openTable.name) + '</b>' +
     '<span style="width:86px"></span></div>';
 
   if (!o) {
-    html += '<div class="empty">Is table pe koi order nahi.<br>Neeche se items add karo.</div>';
+    html += '<div class="empty">' + esc(S.noOrder) + '</div>';
   } else {
     html += '<div class="card"><div class="row" style="margin-bottom:6px">' +
-      '<b>Order #' + o.orderNo + '</b>' +
+      '<b>' + esc(S.orderNo(o.orderNo)) + '</b>' +
       '<span class="right mut">' + clock(o.openedAt) + ' · ' + esc(o.openedByName) + '</span></div>';
     (o.tickets || []).forEach(function (tk) {
-      html += '<div class="mut" style="margin:10px 0 2px;font-weight:700">KOT #' + tk.ticketNo + ' · ' + clock(tk.createdAt) + '</div>';
+      html += '<div class="mut" style="margin:10px 0 2px;font-weight:700">KOT ' + tk.ticketNo + ' · ' + clock(tk.createdAt) + '</div>';
       (tk.items || []).forEach(function (it) {
         html += '<div class="line">' +
           '<span class="qty">' + it.qty + '×</span>' +
@@ -371,18 +469,18 @@ function paintTable() {
           (it.note ? '<div class="note">📝 ' + esc(it.note) + '</div>' : '') +
           (it.cancelReason ? '<div class="note">✕ ' + esc(it.cancelReason) + '</div>' : '') +
           '</span>' +
-          '<span class="pill p-' + it.status + '">' + it.status + '</span>' +
+          '<span class="pill p-' + it.status + '">' + esc(S.status(it.status)) + '</span>' +
           (it.status === 'pending'
-            ? '<button class="danger" data-cancel="' + it.id + '" data-nm="' + esc(it.name) + '" style="min-height:38px;padding:8px 11px;font-size:13px">cancel</button>'
+            ? '<button class="danger" data-cancel="' + it.id + '" data-nm="' + esc(it.name) + '" style="min-height:38px;padding:8px 11px;font-size:13px">' + esc(S.cancel) + '</button>'
             : '') +
           '</div>';
       });
     });
     html += '<div class="row" style="margin-top:12px;padding-top:11px;border-top:1px solid var(--line)">' +
-      '<b>Total</b><b class="right tnum">' + rupees(o.total) + '</b></div></div>';
+      '<b>' + esc(S.total) + '</b><b class="right tnum">' + rupees(o.total) + '</b></div></div>';
   }
 
-  html += '<button class="primary" id="addBtn" style="width:100%">+ Items add karo</button>';
+  html += '<button class="primary" id="addBtn" style="width:100%">' + esc(S.addItems) + '</button>';
   $('view').innerHTML = html;
   $('bar').innerHTML = '';
   $('backBtn').onclick = function () { show('tables'); };
@@ -390,11 +488,11 @@ function paintTable() {
 
   $('view').querySelectorAll('button[data-cancel]').forEach(function (b) {
     b.onclick = async function () {
-      var reason = prompt('Cancel "' + b.dataset.nm + '" — kyun? (kam se kam 2 akshar)');
+      var reason = prompt(S.cancelPrompt(b.dataset.nm));
       if (reason === null) return;
       try {
         await api('POST', '/api/items/' + b.dataset.cancel + '/cancel', { reason: reason.trim() });
-        toast('Cancel ho gaya', 'ok');
+        toast(S.cancelled, 'ok');
         await refreshTable();
       } catch (e) { toast(e.message, 'bad'); }
     };
@@ -410,7 +508,7 @@ async function picker(title, send) {
   if (my !== nav) return;
   pane = 'picker';
   var html = '<div class="row" style="margin-bottom:12px">' +
-    '<button class="ghost" id="pBack" style="min-height:42px;padding:9px 14px">‹ Back</button>' +
+    '<button class="ghost" id="pBack" style="min-height:42px;padding:9px 14px">‹ ' + esc(S.back) + '</button>' +
     '<b class="grow" style="font-size:17px;text-align:center">' + esc(title) + '</b>' +
     '<span style="width:86px"></span></div>';
   // Finding a dish: a search box and one chip per category, stuck under the
@@ -588,6 +686,16 @@ function applyStock() {
   });
 }
 
+// Language switched mid-punch: re-word the picker in place (rows, counts,
+// search text and scroll stay put).
+function paintPickerText() {
+  $('pBack').textContent = '‹ ' + S.back;
+  $('pkQ').placeholder = S.search;
+  $('pkNone').textContent = S.noMatch;
+  applyStock();
+  paintCartBar();
+}
+
 function menuPoll() {
   var a = document.activeElement;
   if (pane !== 'picker' || modalUp || sending || (a && a.tagName === 'INPUT')) return;
@@ -612,7 +720,7 @@ function offerDropKhatam() {
     '<div style="font-size:15px;font-weight:700">• ' +
       bad.map(function (l) { return esc(l.qty + '× ' + l.name); }).join('<br>• ') + '</div>' +
     '<div class="hint">' + esc(left ? S.khatamHint : S.khatamHintAll) + '</div>',
-    [{ label: 'Back', cls: 'ghost' },
+    [{ label: S.back, cls: 'ghost' },
      { label: left ? S.dropAndSend : S.drop, cls: 'primary', act: function () {
         hideModal();
         cart = cart.filter(function (l) { return bad.indexOf(l) < 0; });
@@ -649,13 +757,13 @@ function paintCartBar() {
   if (cartLocked) {
     bar.className = 'bar stack';
     bar.innerHTML = '<div class="unsure">' + esc(S.unsureBar) + '</div>' +
-      btn + esc(sending ? S.sending : S.resend + ' · ' + n + ' plate') + '</button>';
+      btn + esc(sending ? S.sending : S.resend + ' · ' + S.items(n)) + '</button>';
   } else {
     // The left half opens the cart: every line, its note, its count.
     bar.className = 'bar';
     bar.innerHTML = '<button class="ghost cartbtn" id="cartBtn">' +
-        '<b>' + n + ' plate · ' + rupees(cartTotal()) + '</b><small>' + esc(S.cartHint) + '</small></button>' +
-      btn + (sending ? esc(S.sending) : 'Kitchen bhejo') + '</button>';
+        '<b>' + esc(S.items(n)) + ' · ' + rupees(cartTotal()) + '</b><small>' + esc(S.cartHint) + '</small></button>' +
+      btn + esc(sending ? S.sending : S.sendKitchen) + '</button>';
     $('cartBtn').onclick = openCart;
   }
   $('sendBtn').onclick = function () { if (onSend) onSend(); };
@@ -680,8 +788,8 @@ function openCart() {
       '</div>';
   }).join('') + '</div>';
   var m = showModal(S.cartTitle, body,
-    [{ label: 'Back', cls: 'ghost' },
-     { label: (cartLocked ? S.resend : 'Kitchen bhejo') + ' · ' + cartPlates() + ' plate', cls: 'primary',
+    [{ label: S.back, cls: 'ghost' },
+     { label: (cartLocked ? S.resend : S.sendKitchen) + ' · ' + S.items(cartPlates()), cls: 'primary',
        act: function () { hideModal(); if (onSend) onSend(); } }]);
   m.querySelector('.cart-ls').addEventListener('click', function (e) {
     var b = e.target.closest('button');
@@ -725,7 +833,7 @@ function editNote(i) {
     }).join('') + '</div>' +
     '<input id="mNote" maxlength="120" autocomplete="off" placeholder="' + esc(S.notePh) + '" value="' + esc(l.note) + '">' +
     '<div class="hint">' + esc(S.noteHint) + '</div>',
-    [{ label: 'Back', cls: 'ghost', act: openCart },
+    [{ label: S.back, cls: 'ghost', act: openCart },
      { label: S.save, cls: 'primary', act: function () {
         var v = $('mNote').value.replace(/\s+/g, ' ').trim();
         if (noteBytes(v) > 200) { toast(S.noteLong, 'bad'); return; }
@@ -810,7 +918,7 @@ async function sendTicket() {
   await sendCart(function (id, items) {
     return api('POST', '/api/dining-tables/' + t.id + '/tickets', { clientTicketId: id, items: items });
   }, function (d) {
-    toast('Kitchen ko bhej diya ✓', 'ok');
+    toast(S.sentToast, 'ok');
     if (openTable !== t) return;
     if (d && d.tickets) { t.order = d; paintTable(); }   // the reply is the saved order
     else { paintTable(); refreshTable(); }
@@ -820,14 +928,14 @@ async function sendTicket() {
 // ---------------------------------------------------------------- parcel
 function parcel() {
   $('view').innerHTML =
-    '<h2>Naya parcel</h2><div class="card">' +
-    '<label class="fld"><span>Customer ka naam *</span><input id="pcName" maxlength="60" placeholder="naam"></label>' +
-    '<label class="fld"><span>Phone (optional)</span><input id="pcPhone" inputmode="tel" maxlength="20" placeholder="98xxxxxxxx"></label>' +
-    '<button class="primary" id="pcNext" style="width:100%">Items chuno ›</button></div>' +
-    '<p class="hint">Parcel banane ke baad wo Tables screen pe "chal rahe parcel" me dikhega.</p>';
+    '<h2>' + esc(S.newParcel) + '</h2><div class="card">' +
+    '<label class="fld"><span>' + esc(S.custName) + '</span><input id="pcName" maxlength="60" placeholder="' + esc(S.namePh) + '"></label>' +
+    '<label class="fld"><span>' + esc(S.custPhone) + '</span><input id="pcPhone" inputmode="tel" maxlength="20" placeholder="98xxxxxxxx"></label>' +
+    '<button class="primary" id="pcNext" style="width:100%">' + esc(S.chooseItems) + '</button></div>' +
+    '<p class="hint">' + esc(S.parcelHint) + '</p>';
   $('pcNext').onclick = function () {
     var nm = $('pcName').value.trim();
-    if (!nm) { toast('Customer ka naam chahiye', 'bad'); return; }
+    if (!nm) { toast(S.nameNeeded, 'bad'); return; }
     openTable = { parcelName: nm, parcelPhone: $('pcPhone').value.trim() };
     newCart();
     picker('🥡 ' + nm, sendParcel);
@@ -841,7 +949,7 @@ async function sendParcel() {
       customerName: t.parcelName, customerPhone: t.parcelPhone, clientTicketId: id, items: items
     });
   }, function () {
-    toast('Parcel ban gaya ✓', 'ok');
+    toast(S.parcelPlaced, 'ok');
     show('tables');
   });
 }
@@ -852,18 +960,18 @@ async function kitchen() {
     var d = await api('GET', '/api/kitchen');
     if (tab !== 'kitchen') return;
     var bs = d.buckets || [];
-    if (!bs.length) { $('view').innerHTML = '<div class="empty">Kitchen khaali hai — kuch pending nahi.</div>'; return; }
-    $('view').innerHTML = '<h2>Tawa pe / queue me</h2>' + bs.map(function (b) {
+    if (!bs.length) { $('view').innerHTML = '<div class="empty">' + esc(S.kitchenEmpty) + '</div>'; return; }
+    $('view').innerHTML = '<h2>' + esc(S.kitchenHd) + '</h2>' + bs.map(function (b) {
       return '<div class="card"><div class="row" style="margin-bottom:6px">' +
         '<b>' + esc(b.name) + '</b>' +
-        '<span class="pill p-' + b.status + '">' + b.status + '</span>' +
+        '<span class="pill p-' + b.status + '">' + esc(S.bucket(b.status)) + '</span>' +
         '<span class="right mut tnum">' + b.qty + '/' + (b.cap || d.cap) + '</span></div>' +
         (b.takenByName ? '<div class="mut">👨‍🍳 ' + esc(b.takenByName) + '</div>' : '') +
         (b.lines || []).map(function (l) {
           return '<div class="line"><span class="qty">' + l.qty + '×</span>' +
             '<span class="grow"><span class="nm">' + esc(l.tableName) + '</span>' +
             (l.note ? '<div class="note">📝 ' + esc(l.note) + '</div>' : '') + '</span>' +
-            (l.done ? '<span class="pill p-ready">ready</span>' : '') + '</div>';
+            (l.done ? '<span class="pill p-ready">' + esc(S.status('ready')) + '</span>' : '') + '</div>';
         }).join('') + '</div>';
     }).join('');
   };
@@ -875,6 +983,7 @@ async function kitchen() {
   if (my === nav) timer = setInterval(function () { paint().catch(function () {}); }, 8000);
 }
 
+paintChrome();
 show('tables');
 </script>
 </body>

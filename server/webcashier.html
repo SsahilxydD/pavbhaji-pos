@@ -14,6 +14,8 @@
 <div class="top">
   <div class="tile" id="tile">🧾</div>
   <div class="ttl"><b id="ttlT">Cashier</b><small id="ttlS"></small></div>
+  <label class="lang"><span id="langMark">EN</span><select id="langSel" aria-label="Language">
+    <option value="en">English</option><option value="hi">हिंदी</option><option value="gu">ગુજરાતી</option></select></label>
   <button id="logoutBtn">logout</button>
   <div class="net" id="net" hidden></div>
 </div>
@@ -31,16 +33,104 @@ var me = null;
 try { me = JSON.parse(localStorage.getItem(WHO) || 'null'); } catch (e) { me = null; }
 if (!token || !me || (me.role !== 'cashier' && me.role !== 'admin')) location.replace('/');
 
-// New screen text sits here in one place, so a later EN / हिं / ગુ switch only
-// has to swap this table.
-var S = {
-  noNet: 'Network nahi hai — dobara try karo',
-  slowNet: 'Network bahut slow hai — dobara try karo',
-  noServer: 'Server se jawab nahi aaya — dobara try karo',
-  netDown: '⚠ Net nahi hai · last update ',
-  retry: '↻ Dobara try karo',
-  retryShort: '↻ Dobara'
-};
+// ---------------------------------------------------------------- language
+// EN / हिं / ગુ — the app's three (ui/L10n.kt), in the app's own words
+// wherever it has them (the bill screen is a port of CashierScreens.kt).
+// Kept in this browser, shared with the other screens; the page redraws in
+// place. Dish/table/staff names are data and stay as typed; the server's
+// bill refusals are put in the cashier's words (billError), as in the app.
+var LANG_KEY = 'pbpos.lang', LANG_MARK = { en:'EN', hi:'हिं', gu:'ગુ' };
+var lang = 'en';
+try { lang = LANG_MARK[localStorage.getItem(LANG_KEY)] ? localStorage.getItem(LANG_KEY) : 'en'; } catch (e) {}
+function t(en, hi, gu) { return lang === 'hi' ? hi : lang === 'gu' ? gu : en; }
+
+var S = {};
+function strings() {
+  document.documentElement.lang = lang;
+  S = {
+    title: t('Cashier', 'कैशियर', 'કેશિયર'),
+    logout: t('Logout', 'बाहर निकलो', 'બહાર નીકળો'),
+    back: t('Back', 'पीछे', 'પાછળ'),
+    save: t('Save', 'सेव करो', 'સેવ કરો'),
+    noNet: t('No network — try again', 'नेटवर्क नहीं है — फिर कोशिश करो', 'નેટવર્ક નથી — ફરી પ્રયત્ન કરો'),
+    slowNet: t('The network is very slow — try again', 'नेटवर्क बहुत धीमा है — फिर कोशिश करो', 'નેટવર્ક બહુ ધીમું છે — ફરી પ્રયત્ન કરો'),
+    noServer: t('The server is not answering — try again', 'सर्वर से जवाब नहीं आया — फिर कोशिश करो', 'સર્વરનો જવાબ ન આવ્યો — ફરી પ્રયત્ન કરો'),
+    expired: t('Session expired — log in again', 'सेशन खत्म — फिर से लॉग इन करो', 'સેશન પૂરું — ફરી લૉગ ઇન કરો'),
+    netDown: t('⚠ No network · last update ', '⚠ नेट नहीं है · आख़िरी अपडेट ', '⚠ નેટ નથી · છેલ્લું અપડેટ '),
+    retry: t('↻ Try again', '↻ फिर कोशिश करो', '↻ ફરી પ્રયત્ન કરો'),
+    retryShort: t('↻ Retry', '↻ फिर से', '↻ ફરી'),
+    tabOpen: t('Open orders', 'खुले ऑर्डर', 'ખુલ્લા ઓર્ડર'),
+    tabBills: t('Bills', 'बिल', 'બિલ'),
+    noOpen: t('No open orders.', 'कोई ऑर्डर खुला नहीं है।', 'કોઈ ઓર્ડર ખુલ્લો નથી.'),
+    nOpen: function (n) { return t(n + ' open', n + ' खुले', n + ' ખુલ્લા'); },
+    items: function (n) { return t(n + ' item' + (n === 1 ? '' : 's'), n + ' आइटम', n + ' આઈટમ'); },
+    cooking: function (n) { return t(n + ' cooking', n + ' बन रहे', n + ' બની રહ્યા'); },
+    billLoading: t('Opening the bill…', 'बिल खुल रहा है…', 'બિલ ખૂલી રહ્યું છે…'),
+    bill: t('Bill', 'बिल', 'બિલ'),
+    orderNo: function (n) { return t('order #' + n, 'ऑर्डर #' + n, 'ઓર્ડર #' + n); },
+    item: t('Item', 'आइटम', 'આઈટમ'),
+    qty: t('Qty', 'मात्रा', 'જથ્થો'),
+    rate: t('Rate', 'दाम', 'ભાવ'),
+    amount: t('Amount', 'रकम', 'રકમ'),
+    subtotal: t('Subtotal', 'सबटोटल', 'સબટોટલ'),
+    discount: t('Discount', 'छूट', 'છૂટ'),
+    total: t('TOTAL', 'कुल', 'કુલ'),
+    addDiscount: t('＋ discount', '＋ छूट', '＋ છૂટ'),
+    statusLine: function (p, r) { return t(p + ' cooking · ' + r + ' ready to serve', p + ' बन रहे · ' + r + ' परोसने को तैयार', p + ' બની રહ્યા · ' + r + ' પીરસવા તૈયાર'); },
+    running: t('running bill — order is still open, it can grow', 'चालू बिल — ऑर्डर अभी खुला है, बढ़ सकता है', 'ચાલુ બિલ — ઓર્ડર હજી ખુલ્લો છે, વધી શકે છે'),
+    payment: t('Payment', 'पेमेंट', 'પેમેન્ટ'),
+    paid: t('PAID ✓', 'पेड ✓', 'પેડ ✓'),
+    payLeft: function (a) { return t(a + ' not assigned yet', a + ' अभी बाकी', a + ' હજી બાકી'); },
+    cash: t('Cash', 'कैश', 'કેશ'),
+    online: t('Online / UPI', 'ऑनलाइन / UPI', 'ઓનલાઈન / UPI'),
+    allCash: t('💵 all cash', '💵 पूरा कैश', '💵 આખું કેશ'),
+    allOnline: t('📲 all online', '📲 पूरा ऑनलाइन', '📲 આખું ઓનલાઈન'),
+    onlineAmt: t('Online amount (₹)', 'ऑनलाइन रकम (₹)', 'ઓનલાઈન રકમ (₹)'),
+    splitApply: t('✓ split, rest cash', '✓ बाकी कैश', '✓ બાકી કેશ'),
+    onlineTooBig: function (a) { return t('Online amount can\'t be more than ' + a, 'ऑनलाइन रकम ' + a + ' से ज़्यादा नहीं हो सकती', 'ઓનલાઈન રકમ ' + a + ' થી વધારે ન હોઈ શકે'); },
+    print: t('🖨  Print bill', '🖨  बिल छापो', '🖨  બિલ છાપો'),
+    closeAmt: function (a) { return t('Close · ' + a, 'बंद करो · ' + a, 'બંધ કરો · ' + a); },
+    discountAmt: t('Discount (₹)', 'छूट (₹)', 'છૂટ (₹)'),
+    discountNote: t('Reason (optional)', 'कारण (ज़रूरी नहीं)', 'કારણ (જરૂરી નથી)'),
+    badAmount: t('Write the amount properly', 'रकम ठीक से लिखो', 'રકમ બરાબર લખો'),
+    discountTooBig: t('Discount can\'t be more than the bill.', 'छूट बिल से ज़्यादा नहीं हो सकती।', 'છૂટ બિલ કરતાં વધારે ન હોઈ શકે.'),
+    payMoreThanBill: t('The money entered is more than the bill now. Tap 💵 all cash or 📲 all online again.',
+                       'डाली गई रकम अब बिल से ज़्यादा है। 💵 पूरा कैश या 📲 पूरा ऑनलाइन फिर से दबाओ।',
+                       'નાખેલી રકમ હવે બિલ કરતાં વધારે છે. 💵 આખું કેશ કે 📲 આખું ઓનલાઈન ફરી દબાવો.'),
+    alreadyClosed: t('This bill is already closed.', 'यह बिल पहले ही बंद हो चुका है।', 'આ બિલ પહેલેથી બંધ થઈ ગયું છે.'),
+    closeQ: function (tb) { return t('Close ' + tb + '?', tb + ' बंद करें?', tb + ' બંધ કરવું?'); },
+    totalLine: function (a) { return t('Total: ' + a, 'कुल: ' + a, 'કુલ: ' + a); },
+    collectFirst: t('Collect payment before closing.', 'बंद करने से पहले पैसे ले लो।', 'બંધ કરતાં પહેલાં પૈસા લઈ લો.'),
+    notServed: t('Not served yet:', 'अभी तक परोसा नहीं गया:', 'હજી પીરસાયું નથી:'),
+    closeAnywayHint: t('These are already on the bill and will count as served once the table closes. Don\'t want to give them? Get them cancelled first.',
+                       'ये बिल में पहले से हैं और टेबल बंद होते ही परोसे हुए गिने जाएँगे। नहीं देनी हैं तो पहले रद्द करा दो।',
+                       'આ બિલમાં પહેલેથી છે અને ટેબલ બંધ થતાં જ પીરસાયેલા ગણાશે. નથી આપવા? તો પહેલાં રદ કરાવી દો.'),
+    closeTable: t('Close table', 'टेबल बंद करो', 'ટેબલ બંધ કરો'),
+    closeAnyway: t('Close anyway', 'फिर भी बंद करो', 'તોય બંધ કરો'),
+    closedToast: t('Order closed ✓', 'ऑर्डर बंद ✓', 'ઓર્ડર બંધ ✓'),
+    cantClose: t('Can\'t close yet', 'अभी बंद नहीं हो सकता', 'હજી બંધ ન થાય'),
+    cantCloseHint: t('Only waiters mark plates served, one by one as they carry them. Wait for that — or cancel items with a reason.',
+                     'सिर्फ़ वेटर ही प्लेट परोसा मार्क करते हैं, ले जाते हुए एक-एक करके। उसका इंतज़ार करो — या कारण देकर आइटम रद्द करो।',
+                     'ફક્ત વેઈટર જ પ્લેટ પીરસી માર્ક કરે છે, લઈ જતાં એક-એક કરીને. એની રાહ જુઓ — અથવા કારણ આપી આઈટમ રદ કરો.'),
+    today: t('today', 'आज', 'આજે'),
+    billsN: function (n) { return t(n + ' bill' + (n === 1 ? '' : 's'), n + ' बिल', n + ' બિલ'); },
+    cashSum: t('💵 cash', '💵 कैश', '💵 કેશ'),
+    onlineSum: t('📲 online', '📲 ऑनलाइन', '📲 ઓનલાઈન'),
+    closedLine: function (tm, who) { return who ? t('closed ' + tm + ' · ' + who, tm + ' बंद · ' + who, tm + ' બંધ · ' + who) : t('closed ' + tm, tm + ' बंद', tm + ' બંધ'); },
+    noBills: t('No bills for this day.', 'इस दिन का कोई बिल नहीं।', 'આ દિવસનું કોઈ બિલ નથી.')
+  };
+}
+strings();
+
+// The server answers bill edits in English; the cashier reads them in her
+// own language (the app's billErrorText). Anything else shows as sent.
+function billError(msg) {
+  msg = String(msg || '');
+  if (msg.indexOf('payment exceeds') === 0) return S.payMoreThanBill;
+  if (msg.indexOf('discount must be') === 0) return S.discountTooBig;
+  if (msg.indexOf('order already closed') === 0) return S.alreadyClosed;
+  return msg;
+}
 
 var $ = function (id) { return document.getElementById(id); };
 var esc = function (s) {
@@ -65,7 +155,6 @@ var toPaise = function (s) {
   var v = parseFloat(t);
   return isNaN(v) || v < 0 ? null : Math.round(v * 100);
 };
-var plural = function (n, w) { return n + ' ' + w + (n === 1 ? '' : 's'); };
 
 function toast(msg, kind) {
   // A second tap on a dead network shouldn't stack an identical toast.
@@ -139,7 +228,7 @@ async function api(method, path, body) {
   // Caddy answers these itself when the POS server behind it is down.
   if (r.status === 502 || r.status === 503 || r.status === 504) { netFail(); throw netError(S.noServer); }
   netOk();
-  if (r.status === 401) { signOut(true); throw new Error('session expired'); }
+  if (r.status === 401) { signOut(true); throw new Error(S.expired); }
   var d = await r.json().catch(function () { return {}; });
   if (!r.ok) {
     var e = new Error(d.error || ('server error ' + r.status));
@@ -182,13 +271,33 @@ function setTop(icon, title, sub, onIcon) {
   $('ttlS').textContent = sub || '';
 }
 
-var TABS = { open:['🍽','Open orders'], bills:['🧾','Bills'] };
+var TABS = { open:'🍽', bills:'🧾' };
 function paintTabs() {
+  var label = { open:S.tabOpen, bills:S.tabBills };
   $('tabs').innerHTML = Object.keys(TABS).map(function (k) {
     return '<button class="' + (k === tab ? 'on' : '') + '" data-tab="' + k + '">' +
-           TABS[k][0] + ' ' + TABS[k][1] + '</button>';
+           TABS[k] + ' ' + esc(label[k]) + '</button>';
   }).join('');
 }
+
+// The language chip: re-words whatever is on screen. A half-typed amount
+// survives (the bill keeps it in cur), an open dialog is simply closed.
+function paintChrome() {
+  $('langSel').value = lang;
+  $('langMark').textContent = LANG_MARK[lang];
+  $('logoutBtn').textContent = S.logout;
+}
+$('langSel').onchange = function () {
+  lang = this.value;
+  try { localStorage.setItem(LANG_KEY, lang); } catch (e) {}
+  strings();
+  paintChrome();
+  hideModal();
+  if (cur) { if (cur.order) paintBill(); return; }
+  paintTabs();
+  setTop('🧾', S.title, me.name, null);
+  if (repaint) repaint().catch(function () {});
+};
 $('tabs').addEventListener('click', function (e) {
   var b = e.target.closest('button[data-tab]');
   if (b) show(b.dataset.tab);
@@ -198,7 +307,7 @@ function show(t) {
   tab = t; cur = null; stopPoll(); nav++;
   $('tabs').hidden = false;
   $('bar').className = ''; $('bar').innerHTML = '';
-  setTop('🧾', 'Cashier', me.name, null);
+  setTop('🧾', S.title, me.name, null);
   paintTabs();
   ({ open:openOrders, bills:billsList })[t]();
 }
@@ -209,15 +318,15 @@ async function openOrders() {
     var d = await api('GET', '/api/tables');
     if (tab !== 'open' || cur) return;
     var busy = (d.tables || []).filter(function (t) { return t.order; });
-    if (!busy.length) { $('view').innerHTML = '<div class="empty">Koi order open nahi hai.</div>'; return; }
-    $('view').innerHTML = '<h2>' + busy.length + ' order open</h2><div class="grid">' + busy.map(function (t) {
+    if (!busy.length) { $('view').innerHTML = '<div class="empty">' + esc(S.noOpen) + '</div>'; return; }
+    $('view').innerHTML = '<h2>' + esc(S.nOpen(busy.length)) + '</h2><div class="grid">' + busy.map(function (t) {
       var o = t.order;
       return '<button class="tile-btn busy" data-order="' + o.orderId + '">' +
         '<span class="nm">' + (t.kind === 'parcel' ? '🥡 ' : '') + esc(t.name) + '</span>' +
         '<span class="sub">#' + o.orderNo + ' · ' + clock(o.openedAt) + '</span>' +
         (o.customerName ? '<span class="sub">' + esc(o.customerName) + '</span>' : '') +
-        '<span class="sub">' + o.itemCount + ' plate' +
-          (o.pendingCount ? ' · ⏳ ' + o.pendingCount : '') + '</span>' +
+        '<span class="sub">' + esc(S.items(o.itemCount)) +
+          (o.pendingCount ? ' · ⏳ ' + esc(S.cooking(o.pendingCount)) : '') + '</span>' +
         '<span class="amt">' + rupees(o.total) + '</span></button>';
     }).join('') + '</div>';
   };
@@ -272,7 +381,7 @@ async function openOrder(id, readOnly, sub) {
   // The way back works before the bill has loaded, so a dead network can't
   // strand the cashier on "Bill khul raha hai…".
   setTop('‹', 'Bill', '', function () { show(readOnly ? 'bills' : 'open'); });
-  $('view').innerHTML = '<div class="empty">Bill khul raha hai…</div>';
+  $('view').innerHTML = '<div class="empty">' + esc(S.billLoading) + '</div>';
   repaint = function () { return loadBill(false); };
   await loadBill(true).catch(function (e) {
     if (my !== nav) return;
@@ -312,8 +421,8 @@ function paintBill() {
     });
   });
 
-  setTop('‹', 'Bill · ' + o.tableName,
-    cur.readOnly ? cur.sub : 'order #' + o.orderNo + ' · ' + clock(o.openedAt) + ' · ' + o.openedByName,
+  setTop('‹', S.bill + ' · ' + o.tableName,
+    cur.readOnly ? cur.sub : S.orderNo(o.orderNo) + ' · ' + clock(o.openedAt) + ' · ' + o.openedByName,
     function () { show(cur.readOnly ? 'bills' : 'open'); });
 
   var h = '<div class="card">';
@@ -324,8 +433,8 @@ function paintBill() {
   }
   h += '<hr class="sep">';
 
-  h += '<div class="inv-hd"><span class="nm">Item</span><span class="inv-c qty">Qty</span>' +
-       '<span class="inv-c">Rate</span><span class="inv-c amt">Amount</span></div>';
+  h += '<div class="inv-hd"><span class="nm">' + esc(S.item) + '</span><span class="inv-c qty">' + esc(S.qty) + '</span>' +
+       '<span class="inv-c">' + esc(S.rate) + '</span><span class="inv-c amt">' + esc(S.amount) + '</span></div>';
   h += lines.map(function (l) {
     return '<div class="inv-ln"><span class="nm">' + esc(l.name) + '</span>' +
       '<span class="inv-c qty">' + l.qty + '</span>' +
@@ -335,44 +444,44 @@ function paintBill() {
   h += '<hr class="sep">';
 
   if (b && b.discount > 0) {
-    h += '<div class="row" style="font-size:13px"><span class="grow">Subtotal</span>' +
+    h += '<div class="row" style="font-size:13px"><span class="grow">' + esc(S.subtotal) + '</span>' +
          '<span class="tnum">' + rupees(b.subtotal) + '</span></div>';
     h += '<div class="row amber" style="font-size:13px;margin-top:3px">' +
-         '<span class="grow">Discount' + (b.discountNote ? ' · ' + esc(b.discountNote) : '') + '</span>' +
+         '<span class="grow">' + esc(S.discount) + (b.discountNote ? ' · ' + esc(b.discountNote) : '') + '</span>' +
          '<b class="tnum">− ' + rupees(b.discount) + '</b>' +
          (cur.readOnly ? '' : '<button class="lnk" id="discBtn" style="padding:0 4px">✎</button>') + '</div>';
   }
-  h += '<div class="row" style="margin-top:4px"><span class="tot-l grow">TOTAL</span>' +
+  h += '<div class="row" style="margin-top:4px"><span class="tot-l grow">' + esc(S.total) + '</span>' +
        '<span class="tot-r">' + rupees(total) + '</span></div>';
   h += '<div class="row">' +
-       (b && !b.discount && !cur.readOnly ? '<button class="lnk" id="discBtn">＋ discount</button>' : '') +
-       '<span class="mut right" style="font-size:12px">' + plural(itemQty, 'item') + '</span></div>';
+       (b && !b.discount && !cur.readOnly ? '<button class="lnk" id="discBtn">' + esc(S.addDiscount) + '</button>' : '') +
+       '<span class="mut right" style="font-size:12px">' + esc(S.items(itemQty)) + '</span></div>';
 
   if (pending > 0 || ready > 0) {
     h += '<div class="amber" style="font-size:12.5px;font-weight:600;margin-top:6px">' +
-         pending + ' cooking · ' + ready + ' ready to serve</div>' +
-         '<div class="mut" style="font-size:12px">running bill — order is still open, it can grow</div>';
+         esc(S.statusLine(pending, ready)) + '</div>' +
+         '<div class="mut" style="font-size:12px">' + esc(S.running) + '</div>';
   }
 
   h += '<hr class="sep">';
-  h += '<div class="row"><span class="sechd grow">Payment</span>' +
+  h += '<div class="row"><span class="sechd grow">' + esc(S.payment) + '</span>' +
        (b ? (settled
-              ? '<span class="green" style="font-size:12px;font-weight:800">PAID ✓</span>'
+              ? '<span class="green" style="font-size:12px;font-weight:800">' + esc(S.paid) + '</span>'
               : '<span class="amber" style="font-size:12px;font-weight:800">' +
-                rupees(Math.max(0, total - paid)) + ' not assigned yet</span>') : '') + '</div>';
+                esc(S.payLeft(rupees(Math.max(0, total - paid)))) + '</span>') : '') + '</div>';
   if (b) {
-    h += '<div class="row" style="margin-top:6px;font-size:13.5px"><span class="grow">💵 Cash</span>' +
+    h += '<div class="row" style="margin-top:6px;font-size:13.5px"><span class="grow">💵 ' + esc(S.cash) + '</span>' +
          '<b class="tnum">' + rupees(b.paidCash) + '</b></div>';
-    h += '<div class="row" style="margin-top:2px;font-size:13.5px"><span class="grow">📲 Online / UPI</span>' +
+    h += '<div class="row" style="margin-top:2px;font-size:13.5px"><span class="grow">📲 ' + esc(S.online) + '</span>' +
          '<b class="tnum">' + rupees(b.paidOnline) + '</b></div>';
     if (!cur.readOnly) {
       h += '<div class="chips">' +
-        '<button id="allCash"' + (total > 0 && b.paidCash === total ? ' class="on"' : '') + '>💵 all cash</button>' +
-        '<button id="allOnline"' + (total > 0 && b.paidOnline === total ? ' class="on"' : '') + '>📲 all online</button>' +
+        '<button id="allCash"' + (total > 0 && b.paidCash === total ? ' class="on"' : '') + '>' + esc(S.allCash) + '</button>' +
+        '<button id="allOnline"' + (total > 0 && b.paidOnline === total ? ' class="on"' : '') + '>' + esc(S.allOnline) + '</button>' +
         '</div>';
       h += '<div class="row" style="margin-top:9px">' +
-        '<input id="splitAmt" class="num grow" inputmode="decimal" placeholder="Online amount (₹)" value="' + esc(cur.split) + '">' +
-        '<button class="primary" id="splitBtn" style="flex:0 0 auto;font-size:13px;padding:12px 12px">✓ split, rest cash</button></div>';
+        '<input id="splitAmt" class="num grow" inputmode="decimal" placeholder="' + esc(S.onlineAmt) + '" value="' + esc(cur.split) + '">' +
+        '<button class="primary" id="splitBtn" style="flex:0 0 auto;font-size:13px;padding:12px 12px">' + esc(S.splitApply) + '</button></div>';
     }
   }
   h += '</div>';
@@ -380,9 +489,9 @@ function paintBill() {
 
   $('bar').className = 'bar stack';
   $('bar').innerHTML =
-    '<button class="ghost" id="printBtn">🖨  Print bill</button>' +
+    '<button class="ghost" id="printBtn">' + esc(S.print) + '</button>' +
     (cur.readOnly ? '' :
-      '<button class="okbtn" id="closeBtn"' + (settled ? '' : ' disabled') + '>Close · ' + rupees(total) + '</button>');
+      '<button class="okbtn" id="closeBtn"' + (settled ? '' : ' disabled') + '>' + esc(S.closeAmt(rupees(total))) + '</button>');
 
   $('printBtn').onclick = function () { printBill(cur.id); };
   if ($('closeBtn')) $('closeBtn').onclick = confirmClose;
@@ -392,7 +501,7 @@ function paintBill() {
   if ($('splitAmt')) $('splitAmt').oninput = function () { cur.split = this.value; };
   if ($('splitBtn')) $('splitBtn').onclick = function () {
     var p = toPaise(cur.split);
-    if (p === null || p > total) { toast('Online amount ' + rupees(total) + ' se zyada nahi ho sakta', 'bad'); return; }
+    if (p === null || p > total) { toast(S.onlineTooBig(rupees(total)), 'bad'); return; }
     cur.split = '';
     setPayment(total - p, p);
   };
@@ -402,7 +511,7 @@ async function patchBill(patch) {
   try {
     cur.bill = await api('PATCH', '/api/orders/' + cur.id + '/bill', patch);
     paintBill();
-  } catch (e) { toast(e.message, 'bad'); }
+  } catch (e) { toast(billError(e.message), 'bad'); }
 }
 function setPayment(cash, online) { patchBill({ paidCash:cash, paidOnline:online }); }
 
@@ -435,16 +544,16 @@ function hideModal() {
 function askDiscount() {
   var b = cur.bill; if (!b) return;
   var amt = b.discount > 0 ? (b.discount / 100) : '';
-  showModal('Discount',
-    '<label class="fld"><span>Discount (₹)</span>' +
+  showModal(S.discount,
+    '<label class="fld"><span>' + esc(S.discountAmt) + '</span>' +
       '<input id="mDisc" class="num" inputmode="decimal" value="' + amt + '"></label>' +
-    '<label class="fld"><span>Reason (optional)</span>' +
+    '<label class="fld"><span>' + esc(S.discountNote) + '</span>' +
       '<input id="mNote" maxlength="120" value="' + esc(b.discountNote) + '"></label>',
-    [{ label:'Back', cls:'ghost' },
-     { label:'Save', cls:'primary', act: function () {
+    [{ label:S.back, cls:'ghost' },
+     { label:S.save, cls:'primary', act: function () {
         var raw = $('mDisc').value.trim();
         var d = raw === '' ? 0 : toPaise(raw);
-        if (d === null) { toast('Amount theek se likho', 'bad'); return; }
+        if (d === null) { toast(S.badAmount, 'bad'); return; }
         var patch = { discount:d, discountNote: $('mNote').value.trim() };
         // Money already recorded can outgrow the discounted total — the server
         // rejects that. Shrink the recorded split to the new total (online kept
@@ -470,16 +579,15 @@ function confirmClose() {
       if (it.status !== 'served' && it.status !== 'cancelled') left.push(it.qty + '× ' + it.name);
     });
   });
-  var body = '<div class="mut">Total: ' + rupees(total) + '<br>Collect payment before closing.</div>';
+  var body = '<div class="mut">' + esc(S.totalLine(rupees(total))) + '<br>' + esc(S.collectFirst) + '</div>';
   if (left.length) {
     body += '<div class="amber" style="font-size:13px;font-weight:600;margin-top:8px">' +
-      'Abhi tak serve nahi hua:<br>• ' + left.map(esc).join('<br>• ') + '</div>' +
-      '<div class="hint">Table band ho jayega aur ye plates served maan liye jayenge (bill me ye already counted hain). ' +
-      'Nahi dena hai to pehle manager se cancel karao.</div>';
+      esc(S.notServed) + '<br>• ' + left.map(esc).join('<br>• ') + '</div>' +
+      '<div class="hint">' + esc(S.closeAnywayHint) + '</div>';
   }
-  showModal('Close ' + cur.order.tableName + '?', body,
-    [{ label:'Back', cls:'ghost' },
-     { label: left.length ? 'Close anyway' : 'Close table', cls:'okbtn',
+  showModal(S.closeQ(cur.order.tableName), body,
+    [{ label:S.back, cls:'ghost' },
+     { label: left.length ? S.closeAnyway : S.closeTable, cls:'okbtn',
        act: function () { hideModal(); closeOrder(); } }]);
 }
 
@@ -487,16 +595,15 @@ async function closeOrder() {
   var btn = $('closeBtn'); if (btn) btn.disabled = true;
   try {
     await api('POST', '/api/orders/' + cur.id + '/close');
-    toast('Order close ✓', 'ok');
+    toast(S.closedToast, 'ok');
     show('open');
   } catch (e) {
     if (e.blockers && e.blockers.length) {
-      showModal("Can't close yet",
+      showModal(S.cantClose,
         '<div style="font-size:14px">' + e.blockers.map(function (x) { return '• ' + esc(x); }).join('<br>') + '</div>' +
-        '<div class="hint">Serve mark sirf waiter karta hai (phone app se), ek-ek plate. Uska wait karo — ya reason ' +
-        'ke saath item cancel karao.</div>',
-        [{ label:'Back', cls:'ghost' }]);
-    } else toast(e.message, 'bad');
+        '<div class="hint">' + esc(S.cantCloseHint) + '</div>',
+        [{ label:S.back, cls:'ghost' }]);
+    } else toast(billError(e.message), 'bad');
     if (btn) btn.disabled = false;
   }
 }
@@ -527,27 +634,27 @@ async function billsList() {
 
   var h = '<div class="datenav">' +
     '<button data-day="-1">◀</button><b>' + esc(d.date) + '</b>' +
-    '<button data-day="1">▶</button><button data-day="0">today</button></div>';
-  h += '<div class="card"><div class="row"><b class="grow">' + plural(bs.length, 'bill') + '</b>' +
+    '<button data-day="1">▶</button><button data-day="0">' + esc(S.today) + '</button></div>';
+  h += '<div class="card"><div class="row"><b class="grow">' + esc(S.billsN(bs.length)) + '</b>' +
     '<b class="tnum" style="font-size:19px;color:var(--red-deep)">' + rupees(sum) + '</b></div>' +
-    '<div class="mut tnum" style="margin-top:5px">💵 cash ' + rupees(cash) + ' · 📱 online ' + rupees(online) + '</div></div>';
+    '<div class="mut tnum" style="margin-top:5px">' + esc(S.cashSum) + ' ' + rupees(cash) + ' · ' + esc(S.onlineSum) + ' ' + rupees(online) + '</div></div>';
 
   h += bs.length ? bs.map(function (b) {
     var money = [];
     if (b.paidCash > 0) money.push('💵 ' + rupees(b.paidCash));
     if (b.paidOnline > 0) money.push('📲 ' + rupees(b.paidOnline));
-    if (b.discount > 0) money.push('· Discount −' + rupees(b.discount));
-    var closed = 'closed ' + clock(b.closedAt) + (b.closedByName ? ' · ' + esc(b.closedByName) : '');
+    if (b.discount > 0) money.push('· ' + esc(S.discount) + ' −' + rupees(b.discount));
+    var closed = esc(S.closedLine(clock(b.closedAt), b.closedByName));
     return '<button class="billrow" data-bill="' + b.orderId + '" data-sub="' + esc(closed) + '">' +
       '<span class="grow">' +
         '<span class="row"><span class="no">#' + b.orderNo + '</span>' +
         '<span class="who">' + esc(b.customerName || b.tableName) + '</span>' +
         (b.customerName ? '<span class="mut" style="font-size:12px">· ' + esc(b.tableName) + '</span>' : '') + '</span>' +
-        '<span class="sub" style="display:block">' + closed + ' · ' + plural(b.itemCount, 'item') + '</span>' +
+        '<span class="sub" style="display:block">' + closed + ' · ' + esc(S.items(b.itemCount)) + '</span>' +
         (money.length ? '<span class="pay ' + (b.discount > 0 ? 'amber' : 'green') + '" style="display:block">' +
           money.join('  ') + '</span>' : '') +
       '</span><b class="amt">' + rupees(b.total) + '</b></button>';
-  }).join('') : '<div class="empty">Is din ka koi bill nahi.</div>';
+  }).join('') : '<div class="empty">' + esc(S.noBills) + '</div>';
 
   $('view').innerHTML = h;
   $('view').querySelectorAll('button[data-day]').forEach(function (btn) {
@@ -559,6 +666,7 @@ async function billsList() {
   });
 }
 
+paintChrome();
 show('open');
 </script>
 </body>

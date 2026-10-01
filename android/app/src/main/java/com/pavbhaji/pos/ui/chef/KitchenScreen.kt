@@ -32,6 +32,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
@@ -61,6 +62,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.pavbhaji.pos.Deps
@@ -344,6 +346,11 @@ private fun BucketCard(
             // dish colour band down the left edge
             Box(Modifier.width(6.dp).fillMaxHeight().background(colour))
             Column(Modifier.weight(1f)) {
+                // The name owns the top line: every dp the counts don't need,
+                // up to two lines, and a visible "…" when even that is short.
+                // A clubbed bucket reads "Pav Bhaji + Paneer Pav Bhaji + …",
+                // and two buckets never both shrink to "Sp.". The state chip
+                // rides on the fill-bar line below so it can't squeeze the name.
                 Row(
                     Modifier.fillMaxWidth().padding(start = 10.dp, end = 11.dp, top = 11.dp, bottom = 6.dp),
                     verticalAlignment = Alignment.CenterVertically,
@@ -352,27 +359,27 @@ private fun BucketCard(
                     Box(Modifier.size(15.dp).background(colour, RoundedCornerShape(5.dp)))
                     Text(
                         b.name, color = Kc.ink, fontSize = 14.5.sp, fontWeight = FontWeight.ExtraBold,
-                        maxLines = 1, modifier = Modifier.weight(1f, fill = false)
+                        maxLines = 2, overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f)
                     )
-                    when {
-                        mine -> StateChip(S.yoursChip(minsSince(b.takenAt)), Kc.mineBg, Kc.mineFg)
-                        lockedByOther -> StateChip("🔒 ${b.takenByName}", Kc.lockBg, Kc.lockFg)
-                        b.status == "full" -> StateChip(S.fullChip, Kc.fullBg, Kc.fullFg)
-                        else -> StateChip(S.fillingChip, Color.Transparent, Kc.ink2, dashed = true)
-                    }
-                    Spacer(Modifier.weight(1f))
                     Text(
                         "${b.qty}", color = Kc.ink, fontSize = 15.sp, fontWeight = FontWeight.ExtraBold
                     )
                     Text("/$cap", color = Kc.ink2, fontSize = 11.sp)
                     if (b.status != "taken") AgeChip(b.createdAt)
                 }
-                // fill bar
+                // state chip + fill bar
                 Row(
                     Modifier.fillMaxWidth().padding(start = 10.dp, end = 12.dp, bottom = 10.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
+                    when {
+                        mine -> StateChip(S.yoursChip(minsSince(b.takenAt)), Kc.mineBg, Kc.mineFg)
+                        lockedByOther -> StateChip("🔒 ${b.takenByName}", Kc.lockBg, Kc.lockFg)
+                        b.status == "full" -> StateChip(S.fullChip, Kc.fullBg, Kc.fullFg)
+                        else -> StateChip(S.fillingChip, Color.Transparent, Kc.ink2, dashed = true)
+                    }
                     // Plates landing in the bucket pull the bar smoothly, not in jumps.
                     val fill by animateFloatAsState(
                         (b.qty.toFloat() / cap).coerceIn(0f, 1f),
@@ -398,7 +405,14 @@ private fun BucketCard(
                             b.status == "full" -> S.hintSealed
                             else -> S.hintTapTables
                         }
-                        Text(hint, color = Kc.ink2, fontSize = 10.5.sp)
+                        // Capped, so a long hint at a big font can't squeeze
+                        // the fill bar out beside the state chip.
+                        Text(
+                            hint, color = Kc.ink2, fontSize = 10.5.sp,
+                            maxLines = 2, overflow = TextOverflow.Ellipsis,
+                            textAlign = androidx.compose.ui.text.style.TextAlign.End,
+                            modifier = Modifier.widthIn(max = 150.dp)
+                        )
                     }
                 }
 
@@ -529,9 +543,8 @@ private fun PlateGroupHeader(name: String, left: Long, total: Long, colour: Colo
         Box(Modifier.size(9.dp).background(colour, RoundedCornerShape(3.dp)))
         Text(
             name, color = Kc.ink, fontSize = 13.sp, fontWeight = FontWeight.ExtraBold,
-            maxLines = 1, modifier = Modifier.weight(1f, fill = false)
+            maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f)
         )
-        Spacer(Modifier.weight(1f))
         Text(
             if (left == 0L) S.platesAllOut else S.plateLeft(left, total),
             color = if (left == 0L) Kc.ready else Kc.ink2,
@@ -581,7 +594,8 @@ private fun PlateTickRow(p: Plate, onTick: () -> Unit) {
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(
                     p.variety, color = if (p.done) Kc.ink2 else Kc.ink,
-                    fontSize = 14.5.sp, fontWeight = FontWeight.Bold, maxLines = 1,
+                    fontSize = 14.5.sp, fontWeight = FontWeight.Bold,
+                    maxLines = 2, overflow = TextOverflow.Ellipsis,
                     textDecoration = if (p.done) androidx.compose.ui.text.style.TextDecoration.LineThrough else null
                 )
                 if (p.done) {

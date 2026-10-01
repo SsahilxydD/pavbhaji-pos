@@ -147,9 +147,9 @@ function strings() {
     namePh: t('naam', 'नाम', 'નામ'),
     custPhone: t('Phone (optional)', 'फ़ोन (ज़रूरी नहीं)', 'ફોન (જરૂરી નથી)'),
     chooseItems: t('Items chuno ›', 'आइटम चुनो ›', 'વસ્તુઓ પસંદ કરો ›'),
-    parcelHint: t('Parcel banane ke baad wo Tables screen pe "chal rahe parcel" me dikhega.',
-                  'पार्सल लगने के बाद वो टेबल स्क्रीन पर "चल रहे पार्सल" में दिखेगा।',
-                  'પાર્સલ લાગ્યા પછી તે ટેબલ સ્ક્રીન પર "ચાલુ પાર્સલ"માં દેખાશે.'),
+    parcelHint: t('Parcel banane ke baad wo upar "chal rahe parcel" me dikhega — yahan bhi, Tables pe bhi.',
+                  'पार्सल लगने के बाद वो ऊपर "चल रहे पार्सल" में दिखेगा — यहाँ भी, टेबल स्क्रीन पर भी।',
+                  'પાર્સલ લાગ્યા પછી તે ઉપર "ચાલુ પાર્સલ"માં દેખાશે — અહીં પણ, ટેબલ સ્ક્રીન પર પણ.'),
     nameNeeded: t('Customer ka naam chahiye', 'ग्राहक का नाम ज़रूरी है', 'ગ્રાહકનું નામ જરૂરી છે'),
     nameLong: t('Naam isse lamba nahi ho sakta — English me 60 akshar, Hindi/Gujarati me lagbhag 20.',
                 'नाम इससे लंबा नहीं हो सकता — अंग्रेज़ी में 60 अक्षर, हिंदी या गुजराती में लगभग 20।',
@@ -438,12 +438,7 @@ function redraw() {
   if (pane === 'picker') { paintPickerText(); return; }
   if (pane === 'table') { paintTable(); return; }
   setTop('🍽', S.title, me.name, null);
-  if (tab === 'parcel') {
-    var nm = $('pcName') ? $('pcName').value : '', ph = $('pcPhone') ? $('pcPhone').value : '';
-    parcel();
-    $('pcName').value = nm; $('pcPhone').value = ph;
-    return;
-  }
+  if (tab === 'parcel') { paintParcelForm(); if (repaint) repaint().catch(function () {}); return; }
   if (repaint) repaint().catch(function () {});
 }
 $('tabs').addEventListener('click', function (e) {
@@ -453,7 +448,7 @@ $('tabs').addEventListener('click', function (e) {
 
 function show(t) {
   tab = t; clearInterval(timer); repaint = null; nav++; pane = '';
-  openTable = null; newCart(); parcelMode = (t === 'parcel');
+  openTable = null; newCart(); parcelMode = false;
   $('bar').className = ''; $('bar').innerHTML = '';
   $('tabs').hidden = false;
   setTop('🍽', S.title, me.name, null);
@@ -560,13 +555,13 @@ async function openTableView(id, name) {
   if (my !== nav) return;   // they switched tabs while it loaded
   clearInterval(timer); repaint = null;
   openTable = { id: id, name: name, order: d.order };
-  newCart();
+  newCart(); parcelMode = false;   // a running parcel opened from the Parcel tab is a table like any other
   // A free table has nothing to look at yet: the most common tap of the
   // night goes straight to the menu (Back from there returns to the grid).
   if (!d.order) {
     // (if even the menu can't load, put the live grid back rather than
     // leave a stale one with its poll stopped)
-    if (!(await picker(name, sendTicket)) && my === nav) show('tables');
+    if (!(await picker(name, sendTicket)) && my === nav) show(tab);
     return;
   }
   paintTable();
@@ -597,7 +592,7 @@ function paintTable() {
   $('tabs').hidden = true;
   setTop('‹', openTable.name,
     o ? S.orderNo(o.orderNo) + ' · ' + rupees(o.total) + ' · ' + o.openedByName : S.newOrder,
-    function () { show('tables'); });
+    function () { show(tab); });   // back to the tab it was opened from (Tables or Parcel)
   var html = '';
 
   if (!o) {
@@ -686,9 +681,10 @@ function pickerTop() {
 function pickerBack() {
   confirmLeave(function () {
     newCart(); paintCartBar();
+    // a new parcel: back to its form, name and phone still filled in
     if (parcelMode) { show('parcel'); return; }
     // came straight from a free tile: back to the grid, not an empty table
-    if (!openTable.order) { show('tables'); return; }
+    if (!openTable.order) { show(tab); return; }
     paintTable();     // the copy we have, at once — even with no network
     refreshTable();
   });
@@ -1139,22 +1135,57 @@ function capBytes(el, max, warn) {
   el.addEventListener('compositionend', check);
 }
 
-function parcel() {
-  $('view').innerHTML =
+// The parcel tab, like the app's parcel screen: the running parcels on top
+// (tap one to see or add to it), then the form for a new one. The form's
+// name and phone live in pcDraft, so Back from the menu — or a language
+// switch — brings them back instead of a blank form.
+var pcDraft = { name: '', phone: '' };
+
+async function parcel() {
+  $('view').innerHTML = '<div id="pcRun"></div><div id="pcForm"></div>';
+  paintParcelForm();
+  var paint = async function () {
+    var d = await api('GET', '/api/tables');
+    if (tab !== 'parcel' || openTable || pane || !$('pcRun')) return;
+    var ps = (d.tables || []).filter(function (t) { return t.kind === 'parcel' && t.order; });
+    $('pcRun').innerHTML = ps.length
+      ? '<h2>🥡 ' + esc(S.runningParcels) + '</h2><div class="grid">' + ps.map(tableTile).join('') + '</div>' : '';
+  };
+  var my = nav;
+  repaint = paint;
+  await paint().catch(function () {});   // the form works without the list (the net strip says why)
+  if (my === nav) timer = setInterval(function () { paint().catch(function () {}); }, 10000);
+}
+
+function paintParcelForm() {
+  if (!$('pcForm')) return;
+  $('pcForm').innerHTML =
     '<h2>' + esc(S.newParcel) + '</h2><div class="card">' +
     '<label class="fld"><span>' + esc(S.custName) + '</span><input id="pcName" autocomplete="off" placeholder="' + esc(S.namePh) + '">' +
       '<span class="note" id="pcLong" hidden style="display:block;margin-top:5px;font-size:12.5px;color:var(--amber)">' + esc(S.nameLong) + '</span></label>' +
     '<label class="fld"><span>' + esc(S.custPhone) + '</span><input id="pcPhone" inputmode="tel" autocomplete="off" placeholder="98xxxxxxxx"></label>' +
     '<button class="primary" id="pcNext" style="width:100%">' + esc(S.chooseItems) + '</button></div>' +
     '<p class="hint">' + esc(S.parcelHint) + '</p>';
+  $('pcName').value = pcDraft.name;
+  $('pcPhone').value = pcDraft.phone;
   capBytes($('pcName'), NAME_MAX, $('pcLong'));
   capBytes($('pcPhone'), PHONE_MAX, null);
+  // (after capBytes, so the draft keeps the trimmed value)
+  var keep = function (el, k) {
+    var f = function () { pcDraft[k] = el.value; };
+    el.addEventListener('input', f);
+    el.addEventListener('compositionend', f);
+  };
+  keep($('pcName'), 'name');
+  keep($('pcPhone'), 'phone');
   $('pcNext').onclick = function () {
     var nm = fitBytes($('pcName').value.trim(), NAME_MAX).trim();
     if (!nm) { toast(S.nameNeeded, 'bad'); return; }
     openTable = { parcelName: nm, parcelPhone: fitBytes($('pcPhone').value.trim(), PHONE_MAX).trim() };
     newCart();
-    picker('🥡 ' + nm, sendParcel);
+    parcelMode = true;
+    // menu didn't load (toast says why): stay on the form, list kept fresh
+    picker('🥡 ' + nm, sendParcel).then(function (opened) { if (!opened) show('parcel'); });
   };
 }
 
@@ -1166,6 +1197,7 @@ async function sendParcel() {
     });
   }, function () {
     toast(S.parcelPlaced, 'ok');
+    pcDraft = { name: '', phone: '' };   // placed: the next parcel starts blank
     show('tables');
   });
 }

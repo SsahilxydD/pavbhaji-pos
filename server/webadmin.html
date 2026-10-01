@@ -171,11 +171,30 @@
     .shell { flex-direction:column; }
     aside { width:100%; flex:none; height:auto; position:static; padding:12px 14px; }
     .brand { padding-bottom:10px; }
-    aside nav { flex-direction:row; overflow-x:auto; padding-bottom:4px; }
-    aside nav button { white-space:nowrap; width:auto; }
+    /* the tab strip scrolls sideways: the lit tab is always scrolled into
+       view (show()), and a fade on the right edge says there is more */
+    aside nav {
+      flex-direction:row; overflow-x:auto; padding-bottom:4px; scrollbar-width:none;
+      -webkit-mask-image:linear-gradient(90deg, #000 85%, transparent);
+      mask-image:linear-gradient(90deg, #000 85%, transparent);
+    }
+    aside nav::-webkit-scrollbar { display:none; }
+    aside nav button { white-space:nowrap; width:auto; min-height:44px; }
+    aside nav button:last-child { margin-right:40px; }
     .side-foot { flex-direction:row; align-items:center; padding-top:8px; }
     .side-foot .who { flex:1; }
+    .side-foot button { min-height:40px; }
     main { padding:18px 14px 50px; }
+    /* phone use: 16px fields (below that iOS zooms in on focus), 40px+
+       buttons, 48×28 switches */
+    input, select { font-size:16px; min-height:42px; }
+    input[type=color] { min-height:0; height:40px; width:44px; }
+    input.tiny { width:84px; } input.num { width:96px; }
+    button { min-height:40px; }
+    input[type=checkbox].sw { width:48px; height:28px; min-height:0; }
+    input[type=checkbox].sw::after { width:22px; height:22px; }
+    input[type=checkbox].sw:checked::after { left:23px; }
+    label.ck { min-height:40px; }
   }
 </style>
 </head>
@@ -270,7 +289,9 @@ const TABS = {
 function show(t) {
   tab = t; clearInterval(dashTimer);
   $('tabs').innerHTML = Object.entries(TABS).map(([k,[ic,v]]) =>
-    `<button class="${k===tab?'on':''}" onclick="show('${k}')"><span class="ic">${ic}</span>${v}</button>`).join('');
+    `<button class="${k===tab?'on':''}" onclick="show('${k}')" ${k===tab?'aria-current="page"':''}><span class="ic">${ic}</span>${v}</button>`).join('');
+  // on a phone the strip scrolls sideways: keep the page you're on in view
+  $('tabs').querySelector('.on')?.scrollIntoView({ block:'nearest', inline:'center' });
   ({dashboard, menu, staff, tables, billing, bills, report, log})[t]();
 }
 

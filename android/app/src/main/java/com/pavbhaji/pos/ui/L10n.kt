@@ -44,6 +44,9 @@ fun serverErrText(msg: String): String {
         m.startsWith("menu item not found") -> S.errDishGone
         m.startsWith("can't move ") -> S.errStale
         m.startsWith("server error") -> S.errServer
+        m.startsWith("session expired") || m == "not logged in" -> S.errSession
+        m.startsWith("your role (") && m.endsWith("not allowed to do this") -> S.errRole
+        m.startsWith("only the chef who took this bucket") -> S.errNotYourBucket
         else -> msg
     }
 }
@@ -120,6 +123,21 @@ object S {
         "રસોડાએ આ શરૂ કરી દીધું — હવે ફક્ત એડમિન રદ કરી શકે"
     )
     val errAlreadyCancelled get() = t("Already cancelled", "पहले ही रद्द है", "પહેલેથી રદ છે")
+    val errSession get() = t(
+        "Logged out on this phone — log in again with your PIN",
+        "इस फ़ोन से लॉग आउट हो गए — अपने PIN से फिर अंदर आओ",
+        "આ ફોનમાંથી લોગ આઉટ થયા — તમારા PIN થી ફરી અંદર આવો"
+    )
+    val errRole get() = t(
+        "Your role can't do this",
+        "आपका रोल यह नहीं कर सकता",
+        "તમારો રોલ આ ન કરી શકે"
+    )
+    val errNotYourBucket get() = t(
+        "Only the chef who took this bucket can do that",
+        "यह सिर्फ़ वही शेफ़ कर सकता है जिसने बकेट लिया",
+        "આ ફક્ત એ જ શેફ કરી શકે જેણે બકેટ લીધું"
+    )
     fun errOutOfStock(dish: String) = t(
         "$dish is out of stock — take it out of the cart",
         "$dish खत्म है — कार्ट से हटाओ",

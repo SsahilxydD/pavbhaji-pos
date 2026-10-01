@@ -152,18 +152,29 @@ label.fld span { display:block; font-size:12px; font-weight:700; color:var(--ink
   padding:11px 0; border-bottom:1px solid var(--line);
 }
 .line:last-child { border-bottom:0; }
-.line .nm { font-weight:700; }
+/* .grow used to flex only inside .row, so in a .line every pill and stepper
+   sat right after the name, at a different x on every row */
+.line .grow { flex:1; min-width:0; }
+.line .nm { font-weight:700; overflow-wrap:anywhere; }
 .line .note { font-size:12px; color:var(--amber); }
 .line .qty { font-weight:800; font-variant-numeric:tabular-nums; min-width:30px; }
 
-/* stepper for picking quantities */
-.step { display:flex; align-items:center; gap:8px; }
+/* stepper for picking quantities — fixed width, so − and + sit in one
+   column down the whole menu and the thumb learns where they are */
+.step { display:flex; align-items:center; gap:8px; flex:0 0 auto; }
 .step button {
-  width:40px; height:40px; border-radius:12px; font-size:20px; font-weight:700;
+  width:48px; height:48px; border-radius:12px; font-size:22px; font-weight:700;
   background:var(--card); border:1px solid var(--line); color:var(--ink); cursor:pointer;
 }
 .step button:active { background:var(--line); }
-.step b { min-width:26px; text-align:center; font-variant-numeric:tabular-nums; }
+.step b { width:28px; text-align:center; font-variant-numeric:tabular-nums; }
+
+/* picker rows: the whole row is a +1 tap target, as in the app */
+.pk-card { padding-top:2px; padding-bottom:2px; overflow:hidden; }
+.pk-row { cursor:pointer; margin:0 -14px; padding:10px 14px; }
+.pk-row:active { background:#f6efe6; }
+.pk-row.in { background:#fff4ee; }
+.pk-row.in .step b { color:var(--red-deep); font-size:17px; }
 
 /* ---------- sticky action bar ---------- */
 .bar {

@@ -237,10 +237,13 @@ function show(t) {
   ({ tables:tables, parcel:parcel, kitchen:kitchen })[t]();
 }
 
+var menuById = {};
 async function loadMenu() {
   if (menu.length) return menu;
   var d = await api('GET', '/api/menu');
   menu = d.menu || [];
+  menuById = {};
+  menu.forEach(function (c) { (c.items || []).forEach(function (it) { menuById[it.id] = it; }); });
   return menu;
 }
 
@@ -370,20 +373,22 @@ async function picker(title, send) {
     '<button class="ghost" id="pBack" style="min-height:42px;padding:9px 14px">‹ Back</button>' +
     '<b class="grow" style="font-size:17px;text-align:center">' + esc(title) + '</b>' +
     '<span style="width:86px"></span></div>';
+  html += '<div id="pkList">';
   menu.forEach(function (c) {
-    html += '<h2>' + esc(c.name) + '</h2><div class="card">';
+    html += '<h2>' + esc(c.name) + '</h2><div class="card pk-card">';
     (c.items || []).forEach(function (it) {
-      html += '<div class="line" data-item="' + it.id + '">' +
+      html += '<div class="line pk-row" data-item="' + it.id + '">' +
         '<span class="grow"><span class="nm">' + esc(it.name) + '</span>' +
         '<div class="mut tnum">' + rupees(it.price) + (it.available ? '' : ' · khatam') + '</div></span>' +
         '<span class="step">' +
-          '<button data-dec="' + it.id + '">−</button>' +
+          '<button data-dec="' + it.id + '" disabled>−</button>' +
           '<b id="q' + it.id + '">0</b>' +
-          '<button data-inc="' + it.id + '" data-nm="' + esc(it.name) + '" data-pr="' + it.price + '">+</button>' +
+          '<button data-inc="' + it.id + '">+</button>' +
         '</span></div>';
     });
     html += '</div>';
   });
+  html += '</div>';
   $('view').innerHTML = html;
   $('pBack').onclick = function () {
     confirmLeave(function () {
@@ -393,29 +398,41 @@ async function picker(title, send) {
       refreshTable();
     });
   };
-  $('view').querySelectorAll('button[data-inc]').forEach(function (b) {
-    b.onclick = function () { bump(Number(b.dataset.inc), 1, b.dataset.nm, Number(b.dataset.pr)); };
-  });
-  $('view').querySelectorAll('button[data-dec]').forEach(function (b) {
-    b.onclick = function () { bump(Number(b.dataset.dec), -1, '', 0); };
+  // − takes one off; + or a tap anywhere else on the row adds one (the app's
+  // MenuRow does the same), so a fat-fingered tap still lands on that dish.
+  $('pkList').addEventListener('click', function (e) {
+    var row = e.target.closest('.pk-row');
+    if (!row) return;
+    if (e.target.closest('button[data-dec]')) bump(Number(row.dataset.item), -1);
+    else bump(Number(row.dataset.item), 1);
   });
   paintCartBar();
 }
 
-function bump(id, delta, name, price) {
+function bump(id, delta) {
   if (sending) { toast(S.wait); return; }
   if (cartLocked) { toast(S.locked, 'bad'); return; }
+  var it = menuById[id];
   var line = cart.filter(function (l) { return l.menuItemId === id; })[0];
   if (!line) {
-    if (delta < 0) return;
-    line = { menuItemId: id, name: name, price: price, qty: 0, note: '' };
+    if (delta < 0 || !it) return;
+    line = { menuItemId: id, name: it.name, price: it.price, qty: 0, note: '' };
     cart.push(line);
   }
   line.qty += delta;
   if (line.qty <= 0) cart = cart.filter(function (l) { return l.menuItemId !== id; });
-  var q = $('q' + id);
-  if (q) q.textContent = String(line.qty > 0 ? line.qty : 0);
+  paintRow(id);
   paintCartBar();
+}
+
+// One menu row's count, highlight and − state, from the cart.
+function paintRow(id) {
+  var row = document.querySelector('.pk-row[data-item="' + id + '"]');
+  if (!row) return;
+  var n = cart.reduce(function (s, l) { return s + (l.menuItemId === id ? l.qty : 0); }, 0);
+  $('q' + id).textContent = String(n);
+  row.classList.toggle('in', n > 0);
+  row.querySelector('button[data-dec]').disabled = n === 0;
 }
 
 function cartTotal() {

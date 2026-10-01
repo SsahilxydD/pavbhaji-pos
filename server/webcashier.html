@@ -369,8 +369,17 @@ $('tabs').addEventListener('click', function (e) {
   if (b) show(b.dataset.tab);
 });
 
+// A laptop-wide screen gets the bill in two columns (pos.css .billgrid).
+var WIDE = window.matchMedia ? window.matchMedia('(min-width:1024px)') : { matches: false };
+(function () {
+  var again = function () { if (cur && cur.order) paintBill(); };
+  if (WIDE.addEventListener) WIDE.addEventListener('change', again);
+  else if (WIDE.addListener) WIDE.addListener(again);
+})();
+
 function show(t) {
   tab = t; cur = null; stopPoll(); nav++;
+  $('view').classList.remove('wide'); document.body.classList.remove('wide');
   $('tabs').hidden = false;
   $('bar').className = ''; $('bar').innerHTML = '';
   setTop('🧾', S.title, me.name, null);
@@ -564,7 +573,9 @@ function paintBill() {
          '<div class="mut" style="font-size:12px">' + esc(S.running) + '</div>';
   }
 
-  h += '<hr class="sep">';
+  // Invoice and payment are two cards: one under the other on a phone,
+  // side by side on a laptop (payment + Print/Close on the right, in view).
+  h += '</div><div class="paycol"><div class="card">';
   h += '<div class="row"><span class="sechd grow">' + esc(S.payment) + '</span>' +
        (b ? (settled
               ? '<span class="green" style="font-size:12px;font-weight:800">' + esc(S.paid) + '</span>'
@@ -599,24 +610,32 @@ function paintBill() {
     }
   }
   if (cur.readOnly && !cur.history) h += '<div class="hint">👁 ' + esc(S.viewOnly) + '</div>';
-  h += '</div>';
-  $('view').innerHTML = h;
+  h += '</div><div id="billActs"></div></div></div>';
+  $('view').classList.add('wide');
+  document.body.classList.add('wide');
+  $('view').innerHTML = '<div class="billgrid">' + h;
 
   // One row: a compact Print, then Close. Stacked, the two 46px buttons took
   // 128px — on a 360×640 phone they sat on top of the "all cash" chip. A
   // Close that can't be pressed yet says why, in ink on grey, instead of a
-  // pale-green slab that read as "button broken".
+  // pale-green slab that read as "button broken". On a laptop the two sit
+  // under the payment card instead of in a 1366px-wide bottom bar.
   var why = !b ? S.noBill
           : paid !== total ? S.payFirst(rupees(Math.max(0, total - paid)))
           : b.subtotal !== o.total ? S.billStale : '';
-  if (cur.readOnly) {
+  var close = cur.readOnly ? '' :
+    '<button class="okbtn" id="closeBtn"' + (settled ? '>' + esc(S.closeAmt(rupees(total))) : ' disabled>' + esc(why)) + '</button>';
+  if (WIDE.matches) {
+    $('bar').className = ''; $('bar').innerHTML = '';
+    $('billActs').className = 'acts-wide';
+    $('billActs').innerHTML = '<button class="ghost" id="printBtn">' + esc(S.print) + '</button>' + close;
+  } else if (cur.readOnly) {
     $('bar').className = 'bar';
     $('bar').innerHTML = '<button class="ghost" id="printBtn">' + esc(S.print) + '</button>';
   } else {
     $('bar').className = 'bar acts';
     $('bar').innerHTML =
-      '<button class="ghost printbtn" id="printBtn" title="' + esc(S.print) + '" aria-label="' + esc(S.print) + '">🖨</button>' +
-      '<button class="okbtn" id="closeBtn"' + (settled ? '>' + esc(S.closeAmt(rupees(total))) : ' disabled>' + esc(why)) + '</button>';
+      '<button class="ghost printbtn" id="printBtn" title="' + esc(S.print) + '" aria-label="' + esc(S.print) + '">🖨</button>' + close;
   }
 
   $('printBtn').onclick = function () { printBill(cur.id); };

@@ -446,6 +446,33 @@ label.fld span { display:block; font-size:12px; font-weight:700; color:var(--ink
 .bar.sumbar .mut { font-size:12.5px; }
 .bar.sumbar .sumamt { font-size:20px; color:var(--red-deep); }
 
+/* ---------- laptop: everything lines up with the 760px column ----------
+   The content was a centred 760px column while the header, the tab strip
+   and the sticky bar ran the full 1366px: tabs floated far left and Close
+   was 1340px wide. Their insides now line up with the content. */
+@media (min-width:800px) {
+  .top { --padx:max(14px, calc(50vw - 368px)); padding-left:var(--padx); padding-right:var(--padx); }
+  .top .net {
+    flex-basis:calc(100% + 2 * var(--padx));
+    margin-left:calc(-1 * var(--padx)); margin-right:calc(-1 * var(--padx));
+    padding-left:var(--padx); padding-right:var(--padx);
+  }
+  .tabs, .bar { padding-left:max(12px, calc(50vw - 368px)); padding-right:max(12px, calc(50vw - 368px)); }
+}
+/* The cashier's bill on a laptop: invoice on the left, payment and the
+   Print / Close buttons on the right, always in view (at 768px tall the
+   split boxes used to sit under the sticky bar). */
+.billgrid > .card { margin-bottom:11px; }
+.acts-wide { display:flex; flex-direction:column; gap:9px; }
+.acts-wide button { width:100%; }
+.acts-wide button.okbtn { min-height:52px; }
+@media (min-width:1024px) {
+  .wrap.wide { max-width:1120px; }
+  body.wide .top { --padx:max(14px, calc(50vw - 548px)); }
+  .billgrid { display:grid; grid-template-columns:minmax(0, 1fr) 390px; gap:14px; align-items:start; }
+  .billgrid .paycol { position:sticky; top:calc(var(--top-h, 64px) + 12px); }
+}
+
 /* ---------- printing a bill without leaving the screen ----------
    The /bill page sits in a hidden frame and is printed from there. Should
    a browser print the whole page instead (iOS Safari does), paper shows

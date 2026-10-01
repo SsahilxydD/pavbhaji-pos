@@ -217,8 +217,16 @@ let token = '', me = null, tab = 'dashboard', dashTimer = null;
 
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const rupees = p => p % 100 === 0 ? '₹' + (p/100) : '₹' + (p/100).toFixed(2);
-const toPaise = s => { const v = parseFloat(String(s).replace('₹','').trim()); return isNaN(v) || v < 0 ? null : Math.round(v*100); };
+// Indian grouping, no decimals for whole rupees: ₹13,660 · ₹1,23,456 · ₹42.50.
+const INR0 = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0 });
+const INR2 = new Intl.NumberFormat('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const rupees = p => '₹' + (p % 100 === 0 ? INR0 : INR2).format(p / 100);
+// "1,200" must read as 1200, not 1.
+const toPaise = s => {
+  const t = String(s).replace(/[₹,\s]/g, '');
+  if (!/^\d*\.?\d+$|^\d+\.$/.test(t)) return null;
+  const v = parseFloat(t); return isNaN(v) || v < 0 ? null : Math.round(v*100);
+};
 const clock = ms => new Date(ms).toTimeString().slice(0,5);
 
 // Non-blocking feedback instead of alert(): slides up bottom-right, self-clears.

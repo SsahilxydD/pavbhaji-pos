@@ -79,7 +79,15 @@ var esc = function (s) {
     return { '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' }[c];
   });
 };
-var rupees = function (p) { return p % 100 === 0 ? '₹' + (p / 100) : '₹' + (p / 100).toFixed(2); };
+// Money is paise on the wire. On screen it is Indian-grouped with no decimals
+// for whole rupees — ₹13,660, ₹1,23,456, ₹42.50 — the same as the app.
+var INR0 = window.Intl ? new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0 }) : null;
+var INR2 = window.Intl ? new Intl.NumberFormat('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : null;
+var rupees = function (p) {
+  var whole = p % 100 === 0;
+  if (!INR0) return '₹' + (whole ? p / 100 : (p / 100).toFixed(2));
+  return '₹' + (whole ? INR0 : INR2).format(p / 100);
+};
 var clock = function (ms) { return new Date(ms).toTimeString().slice(0, 5); };
 var uid = function () {
   if (window.crypto && crypto.randomUUID) return crypto.randomUUID();

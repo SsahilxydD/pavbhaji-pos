@@ -605,13 +605,29 @@ function confirmClose() {
        act: function () { hideModal(); closeOrder(); } }]);
 }
 
+// Is this order closed on the server? (false when we can't even ask)
+async function isClosed(id) {
+  try { return (await api('GET', '/api/orders/' + id)).status === 'closed'; }
+  catch (e) { return false; }
+}
+
 async function closeOrder() {
   var btn = $('closeBtn'); if (btn) btn.disabled = true;
+  var id = cur.id;
   try {
-    await api('POST', '/api/orders/' + cur.id + '/close');
+    await api('POST', '/api/orders/' + id + '/close');
     toast(S.closedToast, 'ok');
     show('open');
   } catch (e) {
+    // The close went through but its reply was lost on the way back: the
+    // retry then hears "open order not found". That table IS closed — say
+    // so and move on, instead of an error that sends the cashier hunting.
+    // (Same check right away when there was no answer at all.)
+    if ((e.status === 404 || e.network) && await isClosed(id)) {
+      toast(S.closedToast, 'ok');
+      if (cur && cur.id === id) show('open');
+      return;
+    }
     if (e.blockers && e.blockers.length) {
       showModal(S.cantClose,
         '<div style="font-size:14px">' + e.blockers.map(function (x) { return '• ' + esc(x); }).join('<br>') + '</div>' +

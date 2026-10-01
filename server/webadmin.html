@@ -159,6 +159,29 @@
   .toast.bad { background:var(--danger); }
   @keyframes toastin { from { opacity:0; transform:translateY(8px);} to { opacity:1; transform:none;} }
 
+  /* menu rows: every field labelled; an edited row is marked until saved */
+  label.mini { display:flex; flex-direction:column; gap:2px; font-size:11px; font-weight:700; color:var(--ink2); }
+  /* (zero-width label text: it never widens its column, so the rows line up) */
+  label.mini > span { padding-left:3px; white-space:nowrap; width:0; overflow:visible; }
+  label.mini.nm { flex:1 1 170px; min-width:150px; }
+  label.mini.nm input { width:100%; }
+  .row.item { align-items:flex-end; }
+  .row.item { padding-left:8px; padding-right:4px; margin:0 -8px 0 -8px; }
+  /* laptop: the first dish row's labels are the column header; on a phone,
+     where rows wrap, every row keeps its own */
+  @media (min-width:861px) { .row.item ~ .row.item label.mini > span { display:none; } }
+  .row.item.dirty { box-shadow:inset 4px 0 0 var(--amber); border-radius:6px; background:#fffaf2; }
+  .row.item .ck { align-self:flex-end; min-height:36px; }
+  .row.item > button { align-self:flex-end; }
+  .row.item > button.save { min-width:76px; }
+  input::placeholder { color:var(--ink3); font-style:italic; }
+  .dirtybar {
+    position:fixed; right:18px; bottom:18px; z-index:45; display:flex; align-items:center; gap:12px;
+    background:var(--ink); color:#fff; font-weight:700; font-size:13.5px;
+    padding:8px 8px 8px 16px; border-radius:14px; box-shadow:var(--shadow-lift);
+  }
+  body.dirty #toasts { bottom:80px; }
+
   /* reprint from a hidden frame (see printBill); paper shows only that frame */
   #printFrame { position:fixed; left:-10000px; top:0; width:360px; height:600px; border:0; }
   @media print {
@@ -216,7 +239,7 @@
   <main><div class="content"><div id="view"></div></div></main>
 </div>
 
-<div id="toasts"></div>
+<div class="dirtybar" id="dirtyBar" hidden><span id="dirtyN"></span><button class="primary" onclick="saveAll()" id="saveAllBtn">Save all</button></div><div id="toasts"></div>
 
 <script>
 'use strict';
@@ -235,6 +258,19 @@ const toPaise = s => {
   const v = parseFloat(t); return isNaN(v) || v < 0 ? null : Math.round(v*100);
 };
 const clock = ms => new Date(ms).toTimeString().slice(0,5);
+
+// Screen text in one place.
+const S = {
+  save: 'Save', saved: 'Saved ✓', saveAll: 'Save all',
+  colour: 'colour', name: 'name', priceRs: 'price ₹', station: 'station',
+  stationHint: 'kitchen = cooked in buckets, counter = waiter hands over',
+  kitchen: '🍳 kitchen', counter: '✋ counter',
+  tawaCap: 'tawa cap', sealMin: 'seal (min)', auto: 'auto', inStock: 'in stock',
+  archive: 'hide everywhere',
+  namePriceNeeded: 'name and a valid ₹ price are needed',
+  unsaved: n => n + ' dish row' + (n === 1 ? '' : 's') + ' not saved',
+  leaveUnsaved: n => n + ' edited dish row' + (n === 1 ? ' is' : 's are') + ' not saved. Leave and lose the changes?',
+};
 
 // Non-blocking feedback instead of alert(): slides up bottom-right, self-clears.
 function toast(msg, kind) {
@@ -287,6 +323,9 @@ const TABS = {
   report:['📈','Day report'], log:['📜','Audit log']
 };
 function show(t) {
+  // menu rows edited but not saved: ask before the tab switch throws them away
+  if (tab === 'menu' && t !== 'menu' && dirtyRows().length && !confirm(S.leaveUnsaved(dirtyRows().length))) return;
+  $('dirtyBar').hidden = true; document.body.classList.remove('dirty');
   tab = t; clearInterval(dashTimer);
   $('tabs').innerHTML = Object.entries(TABS).map(([k,[ic,v]]) =>
     `<button class="${k===tab?'on':''}" onclick="show('${k}')" ${k===tab?'aria-current="page"':''}><span class="ic">${ic}</span>${v}</button>`).join('');
@@ -317,25 +356,32 @@ async function dashboard() {
 }
 
 // ---- menu ----
+// Each dish row has its own Save (the stock switch saves at once, as it
+// always did). Edits used to vanish silently on a tab switch: now an edited
+// row is marked — amber edge, "Save •" — until saved, a "Save all" bar
+// collects every edited row, and leaving the tab or the page with unsaved
+// rows asks first. Every field carries its own small label (tooltips don't
+// exist on phones), and a blank tawa cap / seal says "auto" instead of a
+// grey "cap 15" that looked like a value.
 async function menu() {
   const m = await api('GET','/api/menu');
   $('view').innerHTML = m.menu.map(cat => `
     <div class="card">
       <div class="row" style="border-bottom:2px solid var(--line)"><b class="grow" style="font-size:15px">${esc(cat.name)}</b></div>
       ${cat.items.map(i => `
-      <div class="row" data-id="${i.id}">
-        <input type="color" value="${/^#[0-9a-fA-F]{6}$/.test(i.colour) ? i.colour : '#999999'}" title="bucket colour">
-        <input class="grow name" value="${esc(i.name)}">
-        <input class="num price" value="${(i.price/100)}" title="price ₹">
-        <select class="station" title="kitchen = cooked in buckets, counter = waiter hands over">
-          <option value="kitchen" ${i.station==='kitchen'?'selected':''}>🍳 kitchen</option>
-          <option value="counter" ${i.station==='counter'?'selected':''}>✋ counter</option>
-        </select>
-        <input class="tiny cap" placeholder="cap 15" value="${i.batchCap ?? ''}" title="tawa cap (blank = default 15)">
-        <input class="tiny age" placeholder="seal 10" value="${i.batchAgeMin ?? ''}" title="seal after minutes (blank = default 10)">
-        <label class="ck"><input type="checkbox" class="sw avail" ${i.available?'checked':''}> in stock</label>
-        <button onclick="saveItem(${i.id}, this)">Save</button>
-        <button class="icon" title="hide everywhere" onclick="archiveItem(${i.id}, '${esc(i.name)}')">🗑</button>
+      <div class="row item" data-id="${i.id}">
+        <label class="mini"><span>${esc(S.colour)}</span><input type="color" value="${/^#[0-9a-fA-F]{6}$/.test(i.colour) ? i.colour : '#999999'}"></label>
+        <label class="mini nm"><span>${esc(S.name)}</span><input class="name" value="${esc(i.name)}"></label>
+        <label class="mini"><span>${esc(S.priceRs)}</span><input class="num price" inputmode="decimal" value="${(i.price/100)}"></label>
+        <label class="mini"><span>${esc(S.station)}</span><select class="station" title="${esc(S.stationHint)}">
+          <option value="kitchen" ${i.station==='kitchen'?'selected':''}>${esc(S.kitchen)}</option>
+          <option value="counter" ${i.station==='counter'?'selected':''}>${esc(S.counter)}</option>
+        </select></label>
+        <label class="mini"><span>${esc(S.tawaCap)}</span><input class="tiny cap" inputmode="numeric" placeholder="${esc(S.auto)}" value="${i.batchCap ?? ''}"></label>
+        <label class="mini"><span>${esc(S.sealMin)}</span><input class="tiny age" inputmode="numeric" placeholder="${esc(S.auto)}" value="${i.batchAgeMin ?? ''}"></label>
+        <label class="ck"><input type="checkbox" class="sw avail" ${i.available?'checked':''}> ${esc(S.inStock)}</label>
+        <button class="save" onclick="saveItem(${i.id}, this)">${esc(S.save)}</button>
+        <button class="icon" title="${esc(S.archive)}" aria-label="${esc(S.archive)}" onclick="archiveItem(${i.id}, '${esc(i.name)}')">🗑</button>
       </div>`).join('')}
       <div class="addbar">
         <input class="grow" placeholder="new dish name" id="nn${cat.id}">
@@ -351,7 +397,7 @@ async function saveItem(id, btn) {
   const row = btn.closest('.row');
   const price = toPaise(row.querySelector('.price').value);
   const name = row.querySelector('.name').value.trim();
-  if (!name || price === null) { toast('name and a valid ₹ price are needed', 'bad'); return; }
+  if (!name || price === null) { toast(S.namePriceNeeded, 'bad'); return false; }
   const body = {
     name, price,
     station: row.querySelector('.station').value,
@@ -359,12 +405,40 @@ async function saveItem(id, btn) {
     batchCap: parseInt(row.querySelector('.cap').value) || 0,
     batchAgeMin: parseInt(row.querySelector('.age').value) || 0,
   };
-  try { await api('PATCH', '/api/admin/menu-items/'+id, body); btn.textContent='Saved ✓'; setTimeout(()=>btn.textContent='Save',1200); }
-  catch (e) { toast(e.message, 'bad'); }
+  try {
+    await api('PATCH', '/api/admin/menu-items/'+id, body);
+    markDirty(row, false);
+    btn.textContent = S.saved; setTimeout(() => { if (!row.classList.contains('dirty')) btn.textContent = S.save; }, 1200);
+    return true;
+  } catch (e) { toast(e.message, 'bad'); return false; }
 }
+
+function markDirty(row, on) {
+  row.classList.toggle('dirty', on);
+  const b = row.querySelector('button.save');
+  b.classList.toggle('primary', on);
+  b.textContent = on ? S.save + ' •' : S.save;
+  const n = dirtyRows().length;
+  $('dirtyBar').hidden = !n;
+  document.body.classList.toggle('dirty', !!n);
+  $('dirtyN').textContent = S.unsaved(n);
+}
+const dirtyRows = () => [...document.querySelectorAll('#view .row.item.dirty')];
+async function saveAll() {
+  for (const row of dirtyRows()) await saveItem(Number(row.dataset.id), row.querySelector('button.save'));
+}
+// any edit in a dish row (except the stock switch, which saves itself)
+const onEdit = e => {
+  const row = e.target.closest?.('#view .row.item');
+  if (row && !e.target.classList.contains('avail')) markDirty(row, true);
+};
+document.addEventListener('input', onEdit);
+document.addEventListener('change', onEdit);
+window.addEventListener('beforeunload', e => { if (dirtyRows().length) { e.preventDefault(); e.returnValue = ''; } });
+
 document.addEventListener('change', async e => {
   if (e.target.classList?.contains('avail')) {
-    const id = e.target.closest('.row').dataset.id;
+    const id = e.target.closest('[data-id]').dataset.id;
     try { await api('PATCH','/api/admin/menu-items/'+id, { available: e.target.checked }); }
     catch (err) { toast(err.message, 'bad'); e.target.checked = !e.target.checked; }
   }

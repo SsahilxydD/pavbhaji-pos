@@ -49,6 +49,7 @@ import com.pavbhaji.pos.data.TableStateDto
 import com.pavbhaji.pos.ui.AppHeader
 import com.pavbhaji.pos.ui.BigButton
 import com.pavbhaji.pos.ui.CardLine
+import com.pavbhaji.pos.ui.ConfirmDialog
 import com.pavbhaji.pos.ui.ConnBanner
 import com.pavbhaji.pos.ui.EmptyState
 import com.pavbhaji.pos.ui.ErrorBanner
@@ -290,8 +291,13 @@ fun AddParcelScreen(onDone: (Long) -> Unit, onBack: () -> Unit) {
 
     val cartQty = remember(cart.toList()) { cart.groupBy { it.menuItemId }.mapValues { e -> e.value.sumOf { it.qty } } }
 
+    // Same rule as the table screen: Back (arrow or gesture) with an unsent
+    // cart asks before throwing it away.
+    var confirmDiscard by remember { mutableStateOf(false) }
+    val leave: () -> Unit = { if (cart.isEmpty()) onBack() else { confirmDiscard = true } }
+
     Column(Modifier.fillMaxSize()) {
-        AppHeader(title = "🥡 " + S.newParcel.trimStart('＋', ' '), subtitle = S.newOrder, onBack = onBack)
+        AppHeader(title = "🥡 " + S.newParcel.trimStart('＋', ' '), subtitle = S.newOrder, onBack = leave)
         ConnBanner(connected)
 
         LazyColumn(Modifier.weight(1f).padding(horizontal = 12.dp)) {
@@ -394,6 +400,17 @@ fun AddParcelScreen(onDone: (Long) -> Unit, onBack: () -> Unit) {
         }
     }
 
+    if (confirmDiscard) {
+        ConfirmDialog(
+            title = S.discardCartQ(itemsLabel(cart.sumOf { it.qty })),
+            body = S.discardCartBody,
+            confirmLabel = S.discardBtn,
+            dismissLabel = S.keepBtn,
+            destructive = true,
+            onConfirm = { confirmDiscard = false; onBack() },
+            onDismiss = { confirmDiscard = false }
+        )
+    }
     noteEditIdx?.let { idx ->
         var text by remember { mutableStateOf(cart.getOrNull(idx)?.note ?: "") }
         AlertDialog(

@@ -172,6 +172,19 @@ object S {
         "આ ટેબલનો ઓર્ડર શરૂ કરવા ઉપર આઈટમ દબાવો"
     )
     fun cancelQ(qty: Long, name: String) = t("Cancel $qty× $name?", "$qty× $name रद्द करें?", "$qty× $name રદ કરવું?")
+    // Back pressed with a cart that hasn't gone to the kitchen.
+    fun discardCartQ(items: String) = t(
+        "Discard $items not sent yet?",
+        "$items अभी भेजे नहीं — हटा दें?",
+        "$items હજી મોકલી નથી — કાઢી નાખવી?"
+    )
+    val discardCartBody get() = t(
+        "They haven't gone to the kitchen. Keep them to send, or discard and go back.",
+        "ये किचन में नहीं गए हैं। भेजने हैं तो रखो, वरना हटाकर वापस जाओ।",
+        "આ રસોડામાં ગઈ નથી. મોકલવી હોય તો રાખો, નહીં તો કાઢીને પાછા જાઓ."
+    )
+    val keepBtn get() = t("Keep", "रखो", "રાખો")
+    val discardBtn get() = t("Discard", "हटा दो", "કાઢી નાખો")
     fun closeQ(table: String) = t("Close $table?", "$table बंद करें?", "$table બંધ કરવું?")
     fun totalLine(amt: String) = t("Total: $amt", "कुल: $amt", "કુલ: $amt")
     val collectFirst get() = t("Collect payment before closing.", "बंद करने से पहले पैसे ले लो।", "બંધ કરતાં પહેલાં પૈસા લઈ લો.")

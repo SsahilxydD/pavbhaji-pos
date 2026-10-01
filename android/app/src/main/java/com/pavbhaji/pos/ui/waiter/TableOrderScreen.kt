@@ -63,6 +63,7 @@ import com.pavbhaji.pos.data.OrderItemDto
 import com.pavbhaji.pos.ui.AppHeader
 import com.pavbhaji.pos.ui.BigButton
 import com.pavbhaji.pos.ui.CardLine
+import com.pavbhaji.pos.ui.ConfirmDialog
 import com.pavbhaji.pos.ui.ConnBanner
 import com.pavbhaji.pos.ui.ErrorBanner
 import com.pavbhaji.pos.ui.ListSkeleton
@@ -170,6 +171,11 @@ fun TableOrderScreen(tableId: Long, tableName: String, onBack: () -> Unit) {
     // How many of each menu item is sitting in the cart (for the badges).
     val cartQty = remember(cart.toList()) { cart.groupBy { it.menuItemId }.mapValues { e -> e.value.sumOf { it.qty } } }
 
+    // Back (the header arrow AND the system gesture — AppHeader wires both to
+    // this) never silently drops punched items: with an unsent cart it asks.
+    var confirmDiscard by remember { mutableStateOf(false) }
+    val leave: () -> Unit = { if (cart.isEmpty()) onBack() else { confirmDiscard = true } }
+
     Column(Modifier.fillMaxSize()) {
         val o = order
         AppHeader(
@@ -179,7 +185,7 @@ fun TableOrderScreen(tableId: Long, tableName: String, onBack: () -> Unit) {
                 pricesVisible() -> "${S.orderNo(o.orderNo)} · ${rupees(o.total)} · ${o.openedByName}"
                 else -> "${S.orderNo(o.orderNo)} · ${o.openedByName}"
             },
-            onBack = onBack
+            onBack = leave
         )
         ConnBanner(connected)
         ErrorBanner(loadError)
@@ -325,6 +331,17 @@ fun TableOrderScreen(tableId: Long, tableName: String, onBack: () -> Unit) {
     }
 
     // ---- dialogs ----
+    if (confirmDiscard) {
+        ConfirmDialog(
+            title = S.discardCartQ(itemsLabel(cart.sumOf { it.qty })),
+            body = S.discardCartBody,
+            confirmLabel = S.discardBtn,
+            dismissLabel = S.keepBtn,
+            destructive = true,
+            onConfirm = { confirmDiscard = false; onBack() },
+            onDismiss = { confirmDiscard = false }
+        )
+    }
     cancelTarget?.let { target ->
         ReasonDialog(
             title = S.cancelQ(target.qty, target.name),

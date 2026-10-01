@@ -56,6 +56,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -122,6 +123,18 @@ fun clockTime(ms: Long): String {
     val cal = java.util.Calendar.getInstance()
     cal.timeInMillis = ms
     return "%02d:%02d".format(cal.get(java.util.Calendar.HOUR_OF_DAY), cal.get(java.util.Calendar.MINUTE))
+}
+
+// While `active`, the silent self-update waits for the next time the phone
+// is put down (AppUpdater.applyStaged): an unsent cart or a bill being
+// settled must not vanish because the screen timed out mid-order.
+@Composable
+fun HoldUpdates(active: Boolean) {
+    val key = remember { Any() }
+    DisposableEffect(active) {
+        com.pavbhaji.pos.data.AppUpdater.hold(key, active)
+        onDispose { com.pavbhaji.pos.data.AppUpdater.hold(key, false) }
+    }
 }
 
 // Each screen decides its status-bar icon tint: the app is edge-to-edge, so

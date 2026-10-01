@@ -39,6 +39,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -54,7 +55,6 @@ import com.pavbhaji.pos.data.ApiResult
 import com.pavbhaji.pos.data.BillDto
 import com.pavbhaji.pos.data.BillSummaryDto
 import com.pavbhaji.pos.data.OrderDetailDto
-import com.pavbhaji.pos.data.TableStateDto
 import com.pavbhaji.pos.ui.AppHeader
 import com.pavbhaji.pos.ui.BhajiRed
 import com.pavbhaji.pos.ui.BigButton
@@ -79,19 +79,22 @@ import kotlinx.serialization.json.JsonPrimitive
 // punch orders; they settle them, and closing is theirs alone.
 @Composable
 fun CashierHome(onLogout: () -> Unit) {
-    var billFor by remember { mutableStateOf<TableStateDto?>(null) }
-    var tab by remember { mutableIntStateOf(0) }
+    // Saved state: a cashier who flips to the UPI app on a small phone, and
+    // whose app Android kills meanwhile, comes back to the same open bill.
+    var billId by rememberSaveable { mutableStateOf<Long?>(null) }
+    var billName by rememberSaveable { mutableStateOf("") }
+    var tab by rememberSaveable { mutableIntStateOf(0) }
 
-    val sel = billFor
+    val sel = billId
     if (sel != null) {
-        BillScreen(tableId = sel.id, tableName = sel.name, onBack = { billFor = null })
+        BillScreen(tableId = sel, tableName = billName, onBack = { billId = null })
         return
     }
     Column(Modifier.fillMaxSize()) {
         Box(Modifier.weight(1f)) {
             if (tab == 0) {
                 TablesScreen(
-                    onOpenTable = { if (it.order != null) billFor = it },
+                    onOpenTable = { if (it.order != null) { billName = it.name; billId = it.id } },
                     onLogout = onLogout,
                     onBack = null
                 )
@@ -176,6 +179,9 @@ fun BillScreen(tableId: Long, tableName: String, onBack: () -> Unit) {
     // The WebView must outlive the click that made it: Android renders the
     // print job from it asynchronously after the dialog opens.
     var printHold by remember { mutableStateOf<WebView?>(null) }
+    // Mid-settlement: the silent update waits (the cashier may only have
+    // flipped to the UPI app to check a payment).
+    com.pavbhaji.pos.ui.HoldUpdates(true)
 
     // Every refresh re-generates the bill server-side, so its subtotal always
     // tracks the live items (a KOT punched mid-billing can't sneak past).

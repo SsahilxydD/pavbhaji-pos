@@ -32,6 +32,7 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -60,6 +61,7 @@ import com.pavbhaji.pos.ui.dishColour
 import com.pavbhaji.pos.ui.items as itemsLabel
 import com.pavbhaji.pos.ui.rupees
 import com.pavbhaji.pos.ui.waiter.CartLine
+import com.pavbhaji.pos.ui.waiter.CartSaver
 import com.pavbhaji.pos.ui.waiter.CartStrip
 import com.pavbhaji.pos.ui.waiter.MenuRow
 import com.pavbhaji.pos.ui.waiter.TableOrderScreen
@@ -73,8 +75,11 @@ import java.util.UUID
 // blue = handed over, collect and close. Tap a tab for the full order.
 @Composable
 fun ParcelHome(onLogout: () -> Unit) {
-    var selected by remember { mutableStateOf<TableStateDto?>(null) }
-    var adding by remember { mutableStateOf(false) }
+    // Which parcel is open (id + header title) and the add flow survive the
+    // app being killed in the background.
+    var selId by rememberSaveable { mutableStateOf<Long?>(null) }
+    var selTitle by rememberSaveable { mutableStateOf("") }
+    var adding by rememberSaveable { mutableStateOf(false) }
     var tables by remember { mutableStateOf<List<TableStateDto>>(emptyList()) }
     var loadError by remember { mutableStateOf<String?>(null) }
     var toast by remember { mutableStateOf<String?>(null) }
@@ -93,14 +98,9 @@ fun ParcelHome(onLogout: () -> Unit) {
         while (true) { delay(25_000); refresh() }
     }
 
-    val sel = selected
+    val sel = selId
     if (sel != null) {
-        val customer = sel.order?.customerName ?: ""
-        TableOrderScreen(
-            tableId = sel.id,
-            tableName = if (customer.isEmpty()) sel.name else "$customer · ${sel.name}",
-            onBack = { selected = null }
-        )
+        TableOrderScreen(tableId = sel, tableName = selTitle, onBack = { selId = null })
         return
     }
     if (adding) {
@@ -147,7 +147,11 @@ fun ParcelHome(onLogout: () -> Unit) {
                 modifier = Modifier.weight(1f)
             ) {
                 items(parcels, key = { it.id }) { t ->
-                    ParcelCard(t, onClick = { selected = t }, modifier = Modifier.animateItem())
+                    ParcelCard(t, onClick = {
+                        val customer = t.order?.customerName ?: ""
+                        selTitle = if (customer.isEmpty()) t.name else "$customer · ${t.name}"
+                        selId = t.id
+                    }, modifier = Modifier.animateItem())
                 }
             }
         }
@@ -243,11 +247,14 @@ private fun ParcelCard(t: TableStateDto, onClick: () -> Unit, modifier: Modifier
 fun AddParcelScreen(onDone: (Long) -> Unit, onBack: () -> Unit) {
     val scope = rememberCoroutineScope()
 
-    var custName by remember { mutableStateOf("") }
-    var custPhone by remember { mutableStateOf("") }
+    // Saved state: a parcel half-punched survives the app being killed in
+    // the background, and holds the silent update off until it is sent.
+    var custName by rememberSaveable { mutableStateOf("") }
+    var custPhone by rememberSaveable { mutableStateOf("") }
     var menu by remember { mutableStateOf<List<CategoryDto>>(emptyList()) }
-    val cart = remember { mutableStateListOf<CartLine>() }
-    var clientTicketId by remember { mutableStateOf(UUID.randomUUID().toString()) }
+    val cart = rememberSaveable(saver = CartSaver) { mutableStateListOf<CartLine>() }
+    var clientTicketId by rememberSaveable { mutableStateOf(UUID.randomUUID().toString()) }
+    com.pavbhaji.pos.ui.HoldUpdates(cart.isNotEmpty() || custName.isNotBlank())
     var sending by remember { mutableStateOf(false) }
     var sendError by remember { mutableStateOf<String?>(null) }
     var noteEditIdx by remember { mutableStateOf<Int?>(null) }

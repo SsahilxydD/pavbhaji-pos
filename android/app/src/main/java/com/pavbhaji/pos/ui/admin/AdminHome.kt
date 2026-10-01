@@ -29,6 +29,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -55,7 +56,8 @@ private enum class AdminScreen { Home, Floor, Kitchen, Menu, Staff, Tables, Bill
 
 @Composable
 fun AdminHome(onLogout: () -> Unit) {
-    var screen by remember { mutableStateOf(AdminScreen.Home) }
+    // Saved, so an app killed in the background reopens on the same door.
+    var screen by rememberSaveable { mutableStateOf(AdminScreen.Home) }
     val home = { screen = AdminScreen.Home }
     when (screen) {
         AdminScreen.Floor -> ManagerHome(onLogout = {}, onBack = home)

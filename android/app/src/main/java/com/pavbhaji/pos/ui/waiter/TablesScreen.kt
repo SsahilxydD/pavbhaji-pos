@@ -29,6 +29,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -60,8 +61,12 @@ import kotlinx.coroutines.delay
 // (Waiters never see this — their whole app is the flat ServeScreen.)
 @Composable
 fun ManagerHome(onLogout: () -> Unit, onBack: (() -> Unit)? = null) {
-    var selected by remember { mutableStateOf<TableStateDto?>(null) }
-    var tab by remember { mutableIntStateOf(0) }
+    // Saved state: if Android kills the app in the background, the manager
+    // comes back to the same tab and the same open table (cart included —
+    // TableOrderScreen saves its own).
+    var selId by rememberSaveable { mutableStateOf<Long?>(null) }
+    var selName by rememberSaveable { mutableStateOf("") }
+    var tab by rememberSaveable { mutableIntStateOf(0) }
     var readyCount by remember { mutableIntStateOf(0) }
 
     suspend fun countReady() {
@@ -76,9 +81,9 @@ fun ManagerHome(onLogout: () -> Unit, onBack: (() -> Unit)? = null) {
     }
     LaunchedEffect(Unit) { while (true) { delay(20_000); countReady() } }
 
-    val sel = selected
+    val sel = selId
     if (sel != null) {
-        TableOrderScreen(tableId = sel.id, tableName = sel.name, onBack = { selected = null })
+        TableOrderScreen(tableId = sel, tableName = selName, onBack = { selId = null })
         return
     }
     // A manager on the Ready tab: Back goes to Tables first, like any
@@ -87,7 +92,7 @@ fun ManagerHome(onLogout: () -> Unit, onBack: (() -> Unit)? = null) {
     Column(Modifier.fillMaxSize()) {
         Box(Modifier.weight(1f)) {
             if (tab == 0) {
-                TablesScreen(onOpenTable = { selected = it }, onLogout = onLogout, onBack = onBack)
+                TablesScreen(onOpenTable = { selName = it.name; selId = it.id }, onLogout = onLogout, onBack = onBack)
             } else {
                 ReadyScreen(onLogout = onLogout, showLogout = onBack == null, onBack = onBack)
             }

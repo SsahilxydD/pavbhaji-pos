@@ -41,6 +41,10 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.listSaver
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.snapshots.SnapshotStateList
+import androidx.compose.runtime.toMutableStateList
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
@@ -64,6 +68,7 @@ import com.pavbhaji.pos.ui.BigButton
 import com.pavbhaji.pos.ui.CardLine
 import com.pavbhaji.pos.ui.ConfirmDialog
 import com.pavbhaji.pos.ui.ErrorBanner
+import com.pavbhaji.pos.ui.HoldUpdates
 import com.pavbhaji.pos.ui.ListSkeleton
 import com.pavbhaji.pos.ui.Pb
 import com.pavbhaji.pos.ui.QtyStepper
@@ -88,6 +93,18 @@ data class CartLine(
     val qty: Long, val note: String
 )
 
+// A cart outlives Android killing the app in the background (the cashier on
+// a 3 GB phone flipping to the UPI app): flattened into the saved state and
+// rebuilt on return, together with its idempotency key.
+val CartSaver = listSaver<SnapshotStateList<CartLine>, Any>(
+    save = { cart -> cart.flatMap { listOf(it.menuItemId, it.name, it.price, it.qty, it.note) } },
+    restore = { flat ->
+        flat.chunked(5).map {
+            CartLine(it[0] as Long, it[1] as String, it[2] as Long, it[3] as Long, it[4] as String)
+        }.toMutableStateList()
+    }
+)
+
 @Composable
 fun TableOrderScreen(tableId: Long, tableName: String, onBack: () -> Unit) {
     val scope = rememberCoroutineScope()
@@ -95,11 +112,12 @@ fun TableOrderScreen(tableId: Long, tableName: String, onBack: () -> Unit) {
 
     var menu by remember { mutableStateOf<List<CategoryDto>>(emptyList()) }
     var order by remember { mutableStateOf<OrderDetailDto?>(null) }
-    val cart = remember { mutableStateListOf<CartLine>() }
+    val cart = rememberSaveable(saver = CartSaver) { mutableStateListOf<CartLine>() }
+    HoldUpdates(cart.isNotEmpty())
 
     // The idempotency key. Fixed for the lifetime of this cart; a new one is
     // made ONLY after the server confirmed the previous ticket.
-    var clientTicketId by remember { mutableStateOf(UUID.randomUUID().toString()) }
+    var clientTicketId by rememberSaveable { mutableStateOf(UUID.randomUUID().toString()) }
     var sending by remember { mutableStateOf(false) }
     var sendError by remember { mutableStateOf<String?>(null) }
 

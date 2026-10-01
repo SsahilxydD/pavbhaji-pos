@@ -230,6 +230,19 @@
   }
   body.dirty #toasts { bottom:80px; }
 
+  /* a small dialog (the masked new-PIN box) */
+  .modal { position:fixed; inset:0; z-index:70; background:rgba(40,22,10,.45);
+    display:flex; align-items:center; justify-content:center; padding:16px; }
+  .modal .box { width:100%; max-width:380px; background:var(--card); border-radius:18px;
+    padding:18px 18px 16px; box-shadow:0 10px 30px rgba(0,0,0,.22); }
+  .modal h3 { font-size:17px; margin-bottom:12px; }
+  .pinrow { display:flex; gap:8px; }
+  .pinrow input { flex:1; min-width:0; min-height:46px; font-size:22px; letter-spacing:.3em; font-variant-numeric:tabular-nums; }
+  .pinrow input::placeholder { font-size:15px; letter-spacing:normal; }
+  .pinrow button { white-space:nowrap; }
+  .btnrow { display:flex; gap:9px; margin-top:14px; }
+  .btnrow > * { flex:1; min-height:44px; }
+
   /* reprint from a hidden frame (see printBill); paper shows only that frame */
   #printFrame { position:fixed; left:-10000px; top:0; width:360px; height:600px; border:0; }
   @media print {
@@ -401,6 +414,16 @@ function strings() {
     newPinFor: n => t('New 4-digit PIN for ' + n + ':', n + ' का नया 4 अंकों का PIN:', n + ' નો નવો 4 આંકડાનો PIN:'),
     pin4only: t('4 digits, numbers only', 'सिर्फ़ 4 अंक', 'ફક્ત 4 આંકડા'),
     pinChanged: n => t('PIN changed for ' + n, n + ' का PIN बदल गया', n + ' નો PIN બદલાયો'),
+    pinTitle: n => t(n + ' ka naya PIN', n + ' का नया PIN', n + ' નો નવો PIN'),
+    pinHint: t('4 digit. Sirf usi ko batana — PIN uska dastakhat hai.', 'सिर्फ़ 4 अंक। सिर्फ़ उसी को बताना — PIN उसका दस्तख़त है।', 'ફક્ત 4 આંકડા. ફક્ત એને જ કહેવું — PIN એની સહી છે.'),
+    showPin: t('👁 dikhao', '👁 दिखाओ', '👁 બતાવો'), hidePin: t('👁 chhupao', '👁 छुपाओ', '👁 છુપાવો'),
+    setPin: t('PIN set karo', 'PIN सेट करो', 'PIN સેટ કરો'), keep: t('Rehne do', 'रहने दो', 'રહેવા દો'),
+    staffOffQ: n => t(n + ' ko band karein? Unka PIN kaam nahi karega; purana hisaab rahega.',
+                      n + ' को बंद करें? उनका PIN काम नहीं करेगा; पुराना हिसाब रहेगा।',
+                      n + ' ને બંધ કરવા? એમનો PIN કામ નહીં કરે; જૂનો હિસાબ રહેશે.'),
+    tableOffQ: n => t(n + ' band karein? Ye kisi phone pe nahi dikhega.',
+                      n + ' बंद करें? यह किसी फ़ोन पर नहीं दिखेगा।',
+                      n + ' બંધ કરવું? આ કોઈ ફોન પર નહીં દેખાય.'),
     namePinNeeded: t('name + 4-digit PIN needed', 'नाम + 4 अंकों का PIN चाहिए', 'નામ + 4 આંકડાનો PIN જોઈએ'),
     rename: t('rename', 'नाम बदलो', 'નામ બદલો'), parcel: t('parcel', 'पार्सल', 'પાર્સલ'),
     tableNameEg: t('name (T11 or P4)', 'नाम (जैसे T11 या P4)', 'નામ (જેમ કે T11 કે P4)'),
@@ -722,15 +745,66 @@ async function staff() {
     </div></div>
     <p class="hint">${esc(S.staffHint)}</p>`;
 }
+// Switching someone (or a table) OFF asks first; switching back on doesn't.
+// (The name comes from the row itself, not from an inline string.)
 async function staffActive(id, cb) {
+  const name = cb.closest('.row').querySelector('b').textContent;
+  if (!cb.checked && !confirm(S.staffOffQ(name))) { cb.checked = true; return; }
   try { await api('PATCH','/api/admin/staff/'+id, { active: cb.checked }); }
   catch (e) { toast(e.message, 'bad'); cb.checked = !cb.checked; }
 }
+// A new PIN goes in a masked box (prompt() showed it in clear text to
+// anyone looking at the screen), with 👁 to check it before saving.
 async function resetPin(id, name) {
-  const pin = prompt(S.newPinFor(name)); if (pin === null) return;
-  if (!/^\d{4}$/.test(pin.trim())) { toast(S.pin4only, 'bad'); return; }
-  try { await api('PATCH','/api/admin/staff/'+id, { pin: pin.trim() }); toast(S.pinChanged(name), 'ok'); }
+  const pin = await askPin(name); if (pin === null) return;
+  try { await api('PATCH','/api/admin/staff/'+id, { pin }); toast(S.pinChanged(name), 'ok'); }
   catch (e) { toast(e.message, 'bad'); }
+}
+function askPin(name) {
+  return new Promise(resolve => {
+    const m = document.createElement('div');
+    m.className = 'modal';
+    m.innerHTML = `<div class="box" role="dialog" aria-modal="true" aria-labelledby="mpT">
+      <h3 id="mpT">${esc(S.pinTitle(name))}</h3>
+      <div class="pinrow"><input id="mPin" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="4"
+        autocomplete="new-password" aria-label="${esc(S.pin4)}" placeholder="${esc(S.pin4)}">
+        <button type="button" id="mPinEye" aria-pressed="false">${esc(S.showPin)}</button></div>
+      <p class="hint" id="mPinMsg">${esc(S.pinHint)}</p>
+      <div class="btnrow"><button type="button" id="mPinNo">${esc(S.keep)}</button>
+        <button type="button" class="primary" id="mPinOk">${esc(S.setPin)}</button></div></div>`;
+    document.body.appendChild(m);
+    const inp = m.querySelector('#mPin'), eye = m.querySelector('#mPinEye');
+    const done = v => { document.removeEventListener('keydown', onKey, true); m.remove(); resolve(v); };
+    const go = () => {
+      const v = inp.value.trim();
+      if (!/^\d{4}$/.test(v)) {
+        const msg = m.querySelector('#mPinMsg');
+        msg.textContent = S.pin4only; msg.className = 'hint redtx'; inp.focus(); return;
+      }
+      done(v);
+    };
+    const onKey = e => {
+      if (e.key === 'Escape') { e.preventDefault(); done(null); }
+      else if (e.key === 'Enter' && e.target.tagName !== 'BUTTON') { e.preventDefault(); go(); }
+    };
+    document.addEventListener('keydown', onKey, true);
+    m.addEventListener('click', e => { if (e.target === m) done(null); });
+    inp.addEventListener('input', () => {
+      inp.value = inp.value.replace(/\D/g, '').slice(0, 4);
+      const msg = m.querySelector('#mPinMsg');
+      if (msg.classList.contains('redtx')) { msg.textContent = S.pinHint; msg.className = 'hint'; }
+    });
+    eye.onclick = () => {
+      const show = inp.type === 'password';
+      inp.type = show ? 'text' : 'password';
+      eye.textContent = show ? S.hidePin : S.showPin;
+      eye.setAttribute('aria-pressed', String(show));
+      inp.focus();
+    };
+    m.querySelector('#mPinNo').onclick = () => done(null);
+    m.querySelector('#mPinOk').onclick = go;
+    inp.focus();
+  });
 }
 async function addStaff() {
   const name = $('stn').value.trim(), pin = $('stp').value.trim(), role = $('str').value;
@@ -739,9 +813,13 @@ async function addStaff() {
 }
 
 // ---- tables ----
+// Dine-in tables first, then parcel slots, each in natural order (T2 before
+// T10) — the list used to interleave T10, P1–P3, T11…
+const byKindThenName = (a, b) => ((a.kind === 'parcel') - (b.kind === 'parcel')) ||
+  String(a.name).localeCompare(String(b.name), undefined, { numeric: true, sensitivity: 'base' });
 async function tables() {
   const t = await api('GET','/api/admin/tables');
-  $('view').innerHTML = `<div class="card">` + t.tables.map(x => `
+  $('view').innerHTML = `<div class="card">` + t.tables.slice().sort(byKindThenName).map(x => `
     <div class="row">
       <span>${x.kind==='parcel'?'🥡':'🍽'}</span>
       <b class="grow">${esc(x.name)} ${x.kind==='parcel'?`<span class="mut">${esc(S.parcel)}</span>`:''}</b>
@@ -755,6 +833,8 @@ async function tables() {
     </div></div>`;
 }
 async function tableActive(id, cb) {
+  const name = cb.closest('.row').querySelector('b').firstChild.textContent.trim();
+  if (!cb.checked && !confirm(S.tableOffQ(name))) { cb.checked = true; return; }
   try { await api('PATCH','/api/admin/tables/'+id, { active: cb.checked }); }
   catch (e) { toast(e.message, 'bad'); cb.checked = !cb.checked; }
 }

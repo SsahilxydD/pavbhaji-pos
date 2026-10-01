@@ -159,6 +159,23 @@
   .toast.bad { background:var(--danger); }
   @keyframes toastin { from { opacity:0; transform:translateY(8px);} to { opacity:1; transform:none;} }
 
+  /* stock: one big switch per dish */
+  .stockhd { display:flex; flex-direction:column; gap:2px; margin-bottom:6px; }
+  .stockhd b { font-size:18px; }
+  .stocklist { padding:4px 16px; }
+  .stockrow {
+    display:flex; align-items:center; gap:12px; min-height:56px; padding:8px 0; cursor:pointer;
+    border-bottom:1px solid var(--line); font-size:15.5px; font-weight:700;
+  }
+  .stockrow:last-child { border-bottom:0; }
+  .stockrow .grow { min-width:0; }
+  .stockrow .state { font-size:12px; font-weight:800; color:var(--green); text-transform:uppercase; letter-spacing:.04em; }
+  .stockrow.off { color:var(--ink2); }
+  .stockrow.off .state { color:var(--danger); }
+  .stockrow input[type=checkbox].sw { width:52px; height:30px; }
+  .stockrow input[type=checkbox].sw::after { width:24px; height:24px; }
+  .stockrow input[type=checkbox].sw:checked::after { left:25px; }
+
   /* menu rows: every field labelled; an edited row is marked until saved */
   label.mini { display:flex; flex-direction:column; gap:2px; font-size:11px; font-weight:700; color:var(--ink2); }
   /* (zero-width label text: it never widens its column, so the rows line up) */
@@ -265,7 +282,9 @@ const S = {
   colour: 'colour', name: 'name', priceRs: 'price ₹', station: 'station',
   stationHint: 'kitchen = cooked in buckets, counter = waiter hands over',
   kitchen: '🍳 kitchen', counter: '✋ counter',
-  tawaCap: 'tawa cap', sealMin: 'seal (min)', auto: 'auto', inStock: 'in stock',
+  tawaCap: 'tawa cap', sealMin: 'seal (min)', auto: 'auto', inStock: 'in stock', outOfStock: 'out of stock',
+  outCount: n => n ? n + ' dish' + (n === 1 ? '' : 'es') + ' out of stock' : 'Everything is in stock',
+  stockHint: 'Tap a dish to switch it. It saves at once and greys out on every phone.',
   archive: 'hide everywhere',
   namePriceNeeded: 'name and a valid ₹ price are needed',
   unsaved: n => n + ' dish row' + (n === 1 ? '' : 's') + ' not saved',
@@ -318,7 +337,7 @@ $('backupBtn').onclick = async () => {
 };
 
 const TABS = {
-  dashboard:['📊','Dashboard'], menu:['🎨','Menu & colours'], staff:['👥','Staff & PINs'],
+  dashboard:['📊','Dashboard'], stock:['📦','Stock'], menu:['🎨','Menu & colours'], staff:['👥','Staff & PINs'],
   tables:['🪑','Tables'], billing:['🧾','Billing'], bills:['💳','Bills'],
   report:['📈','Day report'], log:['📜','Audit log']
 };
@@ -331,7 +350,7 @@ function show(t) {
     `<button class="${k===tab?'on':''}" onclick="show('${k}')" ${k===tab?'aria-current="page"':''}><span class="ic">${ic}</span>${v}</button>`).join('');
   // on a phone the strip scrolls sideways: keep the page you're on in view
   $('tabs').querySelector('.on')?.scrollIntoView({ block:'nearest', inline:'center' });
-  ({dashboard, menu, staff, tables, billing, bills, report, log})[t]();
+  ({dashboard, stock, menu, staff, tables, billing, bills, report, log})[t]();
 }
 
 // ---- dashboard ----
@@ -353,6 +372,35 @@ async function dashboard() {
       </div>`;
   };
   await paint(); dashTimer = setInterval(paint, 15000);
+}
+
+// ---- stock ----
+// "X is khatam" is the admin action most needed mid-service, and it was
+// 1 of 9 controls on each of 49 menu rows. Here it is one big switch per
+// dish: tap the row, it saves at once, and the picker on every phone greys
+// the dish out (the manager screens re-read the menu every 30s).
+async function stock() {
+  const m = await api('GET','/api/menu');
+  if (tab !== 'stock') return;
+  const all = m.menu.flatMap(c => c.items);
+  const out = all.filter(i => !i.available).length;
+  $('view').innerHTML =
+    `<div class="stockhd"><b>${esc(S.outCount(out))}</b><span class="mut">${esc(S.stockHint)}</span></div>` +
+    m.menu.filter(c => c.items.length).map(c => `
+    <h2>${esc(c.name)}</h2><div class="card stocklist">${c.items.map(i => `
+      <label class="stockrow${i.available ? '' : ' off'}" data-id="${i.id}">
+        <span class="grow">${esc(i.name)}</span>
+        <span class="state">${esc(i.available ? S.inStock : S.outOfStock)}</span>
+        <input type="checkbox" class="sw avail" ${i.available ? 'checked' : ''} aria-label="${esc(i.name)}">
+      </label>`).join('')}</div>`).join('');
+}
+// the switch saves itself (the shared "avail" handler below), then this
+// repaints the row from whatever the switch ended up as
+function paintStockRow(row) {
+  const on = row.querySelector('input.avail').checked;
+  row.classList.toggle('off', !on);
+  row.querySelector('.state').textContent = on ? S.inStock : S.outOfStock;
+  document.querySelector('.stockhd b').textContent = S.outCount(document.querySelectorAll('.stockrow.off').length);
 }
 
 // ---- menu ----
@@ -438,9 +486,11 @@ window.addEventListener('beforeunload', e => { if (dirtyRows().length) { e.preve
 
 document.addEventListener('change', async e => {
   if (e.target.classList?.contains('avail')) {
-    const id = e.target.closest('[data-id]').dataset.id;
+    const holder = e.target.closest('[data-id]'), id = holder.dataset.id;
+    if (holder.classList.contains('stockrow')) paintStockRow(holder);
     try { await api('PATCH','/api/admin/menu-items/'+id, { available: e.target.checked }); }
     catch (err) { toast(err.message, 'bad'); e.target.checked = !e.target.checked; }
+    if (holder.classList.contains('stockrow')) paintStockRow(holder);
   }
 });
 async function archiveItem(id, name) {

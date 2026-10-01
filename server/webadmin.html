@@ -163,6 +163,13 @@
   .pillnav button.on { background:var(--ink); color:#fff; border-color:var(--ink); }
   .datebar { display:flex; align-items:center; justify-content:center; gap:8px; margin-bottom:14px; flex-wrap:wrap; }
   .datebar b { font-size:15px; }
+  /* a closed bill: number · who/when/how paid (wraps inside) · amount and 🖨
+     in a fixed right column, so on a phone they never drop to a line of their own */
+  .row.bill { flex-wrap:nowrap; align-items:center; cursor:pointer; }
+  .row.bill .bno { min-width:40px; flex:0 0 auto; }
+  .row.bill .grow { min-width:0; }
+  .row.bill .bpay { display:block; font-size:12.5px; }
+  .row.bill .bend { display:flex; align-items:center; gap:8px; flex:0 0 auto; white-space:nowrap; }
 
   /* ---------- toasts ---------- */
   #toasts { position:fixed; right:18px; bottom:18px; display:flex; flex-direction:column; gap:8px; z-index:50; }
@@ -259,6 +266,13 @@
     input[type=checkbox].sw::after { width:22px; height:22px; }
     input[type=checkbox].sw:checked::after { left:23px; }
     label.ck { min-height:40px; }
+  }
+  /* phone: two stat tiles a row, and an odd one out spans the row instead
+     of sitting alone under the first (the report's 3-up row was 2 + 1) */
+  @media (max-width:560px) {
+    .stats { grid-template-columns:repeat(2, minmax(0, 1fr)); }
+    .stats > .stat:last-child:nth-child(odd) { grid-column:1 / -1; }
+    .stat b { font-size:21px; }
   }
 </style>
 </head>
@@ -417,7 +431,8 @@ function strings() {
     soldSection: t('Sold (served items)', 'बिका (परोसे आइटम)', 'વેચાયું (પીરસેલી વસ્તુઓ)'),
     nothing: t('nothing', 'अभी कुछ नहीं', 'હજી કંઈ નથી'),
     total: t('TOTAL', 'कुल', 'કુલ'),
-    byWaiter: t('By waiter', 'वेटर के हिसाब से', 'વેઈટર પ્રમાણે'),
+    // whoever punched the order — often the manager, so not "by waiter"
+    byWaiter: t('Order kisne liya', 'ऑर्डर किसने लिया', 'ઓર્ડર કોણે લીધો'),
     itemsN: n => t(n + ' items', n + ' आइटम', n + ' આઈટમ'),
     cancelledSection: t('Cancelled', 'रद्द', 'રદ'),
     logTypes: { '': t('All', 'सब', 'બધા'), orders: t('Orders', 'ऑर्डर', 'ઓર્ડર'), kitchen: t('Kitchen', 'किचन', 'રસોડું'),
@@ -785,14 +800,13 @@ async function bills() {
       <span class="mut">${esc(S.billsN(d.bills.length))} · 💵 ${rupees(cashSum)} · 📲 ${rupees(onlineSum)}</span>
     </div>
     <div class="card">` + (d.bills.length ? d.bills.map(b => `
-      <div class="row" style="cursor:pointer" onclick="toggleBill(this, ${b.orderId})" title="${esc(S.forItems)}">
-        <b style="min-width:44px">#${b.orderNo}</b>
+      <div class="row bill" onclick="toggleBill(this, ${b.orderId})" title="${esc(S.forItems)}">
+        <b class="bno">#${b.orderNo}</b>
         <span class="grow">${esc(b.customerName || b.tableName)}
-          <span class="mut">· ${clock(b.closedAt)} · ${esc(b.closedByName)}${b.customerName?' · '+esc(b.tableName):''}</span></span>
-        ${b.discount>0?`<span class="amber" title="${esc(b.discountNote)}">−${rupees(b.discount)}</span>`:''}
-        <span class="mut">${b.paidCash>0?'💵 '+rupees(b.paidCash):''} ${b.paidOnline>0?'📲 '+rupees(b.paidOnline):''}</span>
-        <b>${rupees(b.total)}</b>
-        <button class="icon" title="${esc(S.reprint)}" aria-label="${esc(S.reprint)}" onclick="event.stopPropagation();printBill(${b.orderId})">🖨</button>
+          <span class="mut">· ${clock(b.closedAt)} · ${esc(b.closedByName)}${b.customerName?' · '+esc(b.tableName):''}</span>
+          <span class="bpay">${b.discount>0?`<span class="amber" title="${esc(b.discountNote)}">−${rupees(b.discount)}</span> `:''}<span class="mut">${b.paidCash>0?'💵 '+rupees(b.paidCash):''} ${b.paidOnline>0?'📲 '+rupees(b.paidOnline):''}</span></span></span>
+        <span class="bend"><b>${rupees(b.total)}</b>
+        <button class="icon" title="${esc(S.reprint)}" aria-label="${esc(S.reprint)}" onclick="event.stopPropagation();printBill(${b.orderId})">🖨</button></span>
       </div>
       <div hidden style="padding:4px 8px 10px 52px"></div>`).join('')
     : `<p class="mut">${esc(S.noBills)}</p>`) + `</div>

@@ -108,10 +108,6 @@ function strings() {
     badAmount: t('Write the amount properly', 'रकम ठीक से लिखो', 'રકમ બરાબર લખો'),
     pct: function (n) { return n + '%'; },
     newTotal: function (a) { return t('New total: ' + a, 'नया कुल: ' + a, 'નવું કુલ: ' + a); },
-    reasonNeeded: t('Reason (needed for a big discount)', 'कारण (बड़ी छूट के लिए ज़रूरी)', 'કારણ (મોટી છૂટ માટે જરૂરી)'),
-    reasonBig: t('A discount this big needs a reason — it goes in the audit log.',
-                 'इतनी बड़ी छूट का कारण लिखो — ऑडिट लॉग में जाएगा।',
-                 'આટલી મોટી છૂટનું કારણ લખો — ઓડિટ લોગમાં જશે.'),
     discountTooBig: t('Discount can\'t be more than the bill.', 'छूट बिल से ज़्यादा नहीं हो सकती।', 'છૂટ બિલ કરતાં વધારે ન હોઈ શકે.'),
     payMoreThanBill: t('The money entered is more than the bill now. Tap 💵 all cash or 📲 all online again.',
                        'डाली गई रकम अब बिल से ज़्यादा है। 💵 पूरा कैश या 📲 पूरा ऑनलाइन फिर से दबाओ।',
@@ -765,10 +761,8 @@ document.addEventListener('keydown', function (e) {
   else if (e.key === 'Enter' && tg !== 'BUTTON' && $('closeBtn') && !$('closeBtn').disabled) { e.preventDefault(); $('closeBtn').click(); }
 });
 
-// A discount over 10% of the bill or over ₹100 must say why — the audit
-// log otherwise loses the reason for the biggest give-aways.
-var BIG_DISCOUNT_PCT = 10, BIG_DISCOUNT_PAISE = 10000;
-
+// The reason is always optional: no discount size asks for one or blocks
+// Save (Sahil, 1 Oct 2026). The box is there for when someone wants it.
 function askDiscount() {
   var b = cur.bill; if (!b) return;
   // the smaller of the bill's and the live order's subtotal, in case either
@@ -785,7 +779,7 @@ function askDiscount() {
     '<label class="fld"><span>' + esc(S.discountAmt) + '</span>' +
       '<input id="mDisc" class="num" inputmode="decimal" autocomplete="off" value="' + amt + '"></label>' +
     '<div id="mPrev" class="tnum" style="font-weight:800;margin:-2px 0 10px"></div>' +
-    '<label class="fld"><span id="mNoteL">' + esc(S.discountNote) + '</span>' +
+    '<label class="fld"><span>' + esc(S.discountNote) + '</span>' +
       '<input id="mNote" maxlength="120" autocomplete="off" value="' + esc(b.discountNote) + '"></label>',
     [{ label:S.back, cls:'ghost' },
      { label:S.save, cls:'primary', act: function () {
@@ -793,7 +787,6 @@ function askDiscount() {
         var d = raw === '' ? 0 : toPaise(raw);
         if (d === null) { toast(S.badAmount, 'bad'); return; }
         if (d > sub) { toast(S.discountTooBig, 'bad'); return; }
-        if (big(d) && !$('mNote').value.trim()) { toast(S.reasonBig, 'bad'); $('mNote').focus(); return; }
         var patch = { discount:d, discountNote: $('mNote').value.trim() };
         // Money already recorded can outgrow the discounted total — the server
         // rejects that. Shrink the recorded split to the new total (online kept
@@ -806,15 +799,13 @@ function askDiscount() {
         hideModal();
         patchBill(patch);
      } }]);
-  function big(d) { return d > BIG_DISCOUNT_PAISE || d * 100 > sub * BIG_DISCOUNT_PCT; }
-  // Live: what the customer will pay, and whether a reason is needed.
+  // Live: what the customer will pay.
   var preview = function () {
     var raw = $('mDisc').value.trim(), d = raw === '' ? 0 : toPaise(raw);
     var p = $('mPrev');
     if (d === null) { p.className = 'tnum'; p.textContent = ''; }
     else if (d > sub) { p.className = 'tnum amber'; p.textContent = S.discountTooBig; }
     else { p.className = 'tnum green'; p.textContent = S.newTotal(rupees(sub - d)); }
-    $('mNoteL').textContent = d !== null && big(d) ? S.reasonNeeded : S.discountNote;
     m.querySelectorAll('.nchip').forEach(function (c) { c.classList.toggle('on', Number(c.dataset.d) === d); });
   };
   m.querySelector('.nchips').addEventListener('click', function (e) {

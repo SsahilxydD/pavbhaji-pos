@@ -427,6 +427,12 @@ object S {
     // ---- cashier / bill ----
     val billTitle get() = t("Bill", "बिल", "બિલ")
     val printBill get() = t("🖨  Print bill", "🖨  बिल छापो", "🖨  બિલ છાપો")
+    val preparingPrint get() = t("Getting the bill…", "बिल तैयार हो रहा…", "બિલ તૈયાર થાય છે…")
+    val printFailed get() = t(
+        "Couldn't load the bill to print — check internet and try again",
+        "छापने के लिए बिल नहीं खुला — इंटरनेट देखो और फिर कोशिश करो",
+        "છાપવા માટે બિલ ન ખૂલ્યું — ઇન્ટરનેટ જુઓ અને ફરી પ્રયત્ન કરો"
+    )
     val billItem get() = t("Item", "आइटम", "આઈટમ")
     val billQty get() = t("Qty", "मात्रा", "જથ્થો")
     val billRate get() = t("Rate", "दाम", "ભાવ")

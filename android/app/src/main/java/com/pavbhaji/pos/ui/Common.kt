@@ -442,7 +442,8 @@ fun BigButton(
     border: BorderStroke? = null,
     enabled: Boolean = true,
     loading: Boolean = false,
-    fontSize: Int = 15
+    fontSize: Int = 15,
+    loadingLabel: String = S.sending
 ) {
     val view = LocalView.current
     val interaction = remember { MutableInteractionSource() }
@@ -471,7 +472,7 @@ fun BigButton(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp, color = fgNow)
                     Text(
-                        S.sending, color = fgNow, fontSize = fontSize.sp, fontWeight = FontWeight.ExtraBold,
+                        loadingLabel, color = fgNow, fontSize = fontSize.sp, fontWeight = FontWeight.ExtraBold,
                         modifier = Modifier.padding(start = 10.dp)
                     )
                 }

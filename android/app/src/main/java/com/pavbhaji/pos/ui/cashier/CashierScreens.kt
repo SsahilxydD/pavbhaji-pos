@@ -3,6 +3,9 @@ package com.pavbhaji.pos.ui.cashier
 import android.content.Context
 import android.print.PrintAttributes
 import android.print.PrintManager
+import android.webkit.WebResourceError
+import android.webkit.WebResourceRequest
+import android.webkit.WebResourceResponse
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.compose.foundation.layout.Arrangement
@@ -139,6 +142,39 @@ private fun billLines(o: OrderDetailDto): List<BillLine> {
     return out.values.toList()
 }
 
+// Loads the print-ready bill page in an off-screen WebView and hands it to
+// Android's print dialog — but only if the page really loaded: a dead
+// network or a server error used to get its error page printed. `onDone`
+// says whether the dialog opened. Keep the returned WebView alive until
+// then (Android renders the job from it after the dialog opens).
+internal fun startBillPrint(context: Context, url: String, job: String, onDone: (Boolean) -> Unit): WebView {
+    val wv = WebView(context)
+    var failed = false
+    var fired = false
+    wv.webViewClient = object : WebViewClient() {
+        override fun onReceivedError(view: WebView, req: WebResourceRequest, err: WebResourceError) {
+            if (req.isForMainFrame) failed = true
+        }
+        override fun onReceivedHttpError(view: WebView, req: WebResourceRequest, resp: WebResourceResponse) {
+            if (req.isForMainFrame) failed = true
+        }
+        override fun onPageFinished(view: WebView, url: String?) {
+            if (fired) return
+            fired = true
+            if (failed) { onDone(false); return }
+            try {
+                val pm = context.getSystemService(Context.PRINT_SERVICE) as PrintManager
+                pm.print(job, view.createPrintDocumentAdapter(job), PrintAttributes.Builder().build())
+                onDone(true)
+            } catch (_: Exception) {
+                onDone(false)
+            }
+        }
+    }
+    wv.loadUrl(url)
+    return wv
+}
+
 // "120" / "120.50" / "₹120" → paise, or null when unparseable/negative.
 private fun toPaise(s: String): Long? {
     val v = s.trim().removePrefix("₹").trim().toDoubleOrNull() ?: return null
@@ -222,20 +258,16 @@ fun BillScreen(tableId: Long, tableName: String, onBack: () -> Unit) {
 
     fun setPayment(cash: Long, online: Long) = patchBill("""{"paidCash":$cash,"paidOnline":$online}""")
 
+    var printing by remember { mutableStateOf(false) }
+    // A page that never answers must not leave the button spinning forever.
+    LaunchedEffect(printing) { if (printing) { delay(20_000); if (printing) { printing = false; toast = S.printFailed } } }
     fun print(o: OrderDetailDto) {
-        val wv = WebView(context)
-        var fired = false
-        wv.webViewClient = object : WebViewClient() {
-            override fun onPageFinished(view: WebView, url: String?) {
-                if (fired) return
-                fired = true
-                val pm = context.getSystemService(Context.PRINT_SERVICE) as PrintManager
-                val job = "PavBhaji bill #${o.orderNo}"
-                pm.print(job, view.createPrintDocumentAdapter(job), PrintAttributes.Builder().build())
-            }
+        if (printing) return
+        printing = true
+        printHold = startBillPrint(context, Deps.api.billUrl(o.id), "PavBhaji bill #${o.orderNo}") { ok ->
+            printing = false
+            if (!ok) toast = S.printFailed
         }
-        printHold = wv
-        wv.loadUrl(Deps.api.billUrl(o.id))
     }
 
     fun closeNow() {
@@ -467,6 +499,8 @@ fun BillScreen(tableId: Long, tableName: String, onBack: () -> Unit) {
                     BigButton(
                         label = S.printBill,
                         onClick = { print(o) },
+                        loading = printing,
+                        loadingLabel = S.preparingPrint,
                         fontSize = 16
                     )
                     BigButton(
@@ -754,20 +788,16 @@ fun BillHistoryDetail(summary: BillSummaryDto, onBack: () -> Unit) {
         }
     }
 
+    var printing by remember { mutableStateOf(false) }
+    var printErr by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(printing) { if (printing) { delay(20_000); if (printing) { printing = false; printErr = S.printFailed } } }
     fun print() {
-        val wv = WebView(context)
-        var fired = false
-        wv.webViewClient = object : WebViewClient() {
-            override fun onPageFinished(view: WebView, url: String?) {
-                if (fired) return
-                fired = true
-                val pm = context.getSystemService(Context.PRINT_SERVICE) as PrintManager
-                val job = "PavBhaji bill #${summary.orderNo}"
-                pm.print(job, view.createPrintDocumentAdapter(job), PrintAttributes.Builder().build())
-            }
+        if (printing) return
+        printing = true; printErr = null
+        printHold = startBillPrint(context, Deps.api.billUrl(summary.orderId), "PavBhaji bill #${summary.orderNo}") { ok ->
+            printing = false
+            if (!ok) printErr = S.printFailed
         }
-        printHold = wv
-        wv.loadUrl(Deps.api.billUrl(summary.orderId))
     }
 
     Column(Modifier.fillMaxSize()) {
@@ -776,6 +806,8 @@ fun BillHistoryDetail(summary: BillSummaryDto, onBack: () -> Unit) {
             subtitle = S.closedLine(clockTime(summary.closedAt), summary.closedByName),
             onBack = onBack
         )
+        ErrorBanner(printErr)
+        printErr?.let { LaunchedEffect(it) { delay(4000); printErr = null } }
         val o = order
         val b = bill
         LazyColumn(Modifier.weight(1f).padding(horizontal = 12.dp)) {
@@ -858,6 +890,8 @@ fun BillHistoryDetail(summary: BillSummaryDto, onBack: () -> Unit) {
                 BigButton(
                     label = S.printBill,
                     onClick = { print() },
+                    loading = printing,
+                    loadingLabel = S.preparingPrint,
                     fontSize = 16
                 )
             }

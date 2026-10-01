@@ -372,7 +372,7 @@ fun Pill(text: String, bg: Color, fg: Color) {
     Surface(color = bg, shape = RoundedCornerShape(99.dp)) {
         Text(
             text, color = fg, fontSize = 10.sp, fontWeight = FontWeight.ExtraBold,
-            maxLines = 1,
+            maxLines = 1, overflow = TextOverflow.Ellipsis,
             modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
         )
     }

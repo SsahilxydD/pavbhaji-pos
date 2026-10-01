@@ -235,9 +235,12 @@ object S {
     val gridParcel get() = t("🥡 PARCEL — counter orders", "🥡 पार्सल — काउंटर ऑर्डर", "🥡 પાર્સલ — કાઉન્ટર ઓર્ડર")
     val freeTable get() = t("free", "खाली", "ખાલી")
     val inKitchen get() = t("in kitchen", "किचन में", "રસોડામાં")
-    fun readyPickup(n: Long) = t("$n READY — pick up", "$n तैयार — ले जाओ", "$n તૈયાર — લઈ જાઓ")
+    fun readyPickup(n: Long) = t("$n READY", "$n तैयार", "$n તૈયાર")
     val collect get() = t("COLLECT", "पैसे लो", "પૈસા લો")
     fun collectAmt(amt: String) = t("COLLECT $amt", "$amt लो", "$amt લો")
+    // The cashier's two states on the tables grid.
+    val settlePill get() = t("SETTLE", "हिसाब करो", "હિસાબ કરો")
+    val runningPill get() = t("running", "चालू", "ચાલુ")
 
     // ---- table order ----
     val newOrder get() = t("new order", "नया ऑर्डर", "નવો ઓર્ડર")

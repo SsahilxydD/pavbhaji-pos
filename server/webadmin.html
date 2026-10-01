@@ -458,7 +458,7 @@ function strings() {
     byWaiter: t('Order kisne liya', 'ऑर्डर किसने लिया', 'ઓર્ડર કોણે લીધો'),
     itemsN: n => t(n + ' items', n + ' आइटम', n + ' આઈટમ'),
     cancelledSection: t('Cancelled', 'रद्द', 'રદ'),
-    logTypes: { '': t('All', 'सब', 'બધા'), orders: t('Orders', 'ऑर्डर', 'ઓર્ડર'), kitchen: t('Kitchen', 'किचन', 'રસોડું'),
+    logTypes: { work: t('Sab, login chhod ke', 'सब, लॉगिन छोड़कर', 'બધું, લૉગિન સિવાય'), '': t('All', 'सब', 'બધા'), orders: t('Orders', 'ऑर्डर', 'ઓર્ડર'), kitchen: t('Kitchen', 'किचन', 'રસોડું'),
                 serving: t('Serving', 'परोसना', 'પીરસવું'), cancel: t('Cancelled', 'रद्द', 'રદ'),
                 billing: t('Billing', 'बिलिंग', 'બિલિંગ'), staff: t('Staff & logins', 'स्टाफ़ और लॉगिन', 'સ્ટાફ અને લૉગિન') },
     nothingFilter: t('nothing in this filter', 'इस फ़िल्टर में कुछ नहीं', 'આ ફિલ્ટરમાં કંઈ નથી'),
@@ -982,11 +982,35 @@ function shiftRep(days) {
 }
 
 // ---- audit log ----
-let logEvents = [], logType = '';
-const LOG_TYPES = ['', 'orders', 'kitchen', 'serving', 'cancel', 'billing', 'staff'];
+// Opens on "everything except logins": staff logging in and out was most of
+// the log. That filter is done here (the server's groups have no "not"), so
+// it reads bigger pages and keeps going until it has a screenful. "All"
+// still shows every event, logins included; a blocked-PIN alarm
+// (login:blocked) is never hidden.
+let logEvents = [], logType = 'work', logLast = 0;
+const LOG_TYPES = ['work', '', 'orders', 'kitchen', 'serving', 'cancel', 'billing', 'staff'];
+const LOGIN_NOISE = new Set(['login', 'logout']);
+async function fetchLog(before) {
+  if (logType !== 'work') {
+    const d = await api('GET','/api/admin/audit?' + (before ? 'beforeId=' + before + '&' : '') + (logType ? 'type=' + logType : ''));
+    return { events: d.events, last: d.events.length ? d.events[d.events.length - 1].id : before };
+  }
+  let out = [], last = before;
+  const PAGE = 200;
+  for (let page = 0; page < 5 && out.length < 60; page++) {
+    const d = await api('GET','/api/admin/audit?limit=' + PAGE + (last ? '&beforeId=' + last : ''));
+    if (!d.events.length) break;
+    last = d.events[d.events.length - 1].id;
+    out = out.concat(d.events.filter(e => !LOGIN_NOISE.has(e.action)));
+    if (d.events.length < PAGE) break;
+  }
+  return { events: out, last };
+}
 async function log() {
-  const d = await api('GET','/api/admin/audit' + (logType ? '?type='+logType : ''));
-  logEvents = d.events; paintLog();
+  const asked = logType;
+  const r = await fetchLog(0);
+  if (asked !== logType) return;
+  logEvents = r.events; logLast = r.last; paintLog();
 }
 function paintLog() {
   $('view').innerHTML = `<div class="pillnav">` + LOG_TYPES.map(k =>
@@ -998,9 +1022,11 @@ function paintLog() {
     `</div><button onclick="olderLog()" style="width:100%">${esc(S.loadOlder)}</button>`;
 }
 async function olderLog() {
-  if (!logEvents.length) { log(); return; }
-  const d = await api('GET','/api/admin/audit?beforeId=' + logEvents[logEvents.length-1].id + (logType ? '&type='+logType : ''));
-  logEvents = logEvents.concat(d.events); paintLog();
+  if (!logLast) { log(); return; }
+  const asked = logType;
+  const r = await fetchLog(logLast);
+  if (asked !== logType) return;
+  logEvents = logEvents.concat(r.events); logLast = r.last; paintLog();
 }
 
 // ---- the session from the PIN pad at "/" ---------------------------------

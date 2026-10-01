@@ -62,6 +62,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -223,23 +226,42 @@ fun KitchenScreen(onLogout: () -> Unit, embedded: Boolean = false, onBack: (() -
                     Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = S.back, tint = Kc.ink)
                 }
             } else {
-                Text("👨‍🍳", fontSize = 20.sp, modifier = Modifier.padding(start = 10.dp, end = 2.dp))
+                Text(
+                    "👨‍🍳", fontSize = 20.sp,
+                    modifier = Modifier.padding(start = 10.dp, end = 2.dp).clearAndSetSemantics {}
+                )
             }
-            Text(S.kitchenTitle, color = Kc.ink, fontSize = 18.sp, fontWeight = FontWeight.ExtraBold,
-                modifier = Modifier.padding(start = 6.dp))
-            Text(
-                S.bucketsSub(data.buckets.size, Deps.session.staffName),
-                color = Kc.ink2, fontSize = 12.sp, modifier = Modifier.padding(start = 8.dp).weight(1f)
-            )
+            // Title over subtitle, like every other header: side by side, the
+            // subtitle wrapped to three lines at a big font. The live dot leads
+            // the subtitle — away from Logout, a little bigger, and it tells
+            // TalkBack what it means.
+            Column(Modifier.weight(1f).padding(start = 6.dp)) {
+                Text(
+                    S.kitchenTitle, color = Kc.ink, fontSize = 18.sp, fontWeight = FontWeight.ExtraBold,
+                    maxLines = 2, overflow = TextOverflow.Ellipsis
+                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        Modifier.size(9.dp)
+                            .background(if (connected) Kc.ready else Kc.late, CircleShape)
+                            .semantics { contentDescription = if (connected) S.liveOn else S.offlineShort }
+                    )
+                    Text(
+                        S.bucketsSub(data.buckets.size, Deps.session.staffName),
+                        color = Kc.ink2, fontSize = 12.sp,
+                        maxLines = 1, overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.padding(start = 6.dp)
+                    )
+                }
+            }
             com.pavbhaji.pos.ui.LangAction(tint = Kc.ink2)
-            Box(Modifier.size(7.dp).background(if (connected) Kc.ready else Kc.late, CircleShape))
             if (onBack == null) {
                 com.pavbhaji.pos.ui.LogoutAction(onLogout, tint = Kc.ink2, fontSize = 13)
             } else {
                 Spacer(Modifier.width(10.dp))
             }
         }
-        ConnBanner(connected)
+        ConnBanner(connected, dark = true)
         com.pavbhaji.pos.ui.ErrorBanner(loadError, dark = true)
         toast?.let {
             Text(

@@ -90,6 +90,7 @@ object S {
         "No internet — try again", "इंटरनेट नहीं है — फिर कोशिश करो", "ઇન્ટરનેટ નથી — ફરી પ્રયત્ન કરો"
     )
     val offlineShort get() = t("offline", "इंटरनेट नहीं", "ઇન્ટરનેટ નથી")
+    val liveOn get() = t("connected", "जुड़ा है", "જોડાયેલું છે")
     val wrongPin get() = t("Wrong PIN", "गलत PIN", "ખોટો PIN")
     fun tooManyPins(secs: String) = t(
         "Too many wrong PINs — wait $secs seconds",

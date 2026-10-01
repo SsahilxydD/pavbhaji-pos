@@ -316,9 +316,10 @@ fun LogoutAction(onLogout: () -> Unit, tint: Color = Color.White, fontSize: Int 
 // it's "hold on", not "something you did failed". It waits a moment before
 // showing, so the half-second dial at app start (or one dropped packet)
 // doesn't flash "no internet" at a waiter; it goes away on its own the
-// moment the line is back.
+// moment the line is back. `dark`: the kitchen's version — a light strip on
+// the dark kitchen screen glared like a torch.
 @Composable
-fun ConnBanner(connected: Boolean) {
+fun ConnBanner(connected: Boolean, dark: Boolean = false) {
     var down by remember { mutableStateOf(false) }
     LaunchedEffect(connected) {
         if (connected) down = false else { kotlinx.coroutines.delay(1500); down = true }
@@ -331,7 +332,7 @@ fun ConnBanner(connected: Boolean) {
         Row(
             Modifier
                 .fillMaxWidth()
-                .background(Color(0xFFF7E7C8))
+                .background(if (dark) Kc.fullBg else Color(0xFFF7E7C8))
                 .padding(horizontal = 14.dp, vertical = 7.dp),
             horizontalArrangement = Arrangement.Center,
             verticalAlignment = Alignment.CenterVertically
@@ -341,10 +342,10 @@ fun ConnBanner(connected: Boolean) {
                 0.35f, 1f,
                 infiniteRepeatable(tween(650), RepeatMode.Reverse), label = "connA"
             )
-            Box(Modifier.size(8.dp).alpha(a).background(WarnAmber, CircleShape))
+            Box(Modifier.size(8.dp).alpha(a).background(if (dark) Kc.fullFg else WarnAmber, CircleShape))
             Text(
                 S.reconnecting,
-                color = Color(0xFF6B4A00), fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
+                color = if (dark) Kc.fullFg else Color(0xFF6B4A00), fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
                 textAlign = TextAlign.Center,
                 modifier = Modifier.padding(start = 8.dp)
             )

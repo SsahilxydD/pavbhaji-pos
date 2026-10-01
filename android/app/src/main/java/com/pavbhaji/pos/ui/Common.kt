@@ -668,9 +668,22 @@ fun PinPad(onSubmit: (String) -> Unit, error: String?) {
     }
 }
 
+// Cancel needs a reason for the audit log. The usual ones are one tap (no
+// phone keyboard mid-rush); typing is optional and only adds detail. The
+// button stays disabled until there is a reason, instead of silently doing
+// nothing. Chip reasons reach the log in English, the owner's language.
 @Composable
 fun ReasonDialog(title: String, onConfirm: (String) -> Unit, onDismiss: () -> Unit) {
-    var reason by remember { mutableStateOf("") }
+    var picked by remember { mutableStateOf<String?>(null) }
+    var extra by remember { mutableStateOf("") }
+    val typed = extra.trim()
+    val chosen = picked
+    val reason = when {
+        chosen != null && typed.isNotEmpty() -> "$chosen — $typed"
+        chosen != null -> chosen
+        typed.length >= 2 -> typed
+        else -> null
+    }
     AlertDialog(
         onDismissRequest = onDismiss,
         shape = RoundedCornerShape(22.dp),
@@ -679,17 +692,44 @@ fun ReasonDialog(title: String, onConfirm: (String) -> Unit, onDismiss: () -> Un
         text = {
             Column {
                 Text(S.reasonRequired, fontSize = 13.sp)
+                S.cancelReasons().chunked(2).forEach { pair ->
+                    Row(
+                        Modifier.fillMaxWidth().padding(top = 6.dp),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        pair.forEach { (audit, label) ->
+                            val sel = picked == audit
+                            Surface(
+                                onClick = { picked = if (sel) null else audit },
+                                shape = RoundedCornerShape(12.dp),
+                                color = if (sel) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.surface,
+                                border = if (sel) null else BorderStroke(1.dp, CardLine),
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Text(
+                                    (if (sel) "✓ " else "") + label,
+                                    fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
+                                    color = if (sel) Color.White else InkDark,
+                                    textAlign = TextAlign.Center, maxLines = 2,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 10.dp)
+                                )
+                            }
+                        }
+                    }
+                }
                 OutlinedTextField(
-                    value = reason, onValueChange = { reason = it },
-                    label = { Text(S.reason) },
+                    value = extra, onValueChange = { extra = it.take(120) },
+                    label = { Text(S.reasonExtra) },
+                    singleLine = true,
                     shape = RoundedCornerShape(12.dp),
-                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
+                    modifier = Modifier.fillMaxWidth().padding(top = 10.dp)
                 )
             }
         },
         confirmButton = {
             Button(
-                onClick = { if (reason.trim().length >= 2) onConfirm(reason.trim()) },
+                onClick = { reason?.let(onConfirm) },
+                enabled = reason != null,
                 shape = RoundedCornerShape(12.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
             ) { Text(S.cancelItem, fontWeight = FontWeight.Bold) }

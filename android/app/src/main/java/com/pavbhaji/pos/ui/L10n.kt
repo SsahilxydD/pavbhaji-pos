@@ -149,11 +149,19 @@ object S {
         else -> raw
     }
     val reasonRequired get() = t(
-        "A reason is required — it goes in the audit log.",
-        "कारण ज़रूरी है — ऑडिट लॉग में जाएगा।",
-        "કારણ જરૂરી છે — ઓડિટ લોગમાં જશે."
+        "Pick a reason — it goes in the audit log.",
+        "कारण चुनो — ऑडिट लॉग में जाएगा।",
+        "કારણ પસંદ કરો — ઓડિટ લોગમાં જશે."
     )
     val reason get() = t("Reason", "कारण", "કારણ")
+    val reasonExtra get() = t("Or type a reason", "या कारण लिखो", "અથવા કારણ લખો")
+    // (what goes in the audit log, what the button says)
+    fun cancelReasons() = listOf(
+        "Customer changed mind" to t("Customer changed mind", "ग्राहक ने मना किया", "ગ્રાહકે ના પાડી"),
+        "Wrong punch" to t("Wrong punch", "गलत पंच हुआ", "ખોટું પંચ થયું"),
+        "Out of stock" to t("Out of stock", "माल खत्म", "માલ ખલાસ"),
+        "Took too long" to t("Took too long", "बहुत देर लगी", "બહુ વાર લાગી"),
+    )
     val cancelItem get() = t("Cancel item", "आइटम रद्द करो", "આઈટમ રદ કરો")
 
     // ---- connect ----

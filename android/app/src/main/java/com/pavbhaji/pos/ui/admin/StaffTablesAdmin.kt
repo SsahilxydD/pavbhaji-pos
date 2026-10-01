@@ -13,7 +13,6 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -133,7 +132,8 @@ fun StaffAdmin(onBack: () -> Unit) {
                                 )
                             }
                             TextButton(onClick = { pinFor = s }) { Text(S.resetPin, fontSize = 12.sp) }
-                            Switch(
+                            com.pavbhaji.pos.ui.PbSwitch(
+                                label = "${s.name} · ${S.activeLbl}",
                                 checked = s.active,
                                 onCheckedChange = { on ->
                                     // Switching someone OFF locks them out mid-shift:
@@ -276,7 +276,8 @@ fun TablesAdmin(onBack: () -> Unit) {
                                 else MaterialTheme.colorScheme.onSurfaceVariant
                             )
                             TextButton(onClick = { renameFor = t }) { Text(S.rename, fontSize = 12.sp) }
-                            Switch(
+                            com.pavbhaji.pos.ui.PbSwitch(
+                                label = "${t.name} · ${S.activeLbl}",
                                 checked = t.active,
                                 onCheckedChange = { on ->
                                     scope.launch {

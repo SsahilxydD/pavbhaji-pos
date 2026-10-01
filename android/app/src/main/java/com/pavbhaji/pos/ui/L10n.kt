@@ -432,6 +432,8 @@ object S {
     val addStaff get() = t("+ staff", "+ स्टाफ़", "+ સ્ટાફ")
     val resetPin get() = t("reset PIN", "PIN बदलो", "PIN બદલો")
     val deactivated get() = t("deactivated", "बंद", "બંધ")
+    val activeLbl get() = t("active", "चालू", "ચાલુ")
+    val availableLbl get() = t("available", "उपलब्ध", "ઉપલબ્ધ")
     fun deactivateQ(who: String) = t("Switch off $who?", "$who को बंद करें?", "$who ને બંધ કરવા?")
     val deactivateBody get() = t(
         "They are logged out on every phone at once and their PIN stops working. Switch them back on any time.",

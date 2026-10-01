@@ -54,6 +54,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -851,6 +853,22 @@ fun QtyStepper(qty: Long, onChange: (Long) -> Unit) {
             contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp)
         ) { Text("+", fontSize = 20.sp, color = BhajiRed) }
     }
+}
+
+// Every switch says what it switches — TalkBack used to read a bare "switch,
+// on" — and OFF is visible: a grey thumb and ring, not near-white on cream.
+@Composable
+fun PbSwitch(checked: Boolean, onCheckedChange: ((Boolean) -> Unit)?, label: String, modifier: Modifier = Modifier) {
+    Switch(
+        checked = checked,
+        onCheckedChange = onCheckedChange,
+        modifier = modifier.semantics { contentDescription = label },
+        colors = SwitchDefaults.colors(
+            uncheckedThumbColor = Pb.ink3,
+            uncheckedBorderColor = Pb.ink3,
+            uncheckedTrackColor = MaterialTheme.colorScheme.surfaceContainerHighest
+        )
+    )
 }
 
 @Composable

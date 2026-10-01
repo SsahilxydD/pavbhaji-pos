@@ -48,6 +48,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
@@ -126,7 +127,7 @@ fun CashierHome(onLogout: () -> Unit) {
         NavigationBar(containerColor = Color.White, tonalElevation = 0.dp) {
             NavigationBarItem(
                 selected = tab == 0, onClick = { tab = 0 },
-                icon = { Text("▦", fontSize = 17.sp) },
+                icon = { Text("▦", fontSize = 17.sp, modifier = Modifier.clearAndSetSemantics {}) },
                 label = { Text(S.tablesTitle, fontSize = 11.sp, fontWeight = FontWeight.Bold) },
                 colors = NavigationBarItemDefaults.colors(
                     selectedTextColor = BhajiRed, indicatorColor = Color(0xFFFFE0CC)
@@ -134,7 +135,7 @@ fun CashierHome(onLogout: () -> Unit) {
             )
             NavigationBarItem(
                 selected = tab == 1, onClick = { tab = 1 },
-                icon = { Text("🧾", fontSize = 17.sp) },
+                icon = { Text("🧾", fontSize = 17.sp, modifier = Modifier.clearAndSetSemantics {}) },
                 label = { Text(S.navBills, fontSize = 11.sp, fontWeight = FontWeight.Bold) },
                 colors = NavigationBarItemDefaults.colors(
                     selectedTextColor = BhajiRed, indicatorColor = Color(0xFFFFE0CC)

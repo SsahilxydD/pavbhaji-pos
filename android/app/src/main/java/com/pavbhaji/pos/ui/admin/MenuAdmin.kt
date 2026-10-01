@@ -23,7 +23,6 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -425,7 +424,7 @@ private fun MenuItemCard(
                     }
                 )
             }
-            Switch(checked = mi.available, onCheckedChange = onToggle)
+            com.pavbhaji.pos.ui.PbSwitch(mi.available, onToggle, label = "${mi.name} · ${S.availableLbl}")
         }
     }
 }
@@ -455,7 +454,7 @@ private fun WithFoodToggle(checked: Boolean, onChange: (Boolean) -> Unit) {
     Column(Modifier.padding(top = 10.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(S.withFoodToggle, fontSize = 14.sp, modifier = Modifier.weight(1f))
-            Switch(checked = checked, onCheckedChange = onChange)
+            com.pavbhaji.pos.ui.PbSwitch(checked, onChange, label = S.withFoodToggle)
         }
         Text(
             S.withFoodHint, fontSize = 11.sp,
@@ -471,10 +470,13 @@ private fun ColourSwatchRow(selected: String, onSelect: (String) -> Unit, onMore
     Column(Modifier.padding(top = 12.dp)) {
         Text(S.bucketColour, fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Row(Modifier.padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            DishPaletteHex.forEach { hex ->
+            DishPaletteHex.forEachIndexed { i, hex ->
                 val sel = selected.equals(hex, ignoreCase = true)
                 Box(
                     Modifier
+                        .semantics {
+                            contentDescription = "${S.bucketColour} ${i + 1}" + if (sel) " ✓" else ""
+                        }
                         .size(30.dp)
                         .clip(RoundedCornerShape(9.dp))
                         .background(dishColour(hex, 0))
@@ -489,6 +491,7 @@ private fun ColourSwatchRow(selected: String, onSelect: (String) -> Unit, onMore
             val custom = DishPaletteHex.none { it.equals(selected, ignoreCase = true) }
             Box(
                 Modifier
+                    .semantics { contentDescription = S.orMixOwn + if (custom) " ✓" else "" }
                     .size(30.dp)
                     .clip(RoundedCornerShape(9.dp))
                     .background(if (custom) dishColour(selected, 0) else Color.Transparent)

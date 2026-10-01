@@ -35,6 +35,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -102,7 +103,9 @@ fun ManagerHome(onLogout: () -> Unit, onBack: (() -> Unit)? = null) {
         NavigationBar(containerColor = Color.White, tonalElevation = 0.dp) {
             NavigationBarItem(
                 selected = tab == 0, onClick = { tab = 0 },
-                icon = { Text("▦", fontSize = 18.sp) },
+                // The glyph is decoration; the label under it is the name
+                // TalkBack reads (it used to read "▦" literally).
+                icon = { Text("▦", fontSize = 18.sp, modifier = Modifier.clearAndSetSemantics {}) },
                 label = { Text(S.tablesTitle, fontSize = 11.sp, fontWeight = FontWeight.Bold) },
                 colors = NavigationBarItemDefaults.colors(
                     selectedTextColor = BhajiRed, indicatorColor = Color(0xFFFFE0CC)
@@ -115,7 +118,7 @@ fun ManagerHome(onLogout: () -> Unit, onBack: (() -> Unit)? = null) {
                         if (readyCount > 0) Badge(containerColor = Pb.successDeep) {
                             Text("$readyCount", fontSize = 10.sp, color = Color.White)
                         }
-                    }) { Text("🛎", fontSize = 18.sp) }
+                    }) { Text("🛎", fontSize = 18.sp, modifier = Modifier.clearAndSetSemantics {}) }
                 },
                 label = { Text(S.readyTitle, fontSize = 11.sp, fontWeight = FontWeight.Bold) },
                 colors = NavigationBarItemDefaults.colors(

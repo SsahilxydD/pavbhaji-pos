@@ -60,7 +60,15 @@ var S = {
   khatamHint: 'Customer ko bata do. Inke saath poora KOT ruk jayega — inhe hata ke baaki bhejo.',
   khatamHintAll: 'Customer ko bata do. Cart me aur kuch nahi hai.',
   dropAndSend: 'Hata ke bhejo',
-  drop: 'Hata do'
+  drop: 'Hata do',
+  cartHint: '📝 note · cart ›',
+  cartTitle: 'Naya KOT — abhi bheja nahi',
+  addNote: 'note',
+  noteFor: function (n) { return 'Note · ' + n; },
+  notePh: 'kam teekha, bina pyaaz…',
+  noteHint: 'Kitchen ko KOT pe yahi likha dikhega.',
+  noteLong: 'Note bahut lamba hai — chhota likho',
+  save: 'Save'
 };
 
 var $ = function (id) { return document.getElementById(id); };
@@ -441,21 +449,31 @@ function bump(id, delta) {
   if (cartLocked) { toast(S.locked, 'bad'); return; }
   var it = menuById[id];
   if (delta > 0 && it && !it.available) { toast(S.isKhatam(it.name), 'bad'); return; }
-  var line = cart.filter(function (l) { return l.menuItemId === id; })[0];
+  // Like the app, a cart line is one dish + one note. A tap adds to the
+  // dish's plain (no-note) line, so "1 Jain + 1 normal" is: tap, note
+  // "Jain" on that line, tap again. − takes from the plain line first.
+  var mine = cart.filter(function (l) { return l.menuItemId === id; });
+  var line = mine.filter(function (l) { return !l.note; })[0];
+  if (delta < 0) line = line || mine[mine.length - 1];
   if (!line) {
     if (delta < 0 || !it) return;
     line = { menuItemId: id, name: it.name, price: it.price, qty: 0, note: '' };
     cart.push(line);
   }
   line.qty += delta;
-  if (line.qty <= 0) cart = cart.filter(function (l) { return l.menuItemId !== id; });
+  if (line.qty <= 0) cart.splice(cart.indexOf(line), 1);
   paintRow(id);
   paintCartBar();
 }
 
-// The line under a dish name: price, and a KHATAM pill when out of stock.
+// The line under a dish name: price, KHATAM when out of stock, and the
+// notes already on its cart lines.
 function rowSub(it) {
-  return rupees(it.price) + (it.available ? '' : ' <span class="pill p-off">' + esc(S.khatam) + '</span>');
+  var notes = cart.filter(function (l) { return l.menuItemId === it.id && l.note; })
+    .map(function (l) { return l.qty + '× ' + l.note; });
+  return rupees(it.price) +
+    (it.available ? '' : ' <span class="pill p-off">' + esc(S.khatam) + '</span>') +
+    (notes.length ? ' · <span class="note">📝 ' + esc(notes.join(' · ')) + '</span>' : '');
 }
 
 // Stock changed under an open picker: grey out / bring back rows in place.
@@ -506,7 +524,7 @@ function offerDropKhatam() {
   return true;
 }
 
-// One menu row's count, highlight and − state, from the cart.
+// One menu row's count, highlight, − state and note line, from the cart.
 function paintRow(id) {
   var row = document.querySelector('.pk-row[data-item="' + id + '"]');
   if (!row) return;
@@ -514,27 +532,137 @@ function paintRow(id) {
   $('q' + id).textContent = String(n);
   row.classList.toggle('in', n > 0);
   row.querySelector('button[data-dec]').disabled = n === 0;
+  if (menuById[id]) row.querySelector('.pk-sub').innerHTML = rowSub(menuById[id]);
 }
 
 function cartTotal() {
   return cart.reduce(function (s, l) { return s + l.qty * l.price; }, 0);
 }
+function cartPlates() {
+  return cart.reduce(function (s, l) { return s + l.qty; }, 0);
+}
 
 function paintCartBar() {
   var bar = $('bar');
   if (!cart.length) { bar.className = ''; bar.innerHTML = ''; return; }
-  var n = cart.reduce(function (s, l) { return s + l.qty; }, 0);
+  var n = cartPlates();
   var btn = '<button class="primary" id="sendBtn"' + (sending ? ' disabled' : '') + '>';
   if (cartLocked) {
     bar.className = 'bar stack';
     bar.innerHTML = '<div class="unsure">' + esc(S.unsureBar) + '</div>' +
       btn + esc(sending ? S.sending : S.resend + ' · ' + n + ' plate') + '</button>';
   } else {
+    // The left half opens the cart: every line, its note, its count.
     bar.className = 'bar';
-    bar.innerHTML = '<span class="tot">' + n + ' plate · ' + rupees(cartTotal()) + '</span>' +
+    bar.innerHTML = '<button class="ghost cartbtn" id="cartBtn">' +
+        '<b>' + n + ' plate · ' + rupees(cartTotal()) + '</b><small>' + esc(S.cartHint) + '</small></button>' +
       btn + (sending ? esc(S.sending) : 'Kitchen bhejo') + '</button>';
+    $('cartBtn').onclick = openCart;
   }
   $('sendBtn').onclick = function () { if (onSend) onSend(); };
+}
+
+// ---------------------------------------------------------------- cart + notes
+// The cart sheet: one row per cart line with its own count and note, the
+// app's "NEW KOT — NOT SENT YET" block (TableOrderScreen.kt). The note is
+// what the kitchen sees on the KOT: "Jain", "kam teekha", "बिना प्याज़"…
+function openCart() {
+  if (!cart.length) { hideModal(); return; }
+  var body = '<div class="cart-ls">' + cart.map(function (l, i) {
+    var it = menuById[l.menuItemId], off = !it || !it.available;
+    return '<div class="line">' +
+      '<span class="grow"><span class="nm">' + esc(l.name) + '</span>' +
+        '<div class="mut tnum">' + rupees(l.price) +
+          (off ? ' <span class="pill p-off">' + esc(S.khatam) + '</span>' : '') + '</div>' +
+        '<button class="notebtn' + (l.note ? ' has' : '') + '" data-note="' + i + '">📝 ' +
+          esc(l.note || S.addNote) + '</button></span>' +
+      '<span class="step"><button data-cdec="' + i + '">−</button><b>' + l.qty + '</b>' +
+        '<button data-cinc="' + i + '"' + (off ? ' disabled' : '') + '>+</button></span>' +
+      '</div>';
+  }).join('') + '</div>';
+  var m = showModal(S.cartTitle, body,
+    [{ label: 'Back', cls: 'ghost' },
+     { label: (cartLocked ? S.resend : 'Kitchen bhejo') + ' · ' + cartPlates() + ' plate', cls: 'primary',
+       act: function () { hideModal(); if (onSend) onSend(); } }]);
+  m.querySelector('.cart-ls').addEventListener('click', function (e) {
+    var b = e.target.closest('button');
+    if (!b) return;
+    if (b.dataset.note) editNote(Number(b.dataset.note));
+    else if (b.dataset.cdec) stepLine(Number(b.dataset.cdec), -1);
+    else if (b.dataset.cinc) stepLine(Number(b.dataset.cinc), 1);
+  });
+}
+
+function cartBusy() {
+  if (sending) { toast(S.wait); return true; }
+  if (cartLocked) { toast(S.locked, 'bad'); return true; }
+  return false;
+}
+
+function stepLine(i, d) {
+  var l = cart[i];
+  if (!l || cartBusy()) return;
+  var it = menuById[l.menuItemId];
+  if (d > 0 && (!it || !it.available)) { toast(S.isKhatam(l.name), 'bad'); return; }
+  l.qty += d;
+  if (l.qty <= 0) cart.splice(i, 1);
+  paintRow(l.menuItemId); paintCartBar();
+  openCart();
+}
+
+var NOTE_CHIPS = ['Jain', 'Kam teekha', 'Extra teekha', 'Bina pyaaz', 'Bina lasan', 'Extra butter', 'Parcel'];
+
+// The server caps a note at 200 BYTES; Hindi/Gujarati letters take 3 each.
+function noteBytes(s) {
+  return window.TextEncoder ? new TextEncoder().encode(s).length : s.length * 3;
+}
+
+function editNote(i) {
+  var l = cart[i];
+  if (!l || cartBusy()) return;
+  var m = showModal(S.noteFor(l.name),
+    '<div class="nchips">' + NOTE_CHIPS.map(function (c) {
+      return '<button class="nchip" data-chip="' + esc(c) + '">' + esc(c) + '</button>';
+    }).join('') + '</div>' +
+    '<input id="mNote" maxlength="120" autocomplete="off" placeholder="' + esc(S.notePh) + '" value="' + esc(l.note) + '">' +
+    '<div class="hint">' + esc(S.noteHint) + '</div>',
+    [{ label: 'Back', cls: 'ghost', act: openCart },
+     { label: S.save, cls: 'primary', act: function () {
+        var v = $('mNote').value.replace(/\s+/g, ' ').trim();
+        if (noteBytes(v) > 200) { toast(S.noteLong, 'bad'); return; }
+        setNote(l, v);
+        openCart();
+     } }]);
+  // Chips add/remove their word in the text box; the box is the note.
+  var parts = function () {
+    return $('mNote').value.split(',').map(function (s) { return s.trim(); }).filter(Boolean);
+  };
+  var sync = function () {
+    var have = parts().map(function (p) { return p.toLowerCase(); });
+    m.querySelectorAll('.nchip').forEach(function (b) {
+      b.classList.toggle('on', have.indexOf(b.dataset.chip.toLowerCase()) >= 0);
+    });
+  };
+  m.querySelector('.nchips').addEventListener('click', function (e) {
+    var b = e.target.closest('.nchip');
+    if (!b) return;
+    var p = parts(), k = -1;
+    p.forEach(function (x, j) { if (x.toLowerCase() === b.dataset.chip.toLowerCase()) k = j; });
+    if (k >= 0) p.splice(k, 1); else p.push(b.dataset.chip);
+    $('mNote').value = p.join(', ');
+    sync();
+  });
+  $('mNote').addEventListener('input', sync);
+  sync();
+}
+
+// Two lines of the same dish with the same note are one line.
+function setNote(l, v) {
+  if (cart.indexOf(l) < 0) return;
+  l.note = v;
+  var twin = cart.filter(function (x) { return x !== l && x.menuItemId === l.menuItemId && x.note === v; })[0];
+  if (twin) { twin.qty += l.qty; cart.splice(cart.indexOf(l), 1); }
+  paintRow(l.menuItemId); paintCartBar();
 }
 
 // Sends the cart under its cartId. No answer, or a 5xx, means the server may
@@ -555,6 +683,7 @@ async function sendCart(post, done) {
     try {
       var d = await post(id, items);
       sending = false; newCart(); paintCartBar();
+      hideModal();   // a cart sheet opened while it was sending is now stale
       done(d);
       return;
     } catch (e) {

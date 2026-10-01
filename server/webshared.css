@@ -181,6 +181,32 @@ label.fld span { display:block; font-size:12px; font-weight:700; color:var(--ink
 .pk-row.off .nm { color:var(--ink2); }
 .p-off { background:var(--danger-bg); color:var(--danger); vertical-align:1px; margin-left:4px; }
 
+/* bar: the left half opens the cart sheet (lines + notes) */
+.bar .cartbtn {
+  display:flex; flex-direction:column; align-items:flex-start; justify-content:center;
+  text-align:left; padding:6px 12px; min-height:52px; min-width:0;
+}
+.bar .cartbtn b { font-size:16px; font-variant-numeric:tabular-nums; white-space:nowrap; }
+.bar .cartbtn small { font-size:12px; font-weight:700; color:var(--red-deep); white-space:nowrap; }
+
+/* cart sheet + note sheet */
+.modal .box { max-height:92vh; overflow-y:auto; }
+.cart-ls .line { align-items:flex-start; }
+.cart-ls .step { margin-top:2px; }
+.notebtn {
+  font:inherit; font-size:13px; font-weight:700; cursor:pointer; text-align:left;
+  color:var(--red); background:var(--card); border:1px dashed #f0c2a8; border-radius:10px;
+  padding:6px 10px; min-height:36px; margin-top:6px; max-width:100%; overflow-wrap:anywhere;
+}
+.notebtn.has { color:var(--amber); background:var(--amber-bg); border-style:solid; border-color:#f3d6a8; }
+.nchips { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:12px; }
+.nchip {
+  font:inherit; font-size:14px; font-weight:700; cursor:pointer;
+  min-height:44px; padding:9px 14px; border-radius:99px;
+  background:var(--card); color:var(--ink); border:1px solid var(--line);
+}
+.nchip.on { background:#fff4ee; color:var(--red-deep); border-color:var(--red); }
+
 /* ---------- sticky action bar ---------- */
 .bar {
   position:sticky; bottom:0; z-index:18;

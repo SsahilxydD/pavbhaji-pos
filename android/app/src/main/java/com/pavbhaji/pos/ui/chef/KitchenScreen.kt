@@ -35,6 +35,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -242,14 +243,24 @@ fun KitchenScreen(onLogout: () -> Unit, embedded: Boolean = false, onBack: (() -
                 Text(S.noBuckets, color = Kc.ink2, fontSize = 14.sp)
             }
         } else {
+            // The bucket this chef is cooking is always the first card — it
+            // used to keep its queue place and sat 4th, half off the screen.
+            // The rest stay oldest first.
+            val mineFirst = data.buckets.sortedByDescending { it.status == "taken" && it.takenBy == myId }
+            val myBucket = mineFirst.firstOrNull()?.takeIf { it.status == "taken" && it.takenBy == myId }?.id
+            val listState = rememberLazyListState()
+            // Taking a bucket moves it to the top; follow it there (the list
+            // would otherwise stay on whatever card was at the top before).
+            LaunchedEffect(myBucket) { if (myBucket != null) listState.animateScrollToItem(0) }
             LazyColumn(
                 Modifier.fillMaxSize(),
+                state = listState,
                 contentPadding = PaddingValues(12.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                val myBusy = data.buckets.any { it.status == "taken" && it.takenBy == myId }
-                items(data.buckets.size, key = { data.buckets[it].id }) { i ->
-                    val b = data.buckets[i]
+                val myBusy = myBucket != null
+                items(mineFirst.size, key = { mineFirst[it].id }) { i ->
+                    val b = mineFirst[i]
                     BucketCard(
                         modifier = Modifier.animateItem(),
                         b = b, cap = if (b.cap > 0) b.cap else data.cap, myId = myId, myBusy = myBusy,

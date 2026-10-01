@@ -51,7 +51,6 @@ import com.pavbhaji.pos.ui.CardLine
 import com.pavbhaji.pos.ui.ConfirmDialog
 import com.pavbhaji.pos.ui.EmptyState
 import com.pavbhaji.pos.ui.ErrorBanner
-import com.pavbhaji.pos.ui.HeaderTextAction
 import com.pavbhaji.pos.ui.Pb
 import com.pavbhaji.pos.ui.Pill
 import com.pavbhaji.pos.ui.S
@@ -123,7 +122,7 @@ fun ParcelHome(onLogout: () -> Unit) {
         AppHeader(
             title = "🥡 " + S.parcelsTitle,
             subtitle = "${Deps.session.staffName} · ${S.openParcels(parcels.size)}",
-            actions = { HeaderTextAction(S.logout, onLogout) }
+            actions = { com.pavbhaji.pos.ui.LogoutAction(onLogout) }
         )
         ErrorBanner(loadError)
         toast?.let {

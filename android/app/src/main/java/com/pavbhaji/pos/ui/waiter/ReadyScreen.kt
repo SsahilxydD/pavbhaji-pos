@@ -57,7 +57,7 @@ import com.pavbhaji.pos.ui.CardLine
 import com.pavbhaji.pos.ui.EmptyState
 import com.pavbhaji.pos.ui.ErrorBanner
 import com.pavbhaji.pos.ui.GoodGreen
-import com.pavbhaji.pos.ui.HeaderTextAction
+import com.pavbhaji.pos.ui.LogoutAction
 import com.pavbhaji.pos.ui.ListSkeleton
 import com.pavbhaji.pos.ui.Pb
 import com.pavbhaji.pos.ui.PinBelowHistory
@@ -105,7 +105,7 @@ fun ReadyScreen(onLogout: () -> Unit, showLogout: Boolean) {
                 groups.size == 1 -> S.toCarryOneTable(lines.size)
                 else -> S.toCarryTables(lines.size, groups.size)
             },
-            actions = { if (showLogout) HeaderTextAction(S.logout, onLogout) }
+            actions = { if (showLogout) LogoutAction(onLogout) }
         )
         ErrorBanner(loadError)
         when {
@@ -236,7 +236,7 @@ fun ServeScreen(onLogout: () -> Unit) {
         AppHeader(
             title = S.serveTitle,
             subtitle = if (lines.isEmpty()) S.nothingToCarry else S.toCarry(lines.size),
-            actions = { HeaderTextAction(S.logout, onLogout) }
+            actions = { LogoutAction(onLogout) }
         )
         ErrorBanner(loadError)
         when {

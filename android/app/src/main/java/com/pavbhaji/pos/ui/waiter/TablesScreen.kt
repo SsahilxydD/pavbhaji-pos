@@ -42,7 +42,7 @@ import com.pavbhaji.pos.data.TableStateDto
 import com.pavbhaji.pos.ui.AppHeader
 import com.pavbhaji.pos.ui.BhajiRed
 import com.pavbhaji.pos.ui.ErrorBanner
-import com.pavbhaji.pos.ui.HeaderTextAction
+import com.pavbhaji.pos.ui.LogoutAction
 import com.pavbhaji.pos.ui.ListSkeleton
 import com.pavbhaji.pos.ui.Pb
 import com.pavbhaji.pos.ui.Pill
@@ -145,7 +145,7 @@ fun TablesScreen(
             title = S.tablesTitle,
             subtitle = S.occupiedSub(Deps.session.staffName, busy, tables.size),
             onBack = onBack,
-            actions = { if (onBack == null) HeaderTextAction(S.logout, onLogout) }
+            actions = { if (onBack == null) LogoutAction(onLogout) }
         )
         ErrorBanner(loadError)
         if (!loaded) {

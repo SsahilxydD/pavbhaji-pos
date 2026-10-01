@@ -243,6 +243,27 @@ fun HeaderTextAction(label: String, onClick: () -> Unit) {
     }
 }
 
+// Logout sits in every header right next to the language switch, and one
+// stray tap used to drop the session mid-shift. It asks first; the safe
+// choice ("Stay") is the dismiss.
+@Composable
+fun LogoutAction(onLogout: () -> Unit, tint: Color = Color.White, fontSize: Int = 14) {
+    var ask by remember { mutableStateOf(false) }
+    TextButton(onClick = { ask = true }) {
+        Text(S.logout, color = tint, fontWeight = FontWeight.Bold, fontSize = fontSize.sp)
+    }
+    if (ask) {
+        ConfirmDialog(
+            title = S.logoutQ(com.pavbhaji.pos.Deps.session.staffName),
+            body = S.logoutBody,
+            confirmLabel = S.logout,
+            dismissLabel = S.stayBtn,
+            onConfirm = { ask = false; onLogout() },
+            onDismiss = { ask = false }
+        )
+    }
+}
+
 // Slides in under the header while the WebSocket is down. Amber, not red:
 // it's "hold on", not "something you did failed". It waits a moment before
 // showing, so the half-second dial at app start (or one dropped packet)

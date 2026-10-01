@@ -44,7 +44,6 @@ import com.pavbhaji.pos.ui.AppHeader
 import com.pavbhaji.pos.ui.CardLine
 import com.pavbhaji.pos.ui.GoodGreen
 import com.pavbhaji.pos.ui.S
-import com.pavbhaji.pos.ui.HeaderTextAction
 import com.pavbhaji.pos.ui.chef.KitchenScreen
 import com.pavbhaji.pos.ui.rupees
 import com.pavbhaji.pos.ui.waiter.ManagerHome
@@ -103,7 +102,7 @@ private fun Dashboard(onLogout: () -> Unit, onOpen: (AdminScreen) -> Unit) {
         AppHeader(
             title = S.adminTitle,
             subtitle = Deps.session.staffName,
-            actions = { HeaderTextAction(S.logout, onLogout) }
+            actions = { com.pavbhaji.pos.ui.LogoutAction(onLogout) }
         )
         com.pavbhaji.pos.ui.ErrorBanner(loadError)
         if (kotlin.math.abs(clockSkewMs) > 3 * 60_000) {

@@ -54,6 +54,13 @@ object S {
     val save get() = t("Save", "सेव करो", "સેવ કરો")
     val add get() = t("Add", "जोड़ो", "ઉમેરો")
     val logout get() = t("Logout", "बाहर निकलो", "બહાર નીકળો")
+    fun logoutQ(who: String) = t("Log out $who?", "$who, बाहर निकलें?", "$who, બહાર નીકળવું છે?")
+    val logoutBody get() = t(
+        "The next person logs in with their own PIN.",
+        "अगला व्यक्ति अपने PIN से अंदर आएगा।",
+        "આગળની વ્યક્તિ પોતાના PIN થી અંદર આવશે."
+    )
+    val stayBtn get() = t("Stay", "रुको", "રહો")
 
     // ---- app updates (the app pulls and installs them by itself) ----
     val updateLater get() = t("Later", "बाद में", "પછી")

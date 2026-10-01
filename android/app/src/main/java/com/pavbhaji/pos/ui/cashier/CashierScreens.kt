@@ -578,7 +578,7 @@ fun BillsHistoryScreen(onLogout: (() -> Unit)?, onBack: (() -> Unit)?) {
             title = "🧾 " + S.navBills,
             subtitle = "${S.billsCount(resp.bills.size)} · ${rupees(resp.bills.sumOf { it.total })}",
             onBack = onBack,
-            actions = { if (onBack == null && onLogout != null) com.pavbhaji.pos.ui.HeaderTextAction(S.logout, onLogout) }
+            actions = { if (onBack == null && onLogout != null) com.pavbhaji.pos.ui.LogoutAction(onLogout) }
         )
         ErrorBanner(loadError)
         Row(

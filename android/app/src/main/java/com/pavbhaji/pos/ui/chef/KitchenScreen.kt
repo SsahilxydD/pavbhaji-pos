@@ -43,7 +43,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -222,9 +221,7 @@ fun KitchenScreen(onLogout: () -> Unit, embedded: Boolean = false, onBack: (() -
             com.pavbhaji.pos.ui.LangAction(tint = Kc.ink2)
             Box(Modifier.size(7.dp).background(if (connected) Kc.ready else Kc.late, CircleShape))
             if (onBack == null) {
-                TextButton(onClick = onLogout) {
-                    Text(S.logout, color = Kc.ink2, fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                }
+                com.pavbhaji.pos.ui.LogoutAction(onLogout, tint = Kc.ink2, fontSize = 13)
             } else {
                 Spacer(Modifier.width(10.dp))
             }

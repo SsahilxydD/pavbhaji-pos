@@ -43,6 +43,8 @@ fun serverErrText(msg: String): String {
         m.endsWith(" is marked out of stock") -> S.errOutOfStock(m.removeSuffix(" is marked out of stock"))
         m.startsWith("menu item not found") -> S.errDishGone
         m.startsWith("can't move ") -> S.errStale
+        m.contains(" already has order #") -> S.errTableTaken
+        m == "open order not found" -> S.errOrderGone
         m.startsWith("server error") -> S.errServer
         m.startsWith("session expired") || m == "not logged in" -> S.errSession
         m.startsWith("your role (") && m.endsWith("not allowed to do this") -> S.errRole
@@ -572,6 +574,43 @@ object S {
         "बिल बनाना और टेबल बंद करना कैशियर का काम है।",
         "બિલ બનાવવું અને ટેબલ બંધ કરવું કેશિયરનું કામ છે."
     )
+
+    // ---- changing table (the customers moved) ----
+    val moveBtn get() = t("⇄ Change table", "⇄ टेबल बदलो", "⇄ ટેબલ બદલો")
+    fun moveWhereQ(from: String) = t(
+        "Where did ${from} move?", "${from} वाले किस टेबल पर गए?", "${from} વાળા કયા ટેબલ પર ગયા?"
+    )
+    val moveHint get() = t(
+        "Pick the new table — KOTs, kitchen, waiter list and bill all go with it.",
+        "नई टेबल चुनो — KOT, किचन, वेटर और बिल सब साथ जाएंगे।",
+        "નવું ટેબલ પસંદ કરો — KOT, રસોડું, વેઇટર અને બિલ બધું સાથે જશે."
+    )
+    fun joinTag(orderNo: Long) = t("#${orderNo} · join", "#${orderNo} · जोड़ो", "#${orderNo} · જોડો")
+    fun moveBody(orderNo: Long, to: String) = t(
+        "Order #${orderNo} moves to ${to}. Kitchen, waiter and bill will all show ${to}.",
+        "ऑर्डर #${orderNo} ${to} पर चला जाएगा। किचन, वेटर और बिल सब ${to} दिखाएंगे।",
+        "ઓર્ડર #${orderNo} ${to} પર જશે. રસોડું, વેઇટર અને બિલ બધે ${to} દેખાશે."
+    )
+    val moveGo get() = t("Change table", "टेबल बदलो", "ટેબલ બદલો")
+    fun mergeQ(a: String, b: String) = t("Join ${a} + ${b}?", "${a} + ${b} जोड़ दें?", "${a} + ${b} જોડી દઈએ?")
+    fun mergeBody(to: String, orderNo: Long) = t(
+        "${to} already has order #${orderNo}. The two become one order — one bill.",
+        "${to} पर पहले से ऑर्डर #${orderNo} है। दोनों एक ऑर्डर बन जाएंगे — एक ही बिल।",
+        "${to} પર પહેલેથી ઓર્ડર #${orderNo} છે. બંને એક ઓર્ડર બની જશે — એક જ બિલ."
+    )
+    val mergeBtn get() = t("Join", "जोड़ो", "જોડો")
+    fun movedToast(to: String) = t("Moved to ${to} ✓", "${to} पर शिफ्ट हो गया ✓", "${to} પર ખસેડ્યું ✓")
+    fun mergedToast(to: String) = t("Joined into ${to} ✓", "${to} में जोड़ दिया ✓", "${to}માં જોડી દીધું ✓")
+    val errTableTaken get() = t(
+        "That table just got an order of its own — pick again.",
+        "उस टेबल पर अभी-अभी ऑर्डर आया है — फिर से चुनो।",
+        "એ ટેબલ પર હમણાં જ ઓર્ડર આવ્યો — ફરી પસંદ કરો."
+    )
+    val errOrderGone get() = t(
+        "This order isn't open any more — it was closed or moved.",
+        "यह ऑर्डर अब खुला नहीं है — बंद हो गया या शिफ्ट हो गया।",
+        "આ ઓર્ડર હવે ખુલ્લો નથી — બંધ થયો અથવા ખસેડાયો."
+    )
     val reportCash get() = t("💵 cash", "💵 कैश", "💵 કેશ")
     val reportOnline get() = t("📲 online", "📲 ऑनलाइन", "📲 ઓનલાઈન")
     val reportDiscounts get() = t("discounts", "छूट", "છૂટ")
@@ -585,6 +624,8 @@ object S {
         "ticket" -> t("KOT sent", "KOT भेजा", "KOT મોકલ્યો")
         "parcel" -> t("parcel", "पार्सल", "પાર્સલ")
         "order:closed" -> t("table closed", "टेबल बंद", "ટેબલ બંધ")
+        "order:moved" -> t("table changed", "टेबल बदली", "ટેબલ બદલ્યું")
+        "order:merged" -> t("tables joined", "टेबल जोड़ी", "ટેબલ જોડ્યા")
         "batch:taken" -> t("bucket taken", "बकेट लिया", "બકેટ લીધું")
         "batch:plate-ready" -> t("plate ready", "प्लेट तैयार", "પ્લેટ તૈયાર")
         "batch:item-ready" -> t("dish ready", "डिश तैयार", "વાનગી તૈયાર")

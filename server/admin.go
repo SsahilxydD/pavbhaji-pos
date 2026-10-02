@@ -619,7 +619,7 @@ func dayStartMs(date string, dayStartHour int) int64 {
 // by exact action strings. One action may sit in two groups (order:closed is
 // both an order event and a billing event).
 var auditGroups = map[string][]string{
-	"orders":  {"ticket", "parcel", "order:closed"},
+	"orders":  {"ticket", "parcel", "order:closed", "order:moved", "order:merged"},
 	"kitchen": {"batch:taken", "batch:ready", "batch:sealed"},
 	"serving": {"item:served", "serve-all"},
 	"cancel":  {"item:cancelled"},

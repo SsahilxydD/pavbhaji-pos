@@ -27,6 +27,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -69,6 +70,8 @@ fun ManagerHome(onLogout: () -> Unit, onBack: (() -> Unit)? = null) {
     // TableOrderScreen saves its own).
     var selId by rememberSaveable { mutableStateOf<Long?>(null) }
     var selName by rememberSaveable { mutableStateOf("") }
+    var selKind by rememberSaveable { mutableStateOf("dine") }
+    var moveNote by remember { mutableStateOf<String?>(null) }  // "Moved to T8 ✓", shown once there
     var tab by rememberSaveable { mutableIntStateOf(0) }
     var readyCount by remember { mutableIntStateOf(0) }
 
@@ -86,7 +89,17 @@ fun ManagerHome(onLogout: () -> Unit, onBack: (() -> Unit)? = null) {
 
     val sel = selId
     if (sel != null) {
-        TableOrderScreen(tableId = sel, tableName = selName, onBack = { selId = null })
+        // Keyed on the table: after a table change the screen starts over on
+        // the new one (its loaders and live refresh are bound to the id).
+        key(sel) {
+            TableOrderScreen(
+                tableId = sel, tableName = selName,
+                onBack = { selId = null; moveNote = null },
+                movable = selKind != "parcel",
+                notice = moveNote,
+                onMoved = { id, name, note -> moveNote = note; selName = name; selId = id }
+            )
+        }
         return
     }
     // A manager on the Ready tab: Back goes to Tables first, like any
@@ -95,7 +108,10 @@ fun ManagerHome(onLogout: () -> Unit, onBack: (() -> Unit)? = null) {
     Column(Modifier.fillMaxSize()) {
         Box(Modifier.weight(1f)) {
             if (tab == 0) {
-                TablesScreen(onOpenTable = { selName = it.name; selId = it.id }, onLogout = onLogout, onBack = onBack)
+                TablesScreen(
+                    onOpenTable = { selName = it.name; selKind = it.kind; moveNote = null; selId = it.id },
+                    onLogout = onLogout, onBack = onBack
+                )
             } else {
                 ReadyScreen(onLogout = onLogout, showLogout = onBack == null, onBack = onBack)
             }

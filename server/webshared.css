@@ -233,6 +233,16 @@ label.fld span { display:block; font-size:12px; font-weight:700; color:var(--ink
 }
 .tile-btn .meta .who { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:100%; }
 .tile-btn.busy.paid { background:var(--green-bg); border:2px solid #59b87e; padding:12px; }
+
+/* Change-table sheet: every dine-in table, small, so the whole room fits.
+   Free = quiet, occupied = amber (choosing one joins the two orders). */
+.mvgrid { display:grid; grid-template-columns:repeat(auto-fill,minmax(86px,1fr)); gap:8px; }
+.mvgrid .tile-btn, .mvgrid .tile-btn.free {
+  min-height:58px; padding:8px 10px; gap:2px; box-shadow:none;
+  flex-direction:column; align-items:flex-start;
+}
+.mvgrid .tile-btn .nm { flex:none; font-size:17px; }
+.mvgrid .tile-btn .sub { font-size:11.5px; }
 .spill { font-size:11px; font-weight:800; padding:3px 8px; border-radius:99px; white-space:nowrap; letter-spacing:.02em; }
 .spill.cook { background:#f5e3c2; color:var(--amber); }
 .spill.ready { background:var(--green); color:#fff; }

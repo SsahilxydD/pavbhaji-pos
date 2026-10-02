@@ -178,6 +178,10 @@ data class AuditEventDto(
 @Serializable
 data class NewTicketLine(val menuItemId: Long, val qty: Long, val note: String = "")
 
+// merge = the target table already has an order and the two become one.
+@Serializable
+data class MoveReq(val toTableId: Long, val merge: Boolean)
+
 // What the shop server is holding for the phones. `url` is a path on that same
 // server — the phone never learns where the build originally came from.
 @Serializable

@@ -177,6 +177,9 @@ func buildServer(port int, dataDir string) (*Server, *http.ServeMux, error) {
 	//   - settling & closing: the CASHIER only — close demands a generated
 	//     bill whose payments (cash + online) add up to its total.
 	mux.HandleFunc("POST /api/dining-tables/{id}/tickets", s.requireRole("manager admin parcel", s.handleCreateTicket))
+	//   - changing table (customers moved, or two tables joined): the floor's
+	//     job — manager and admin.
+	mux.HandleFunc("POST /api/orders/{id}/move", s.requireRole("manager admin", s.handleMoveOrder))
 	mux.HandleFunc("POST /api/orders/{id}/bill", s.requireRole("cashier", s.handleBillGenerate))
 	mux.HandleFunc("PATCH /api/orders/{id}/bill", s.requireRole("cashier", s.handleBillPatch))
 	mux.HandleFunc("POST /api/orders/{id}/close", s.requireRole("cashier", s.handleCloseOrder))

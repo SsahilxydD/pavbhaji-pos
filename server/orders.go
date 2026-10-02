@@ -866,6 +866,167 @@ func (s *Server) handleItemCancel(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 
+// POST /api/orders/{id}/move {"toTableId":N, "merge":bool}
+//
+// Customers get up and sit at another table without telling anyone (3 Oct
+// 2026). Every screen reads a line's table through orders.table_id (the
+// chef's bucket lines, the waiter's carry list, the cashier's grid, the
+// printed bill), so re-pointing that one column moves the whole running
+// order: its KOTs, the plates on the tawa, the bill and any payment taken.
+//
+// A free target is a plain move. An occupied one is a merge, and only when
+// the caller asked for it (merge:true; otherwise 409): the source's KOTs are
+// numbered on after the target's, its bill (discount, cash, online) is folded
+// into the target's, and the emptied source order is deleted so the night's
+// order count doesn't gain a ghost. Dine-in tables only; parcel slots stay put.
+func (s *Server) handleMoveOrder(w http.ResponseWriter, r *http.Request) {
+	st := staffFrom(r)
+	orderID, _ := strconv.ParseInt(r.PathValue("id"), 10, 64)
+	var req struct {
+		ToTableID int64 `json:"toTableId"`
+		Merge     bool  `json:"merge"`
+	}
+	if !readJSON(w, r, &req) {
+		return
+	}
+
+	tx, err := s.db.Begin()
+	if err != nil {
+		fail(w, http.StatusInternalServerError, "db busy, try again")
+		return
+	}
+	defer tx.Rollback()
+
+	var fromTableID, orderNo, openedAt int64
+	var fromName, fromKind string
+	err = tx.QueryRow(`SELECT o.table_id, o.order_no, o.opened_at, t.name, t.kind
+		FROM orders o JOIN dining_tables t ON t.id=o.table_id
+		WHERE o.id=? AND o.status='open'`, orderID).Scan(&fromTableID, &orderNo, &openedAt, &fromName, &fromKind)
+	if err != nil {
+		fail(w, http.StatusNotFound, "open order not found")
+		return
+	}
+	var toName, toKind string
+	if err := tx.QueryRow(`SELECT name, kind FROM dining_tables WHERE id=? AND active=1`, req.ToTableID).
+		Scan(&toName, &toKind); err != nil {
+		fail(w, http.StatusNotFound, "table not found")
+		return
+	}
+	if fromKind != "dine" || toKind != "dine" {
+		fail(w, http.StatusBadRequest, "only dine-in tables can change table")
+		return
+	}
+	if req.ToTableID == fromTableID {
+		fail(w, http.StatusBadRequest, "the order is already on "+toName)
+		return
+	}
+
+	now := nowMs()
+	resultID := orderID
+	var action, detail string
+	var targetID, targetNo int64
+	err = tx.QueryRow(`SELECT id, order_no FROM orders WHERE table_id=? AND status='open'`, req.ToTableID).
+		Scan(&targetID, &targetNo)
+	switch {
+	case err == sql.ErrNoRows:
+		if _, err := tx.Exec(`UPDATE orders SET table_id=? WHERE id=?`, req.ToTableID, orderID); err != nil {
+			fail(w, http.StatusInternalServerError, "could not change the table")
+			return
+		}
+		action = "order:moved"
+		detail = fmt.Sprintf("order #%d · %s → %s", orderNo, fromName, toName)
+	case err != nil:
+		fail(w, http.StatusInternalServerError, "db error")
+		return
+	case !req.Merge:
+		fail(w, http.StatusConflict, fmt.Sprintf("%s already has order #%d — merge the two?", toName, targetNo))
+		return
+	default:
+		var lastKOT int64
+		tx.QueryRow(`SELECT COALESCE(MAX(ticket_no),0) FROM tickets WHERE order_id=?`, targetID).Scan(&lastKOT)
+		res, err := tx.Exec(`UPDATE tickets SET order_id=?, ticket_no=ticket_no+? WHERE order_id=?`,
+			targetID, lastKOT, orderID)
+		if err != nil {
+			fail(w, http.StatusInternalServerError, "could not move the KOTs")
+			return
+		}
+		kots, _ := res.RowsAffected()
+
+		// The source's bill, if the cashier had started one, rides along:
+		// re-pointed when the target has none, otherwise added into it.
+		var disc, cash, online int64
+		var note string
+		berr := tx.QueryRow(`SELECT discount, discount_note, paid_cash, paid_online FROM bills WHERE order_id=?`, orderID).
+			Scan(&disc, &note, &cash, &online)
+		if berr != nil && berr != sql.ErrNoRows {
+			fail(w, http.StatusInternalServerError, "db error")
+			return
+		}
+		if berr == nil {
+			var targetBills int
+			tx.QueryRow(`SELECT COUNT(*) FROM bills WHERE order_id=?`, targetID).Scan(&targetBills)
+			if targetBills == 0 {
+				_, err = tx.Exec(`UPDATE bills SET order_id=? WHERE order_id=?`, targetID, orderID)
+			} else {
+				_, err = tx.Exec(`UPDATE bills SET
+					discount = discount + ?,
+					discount_note = CASE WHEN ?='' THEN discount_note WHEN discount_note='' THEN ? ELSE discount_note || ' + ' || ? END,
+					paid_cash = paid_cash + ?, paid_online = paid_online + ?
+					WHERE order_id=?`, disc, note, note, note, cash, online, targetID)
+				if err == nil {
+					_, err = tx.Exec(`DELETE FROM bills WHERE order_id=?`, orderID)
+				}
+			}
+			if err != nil {
+				fail(w, http.StatusInternalServerError, "could not carry the bill over")
+				return
+			}
+		}
+		// The target's bill (if any) now covers both tables' plates: refresh
+		// it the way the cashier's own refresh does, discount clamped.
+		var subtotal int64
+		tx.QueryRow(`SELECT COALESCE(SUM(ti.qty*ti.price),0) FROM ticket_items ti
+			JOIN tickets tk ON tk.id=ti.ticket_id
+			WHERE tk.order_id=? AND ti.status!='cancelled'`, targetID).Scan(&subtotal)
+		if _, err := tx.Exec(`UPDATE bills SET subtotal=?, discount=MIN(discount, ?),
+			total=? - MIN(discount, ?), updated_at=? WHERE order_id=?`,
+			subtotal, subtotal, subtotal, subtotal, now, targetID); err != nil {
+			fail(w, http.StatusInternalServerError, "could not refresh the bill")
+			return
+		}
+		// The table has been occupied since the earlier of the two.
+		if _, err := tx.Exec(`UPDATE orders SET opened_at=MIN(opened_at, ?) WHERE id=?`, openedAt, targetID); err != nil {
+			fail(w, http.StatusInternalServerError, "db error")
+			return
+		}
+		if _, err := tx.Exec(`DELETE FROM orders WHERE id=?`, orderID); err != nil {
+			fail(w, http.StatusInternalServerError, "could not merge the orders")
+			return
+		}
+		resultID = targetID
+		action = "order:merged"
+		detail = fmt.Sprintf("order #%d (%s) merged into order #%d (%s) · %d KOT moved",
+			orderNo, fromName, targetNo, toName, kots)
+	}
+
+	if _, err := tx.Exec(`INSERT INTO events(at, staff_id, staff_name, action, detail) VALUES(?,?,?,?,?)`,
+		now, st.ID, st.Name, action, detail); err != nil {
+		fail(w, http.StatusInternalServerError, "could not write audit event")
+		return
+	}
+	if err := tx.Commit(); err != nil {
+		fail(w, http.StatusInternalServerError, "could not commit")
+		return
+	}
+	s.hub.Broadcast("tables", "kitchen")
+	d, err := s.loadOrderDetail(resultID)
+	if err != nil {
+		fail(w, http.StatusInternalServerError, "moved but could not reload the order")
+		return
+	}
+	writeJSON(w, http.StatusOK, d)
+}
+
 // POST /api/orders/{id}/close — the cashier owns the table's exit. Unserved
 // lines do NOT block it (25 Aug 2026): whatever is still pending/on the tawa
 // when the money is settled gets force-served with the close, so the kitchen

@@ -4,6 +4,7 @@ import android.os.SystemClock
 import android.view.HapticFeedbackConstants
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -76,6 +77,7 @@ import com.pavbhaji.pos.data.CategoryDto
 import com.pavbhaji.pos.data.NewTicketLine
 import com.pavbhaji.pos.data.OrderDetailDto
 import com.pavbhaji.pos.data.OrderItemDto
+import com.pavbhaji.pos.data.TableStateDto
 import com.pavbhaji.pos.ui.AppHeader
 import com.pavbhaji.pos.ui.BigButton
 import com.pavbhaji.pos.ui.CardLine
@@ -85,6 +87,7 @@ import com.pavbhaji.pos.ui.HoldUpdates
 import com.pavbhaji.pos.ui.InkDark
 import com.pavbhaji.pos.ui.ListSkeleton
 import com.pavbhaji.pos.ui.Pb
+import com.pavbhaji.pos.ui.PbCard
 import com.pavbhaji.pos.ui.QtyStepper
 import com.pavbhaji.pos.ui.ReasonDialog
 import com.pavbhaji.pos.ui.S
@@ -138,8 +141,17 @@ val CartSaver = listSaver<SnapshotStateList<CartLine>, Any>(
     }
 )
 
+// movable: a dine-in table, whose order can follow its customers to another
+// table (onMoved hands back where it went, plus the toast to show there).
 @Composable
-fun TableOrderScreen(tableId: Long, tableName: String, onBack: () -> Unit) {
+fun TableOrderScreen(
+    tableId: Long,
+    tableName: String,
+    onBack: () -> Unit,
+    movable: Boolean = false,
+    notice: String? = null,
+    onMoved: (tableId: Long, tableName: String, note: String) -> Unit = { _, _, _ -> }
+) {
     val scope = rememberCoroutineScope()
     val isAdmin = Deps.session.staffRole == "admin"
 
@@ -156,7 +168,10 @@ fun TableOrderScreen(tableId: Long, tableName: String, onBack: () -> Unit) {
 
     var cancelTarget by remember { mutableStateOf<OrderItemDto?>(null) }
     var noteEditIdx by remember { mutableStateOf<Int?>(null) }
-    var toast by remember { mutableStateOf<String?>(null) }
+    var toast by remember { mutableStateOf(notice) }
+    var movePicker by remember { mutableStateOf(false) }
+    var moveTarget by remember { mutableStateOf<TableStateDto?>(null) }
+    var moving by remember { mutableStateOf(false) }
 
     var loadError by remember { mutableStateOf<String?>(null) }
     var loaded by remember { mutableStateOf(false) }
@@ -377,12 +392,23 @@ fun TableOrderScreen(tableId: Long, tableName: String, onBack: () -> Unit) {
                     )
                 } else if (o != null) {
                     // Closing belongs to the cashier, after they generate the
-                    // bill — this screen only punches and watches.
-                    Text(
-                        S.cashierCloses,
-                        fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(vertical = 6.dp)
-                    )
+                    // bill — this screen only punches and watches. What it
+                    // can do is follow customers who changed table.
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            S.cashierCloses,
+                            fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.weight(1f).padding(vertical = 6.dp)
+                        )
+                        if (movable) {
+                            OutlinedButton(
+                                onClick = { movePicker = true },
+                                enabled = !moving,
+                                shape = RoundedCornerShape(12.dp),
+                                modifier = Modifier.padding(start = 10.dp).heightIn(min = 48.dp)
+                            ) { Text(S.moveBtn, fontWeight = FontWeight.Bold, maxLines = 1) }
+                        }
+                    }
                 } else {
                     Text(
                         S.tapToStart,
@@ -404,6 +430,40 @@ fun TableOrderScreen(tableId: Long, tableName: String, onBack: () -> Unit) {
             destructive = true,
             onConfirm = { confirmDiscard = false; onBack() },
             onDismiss = { confirmDiscard = false }
+        )
+    }
+    if (movePicker) {
+        MoveTableDialog(
+            fromId = tableId, fromName = tableName,
+            onPick = { movePicker = false; moveTarget = it },
+            onDismiss = { movePicker = false }
+        )
+    }
+    moveTarget?.let { to ->
+        val from = order
+        val joining = to.order != null
+        ConfirmDialog(
+            title = if (joining) S.mergeQ(tableName, to.name) else "$tableName → ${to.name}?",
+            body = if (joining) S.mergeBody(to.name, to.order?.orderNo ?: 0)
+            else S.moveBody(from?.orderNo ?: 0, to.name),
+            confirmLabel = if (joining) S.mergeBtn else S.moveGo,
+            onConfirm = {
+                moveTarget = null
+                if (from != null) {
+                    moving = true
+                    scope.launch {
+                        when (val r = Deps.api.moveOrder(from.id, to.id, joining)) {
+                            is ApiResult.Ok -> onMoved(
+                                r.value.tableId, r.value.tableName,
+                                if (joining) S.mergedToast(r.value.tableName) else S.movedToast(r.value.tableName)
+                            )
+                            is ApiResult.Err -> { toast = r.message; refresh() }
+                        }
+                        moving = false
+                    }
+                }
+            },
+            onDismiss = { moveTarget = null }
         )
     }
     cancelTarget?.let { target ->
@@ -706,6 +766,80 @@ private fun SentItemRow(
             ) {
                 Text("✕", color = MaterialTheme.colorScheme.error, modifier = Modifier.clearAndSetSemantics {})
             }
+        }
+    }
+}
+
+// Where did they go? Every other dine-in table, four across, small enough
+// that the whole room fits. A free one (quiet) takes the order as it is; an
+// occupied one (amber, "#63 · join") means joining the two into one bill.
+@Composable
+private fun MoveTableDialog(
+    fromId: Long, fromName: String,
+    onPick: (TableStateDto) -> Unit, onDismiss: () -> Unit
+) {
+    var tables by remember { mutableStateOf<List<TableStateDto>?>(null) }
+    var err by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(Unit) {
+        when (val r = Deps.api.tables()) {
+            is ApiResult.Ok -> tables = r.value.tables.filter { it.kind == "dine" && it.id != fromId }
+            is ApiResult.Err -> err = r.message
+        }
+    }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        shape = RoundedCornerShape(22.dp),
+        containerColor = MaterialTheme.colorScheme.surface,
+        title = { Text(S.moveWhereQ(fromName), fontWeight = FontWeight.Bold) },
+        text = {
+            Column {
+                Text(S.moveHint, fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Spacer(Modifier.height(12.dp))
+                val ts = tables
+                when {
+                    err != null -> Text(err ?: "", color = MaterialTheme.colorScheme.error)
+                    ts == null -> Text(S.loading, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    else -> Column(
+                        Modifier.heightIn(max = 360.dp).verticalScroll(rememberScrollState()),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        ts.chunked(4).forEach { row ->
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                row.forEach { t ->
+                                    MoveTarget(t, Modifier.weight(1f)) { onPick(t) }
+                                }
+                                repeat(4 - row.size) { Spacer(Modifier.weight(1f)) }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {},
+        dismissButton = { TextButton(onClick = onDismiss) { Text(S.back) } }
+    )
+}
+
+@Composable
+private fun MoveTarget(t: TableStateDto, modifier: Modifier, onClick: () -> Unit) {
+    val o = t.order
+    PbCard(
+        onClick = onClick,
+        corner = 12.dp,
+        color = if (o == null) Pb.quietCard else Pb.warnBg,
+        border = BorderStroke(1.dp, if (o == null) Color(0xFFEDE5DD) else Pb.warnLine),
+        elevation = 0.dp,
+        modifier = modifier.heightIn(min = 56.dp)
+    ) {
+        Column(Modifier.padding(horizontal = 8.dp, vertical = 7.dp)) {
+            Text(
+                t.name, fontSize = 17.sp, fontWeight = FontWeight.ExtraBold,
+                maxLines = 1, overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                if (o == null) S.freeTable else S.joinTag(o.orderNo),
+                fontSize = 11.5.sp, color = Pb.ink2, maxLines = 1, overflow = TextOverflow.Ellipsis
+            )
         }
     }
 }

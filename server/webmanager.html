@@ -129,6 +129,27 @@ function strings() {
     cancel: t('cancel', 'रद्द', 'રદ'),
     total: t('Total', 'कुल', 'કુલ'),
     addItems: t('+ Items add karo', '+ आइटम जोड़ो', '+ વસ્તુઓ ઉમેરો'),
+    moveBtn: t('⇄ Table badlo', '⇄ टेबल बदलो', '⇄ ટેબલ બદલો'),
+    moveQ: function (n) { return t(n + ' wale kis table pe gaye?', n + ' वाले किस टेबल पर गए?', n + ' વાળા કયા ટેબલ પર ગયા?'); },
+    moveHint: t('Nayi table chuno — KOT, kitchen, waiter aur bill sab saath jayenge.',
+                'नई टेबल चुनो — KOT, किचन, वेटर और बिल सब साथ जाएंगे।',
+                'નવું ટેબલ પસંદ કરો — KOT, રસોડું, વેઇટર અને બિલ બધું સાથે જશે.'),
+    mergeTag: function (n) { return t('#' + n + ' · jodo', '#' + n + ' · जोड़ो', '#' + n + ' · જોડો'); },
+    moveBody: function (n, b) {
+      return t('Order #' + n + ' ' + b + ' pe chala jayega. Kitchen, waiter aur bill sab ' + b + ' dikhayenge.',
+               'ऑर्डर #' + n + ' ' + b + ' पर चला जाएगा। किचन, वेटर और बिल सब ' + b + ' दिखाएंगे।',
+               'ઓર્ડર #' + n + ' ' + b + ' પર જશે. રસોડું, વેઇટર અને બિલ બધે ' + b + ' દેખાશે.');
+    },
+    moveGo: t('Table badlo', 'टेबल बदलो', 'ટેબલ બદલો'),
+    mergeQ: function (a, b) { return t(a + ' + ' + b + ' jod dein?', a + ' + ' + b + ' जोड़ दें?', a + ' + ' + b + ' જોડી દઈએ?'); },
+    mergeBody: function (b, n) {
+      return t(b + ' pe pehle se order #' + n + ' hai. Dono ek order ban jayenge — ek hi bill.',
+               b + ' पर पहले से ऑर्डर #' + n + ' है। दोनों एक ऑर्डर बन जाएंगे — एक ही बिल।',
+               b + ' પર પહેલેથી ઓર્ડર #' + n + ' છે. બંને એક ઓર્ડર બની જશે — એક જ બિલ.');
+    },
+    mergeBtn: t('Jodo', 'जोड़ो', 'જોડો'),
+    movedToast: function (b) { return t(b + ' pe shift ho gaya ✓', b + ' पर शिफ्ट हो गया ✓', b + ' પર ખસેડ્યું ✓'); },
+    mergedToast: function (b) { return t(b + ' me jod diya ✓', b + ' में जोड़ दिया ✓', b + 'માં જોડી દીધું ✓'); },
     pickSub: t('items add karo', 'आइटम जोड़ो', 'વસ્તુઓ ઉમેરો'),
     cancelQ: function (q, n) { return t(q + '× ' + n + ' cancel karna hai?', q + '× ' + n + ' रद्द करें?', q + '× ' + n + ' રદ કરવું?'); },
     reasonRequired: t('Kyun? — kam se kam 2 akshar, audit log me jayega.', 'कारण ज़रूरी है — ऑडिट लॉग में जाएगा।', 'કારણ જરૂરી છે — ઓડિટ લોગમાં જશે.'),
@@ -524,7 +545,7 @@ function age(ms) {
 // in the kitchen, plates ready to pick up, or all served — collect.
 function tableTile(t) {
   var o = t.order;
-  var attrs = ' data-table="' + t.id + '" data-name="' + esc(t.name) + '" data-free="' + (o ? '' : '1') + '"';
+  var attrs = ' data-table="' + t.id + '" data-name="' + esc(t.name) + '" data-kind="' + esc(t.kind) + '" data-free="' + (o ? '' : '1') + '"';
   if (!o) {
     return '<button class="tile-btn free"' + attrs + '><span class="nm">' + esc(t.name) + '</span>' +
       '<span class="sub">' + esc(S.free) + '</span></button>';
@@ -543,18 +564,18 @@ function tableTile(t) {
 
 $('view').addEventListener('click', function (e) {
   var t = e.target.closest('button[data-table]');
-  if (t) openTableView(Number(t.dataset.table), t.dataset.name).catch(oops);
+  if (t) openTableView(Number(t.dataset.table), t.dataset.name, t.dataset.kind).catch(oops);
 });
 
 // ------------------------------------------------------- one table's order
 // Load first, switch screens after: with no network the grid stays where it
 // is and the toast says why, instead of a tap that silently does nothing.
-async function openTableView(id, name) {
+async function openTableView(id, name, kind) {
   var my = nav;
   var d = await api('GET', '/api/dining-tables/' + id + '/order');
   if (my !== nav) return;   // they switched tabs while it loaded
   clearInterval(timer); repaint = null;
-  openTable = { id: id, name: name, order: d.order };
+  openTable = { id: id, name: name, kind: kind || 'dine', order: d.order };
   newCart(); parcelMode = false;   // a running parcel opened from the Parcel tab is a table like any other
   // A free table has nothing to look at yet: the most common tap of the
   // night goes straight to the menu (Back from there returns to the grid).
@@ -629,13 +650,59 @@ function paintTable() {
   }
 
   html += '<button class="primary" id="addBtn" style="width:100%">' + esc(S.addItems) + '</button>';
+  // The customers got up and sat somewhere else: the whole order follows
+  // them. Dine-in tables only (a parcel slot isn't a seat).
+  var movable = o && openTable.kind === 'dine';
+  if (movable) html += '<button class="ghost" id="moveBtn" style="width:100%;margin-top:10px">' + esc(S.moveBtn) + '</button>';
   $('view').innerHTML = html;
   $('bar').className = ''; $('bar').innerHTML = '';
   $('addBtn').onclick = function () { picker(openTable.name, sendTicket); };
+  if (movable) $('moveBtn').onclick = function () { askMove().catch(oops); };
 
   $('view').querySelectorAll('button[data-cancel]').forEach(function (b) {
     b.onclick = function () { askCancel(Number(b.dataset.cancel)); };
   });
+}
+
+// Changing table: every other dine-in table in one sheet. A free one takes
+// the order as it is; an occupied one means joining the two into one order
+// and one bill, which gets its own confirm (the server refuses it otherwise).
+async function askMove() {
+  var from = openTable;
+  if (!from.order) return;
+  var d = await api('GET', '/api/tables');
+  if (openTable !== from || pane !== 'table') return;
+  var list = (d.tables || []).filter(function (t) { return t.kind === 'dine' && t.id !== from.id; });
+  var m = showModal(S.moveQ(from.name),
+    '<div class="hint" style="margin:0 0 12px">' + esc(S.moveHint) + '</div>' +
+    '<div class="mvgrid">' + list.map(function (t) {
+      return '<button class="tile-btn ' + (t.order ? 'cook' : 'free') + '" data-to="' + t.id + '">' +
+        '<span class="nm">' + esc(t.name) + '</span>' +
+        '<span class="sub">' + esc(t.order ? S.mergeTag(t.order.orderNo) : S.free) + '</span></button>';
+    }).join('') + '</div>',
+    [{ label: S.back, cls: 'ghost' }]);
+  m.querySelector('.mvgrid').addEventListener('click', function (e) {
+    var b = e.target.closest('button[data-to]');
+    var to = b && list.filter(function (t) { return t.id === Number(b.dataset.to); })[0];
+    if (to) confirmMove(from, to);
+  });
+}
+
+function confirmMove(from, to) {
+  var merge = !!to.order;
+  showModal(merge ? S.mergeQ(from.name, to.name) : from.name + ' → ' + to.name + '?',
+    '<div>' + esc(merge ? S.mergeBody(to.name, to.order.orderNo) : S.moveBody(from.order.orderNo, to.name)) + '</div>',
+    [{ label: S.back, cls: 'ghost' },
+     { label: merge ? S.mergeBtn : S.moveGo, cls: 'primary', act: async function () {
+        hideModal();
+        try {
+          var d = await api('POST', '/api/orders/' + from.order.id + '/move', { toTableId: to.id, merge: merge });
+          if (openTable !== from) return;
+          openTable = { id: d.tableId, name: d.tableName, kind: 'dine', order: d };
+          paintTable();
+          toast(merge ? S.mergedToast(d.tableName) : S.movedToast(d.tableName), 'ok');
+        } catch (e) { toast(e.message, 'bad'); refreshTable(true); }
+     } }]);
 }
 
 // Cancelling a line: a sheet (the app's ReasonDialog) with one-tap reasons

@@ -190,6 +190,11 @@ class Api(private val session: Session) {
     suspend fun closeOrder(orderId: Long): ApiResult<OkResp> =
         call("POST", "/api/orders/$orderId/close")
 
+    // The customers changed table: the whole order goes with them. Answers
+    // with the order as it now stands (on a join, the target table's order).
+    suspend fun moveOrder(orderId: Long, toTableId: Long, merge: Boolean): ApiResult<OrderDetailDto> =
+        call("POST", "/api/orders/$orderId/move", json.encodeToString(MoveReq(toTableId, merge)))
+
     // ---- cashier settlement ----
     // POST generates the bill or refreshes its subtotal against live items
     // (discount/payments already entered survive); PATCH edits it.

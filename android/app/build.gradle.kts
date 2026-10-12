@@ -65,4 +65,6 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
     implementation("com.journeyapps:zxing-android-embedded:4.3.0") // QR scanner on the connect screen
 
+    testImplementation("junit:junit:4.13.2") // plain JVM unit tests (src/test), e.g. data/QtyTest
+
 }

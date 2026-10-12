@@ -182,6 +182,37 @@ data class NewTicketLine(val menuItemId: Long, val qty: Long, val note: String =
 @Serializable
 data class MoveReq(val toTableId: Long, val merge: Boolean)
 
+// One raw material (cheese, paneer, pav…): in-house stock, nothing to do with
+// the dish-level "khatam" switch on MenuItemDto.available. Every quantity is
+// in THOUSANDTHS of the unit (see Qty.kt). `par` is what the shop wants in
+// hand for a day, `short` what is missing to reach it (0 when par is 0).
+@Serializable
+data class InventoryItemDto(
+    val id: Long, val name: String, val unit: String = "kg",
+    val qty: Long = 0, val par: Long = 0, val short: Long = 0,
+    val status: String = "ok", // "out" | "low" | "ok"
+    val active: Boolean = true, val sort: Int = 0,
+    val updatedAt: Long = 0, val updatedBy: String = "",
+    val usedToday: Long = 0, val receivedToday: Long = 0
+)
+
+@Serializable
+data class InventoryResp(
+    val items: List<InventoryItemDto> = emptyList(),
+    val units: List<String> = emptyList() // the server's pick list
+)
+
+// One line of an item's history. kind = "in" | "out" | "count"; delta is the
+// signed change, qtyAfter what was in hand once it was written.
+@Serializable
+data class InventoryMoveDto(
+    val id: Long, val kind: String = "", val delta: Long = 0, val qtyAfter: Long = 0,
+    val note: String = "", val by: String = "", val at: Long = 0, val bizDate: String = ""
+)
+
+@Serializable
+data class InventoryMovesResp(val moves: List<InventoryMoveDto> = emptyList())
+
 // What the shop server is holding for the phones. `url` is a path on that same
 // server — the phone never learns where the build originally came from.
 @Serializable

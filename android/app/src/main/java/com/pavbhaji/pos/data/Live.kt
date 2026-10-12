@@ -52,7 +52,7 @@ class Live(private val session: Session, private val api: Api) {
                         // never arrived as a push, so every open screen re-reads
                         // now — and its "no internet" error clears by itself
                         // instead of waiting for the next slow poll.
-                        listOf("tables", "kitchen", "menu").forEach { topics.tryEmit(it) }
+                        listOf("tables", "kitchen", "menu", "inventory").forEach { topics.tryEmit(it) }
                     }
                     override fun onMessage(webSocket: WebSocket, text: String) {
                         val t = try { json.decodeFromString<TopicMsg>(text).topic } catch (_: Exception) { "" }

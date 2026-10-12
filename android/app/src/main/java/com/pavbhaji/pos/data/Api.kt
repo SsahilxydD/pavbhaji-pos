@@ -214,6 +214,31 @@ class Api(private val session: Session) {
     suspend fun orderDetail(orderId: Long): ApiResult<OrderDetailDto> =
         call("GET", "/api/orders/$orderId")
 
+    // ---- inventory: raw materials (manager and admin only) ----
+    suspend fun inventory(): ApiResult<InventoryResp> = call("GET", "/api/inventory")
+
+    @Serializable
+    private data class InventoryNewReq(val name: String, val unit: String, val qty: Long, val par: Long)
+
+    suspend fun inventoryCreate(name: String, unit: String, qty: Long, par: Long): ApiResult<InventoryItemDto> =
+        call("POST", "/api/inventory", json.encodeToString(InventoryNewReq(name, unit, qty, par)))
+
+    // patch = only the fields that change: name, unit, par, active, sort.
+    suspend fun inventoryPatch(id: Long, patch: String): ApiResult<InventoryItemDto> =
+        call("PATCH", "/api/inventory/$id", patch)
+
+    @Serializable
+    private data class InventoryMoveReq(val kind: String, val qty: Long, val note: String = "")
+
+    // kind "in" adds qty, "out" takes it away (the server refuses more than
+    // is in hand), "count" sets the exact quantity. Never retried by itself:
+    // a repeat would add or use the same stock twice.
+    suspend fun inventoryMove(id: Long, kind: String, qty: Long, note: String = ""): ApiResult<InventoryItemDto> =
+        call("POST", "/api/inventory/$id/move", json.encodeToString(InventoryMoveReq(kind, qty, note)))
+
+    suspend fun inventoryMoves(id: Long, limit: Int = 30): ApiResult<InventoryMovesResp> =
+        call("GET", "/api/inventory/$id/moves?limit=$limit")
+
     // ---- admin ----
     @Serializable data class StaffResp(val staff: List<StaffDto> = emptyList())
     suspend fun staffList(): ApiResult<StaffResp> = call("GET", "/api/admin/staff")

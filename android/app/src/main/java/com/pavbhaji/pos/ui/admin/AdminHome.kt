@@ -46,13 +46,14 @@ import com.pavbhaji.pos.ui.CardLine
 import com.pavbhaji.pos.ui.GoodGreen
 import com.pavbhaji.pos.ui.S
 import com.pavbhaji.pos.ui.chef.KitchenScreen
+import com.pavbhaji.pos.ui.inventory.InventoryScreen
 import com.pavbhaji.pos.ui.rupees
 import com.pavbhaji.pos.ui.waiter.ManagerHome
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.io.File
 
-private enum class AdminScreen { Home, Floor, Kitchen, Menu, Staff, Tables, Bills, Report, Audit }
+private enum class AdminScreen { Home, Floor, Kitchen, Menu, Staff, Tables, Bills, Report, Audit, Inventory }
 
 @Composable
 fun AdminHome(onLogout: () -> Unit) {
@@ -68,11 +69,12 @@ fun AdminHome(onLogout: () -> Unit) {
         AdminScreen.Bills -> com.pavbhaji.pos.ui.cashier.BillsHistoryScreen(onLogout = null, onBack = home)
         AdminScreen.Report -> ReportScreen(onBack = home, onOpenLog = { screen = AdminScreen.Audit })
         AdminScreen.Audit -> AuditScreen(onBack = { screen = AdminScreen.Report })
+        AdminScreen.Inventory -> InventoryScreen(onBack = home)
         AdminScreen.Home -> Dashboard(onLogout = onLogout, onOpen = { screen = it })
     }
 }
 
-// The whole admin home: one number that matters, six doors, a quiet backup.
+// The whole admin home: one number that matters, eight doors, a quiet backup.
 @Composable
 private fun Dashboard(onLogout: () -> Unit, onOpen: (AdminScreen) -> Unit) {
     var rep by remember { mutableStateOf(ReportDto()) }
@@ -153,6 +155,7 @@ private fun Dashboard(onLogout: () -> Unit, onOpen: (AdminScreen) -> Unit) {
                 NavRow("🍽", S.navFloor) { onOpen(AdminScreen.Floor) }
                 NavRow("👨‍🍳", S.kitchenTitle) { onOpen(AdminScreen.Kitchen) }
                 NavRow("🎨", S.navMenu) { onOpen(AdminScreen.Menu) }
+                NavRow("📦", S.inventoryTitle) { onOpen(AdminScreen.Inventory) }
                 NavRow("🪑", S.tablesTitle) { onOpen(AdminScreen.Tables) }
                 NavRow("👥", S.navStaff) { onOpen(AdminScreen.Staff) }
                 NavRow("🧾", S.navBills) { onOpen(AdminScreen.Bills) }

@@ -49,6 +49,13 @@ fun serverErrText(msg: String): String {
         m.startsWith("session expired") || m == "not logged in" -> S.errSession
         m.startsWith("your role (") && m.endsWith("not allowed to do this") -> S.errRole
         m.startsWith("only the chef who took this bucket") -> S.errNotYourBucket
+        // Inventory (server/inventory.go). "only 2.5 kg of Cheese in hand":
+        // more was written as used than there is.
+        m.startsWith("only ") && m.endsWith(" in hand") && m.contains(" of ") ->
+            S.invOnlyInHand(m.removePrefix("only ").substringBefore(" of "))
+        m.endsWith(" is already in the inventory") -> S.invNameTaken(m.removeSuffix(" is already in the inventory"))
+        m.endsWith(" has been removed from the inventory") ->
+            S.invGone(m.removeSuffix(" has been removed from the inventory"))
         else -> msg
     }
 }
@@ -645,6 +652,12 @@ object S {
         "menu:category" -> t("menu category", "मेनू कैटेगरी", "મેનૂ કેટેગરી")
         "backup" -> t("backup", "बैकअप", "બેકઅપ")
         "seed" -> t("setup", "सेटअप", "સેટઅપ")
+        "inventory:added" -> t("stock item added", "नया माल जोड़ा", "નવો માલ ઉમેર્યો")
+        "inventory:edited" -> t("stock item edited", "माल बदला", "માલ બદલ્યો")
+        "inventory:removed" -> t("stock item removed", "माल हटाया", "માલ કાઢ્યો")
+        "inventory:in" -> t("stock in", "माल आया", "માલ આવ્યો")
+        "inventory:out" -> t("stock used", "माल यूज़ हुआ", "માલ વપરાયો")
+        "inventory:count" -> t("stock counted", "माल की गिनती", "માલની ગણતરી")
         else -> if (code.startsWith("item:")) statusLabel(code.removePrefix("item:")) else code
     }
 
@@ -677,6 +690,97 @@ object S {
     val allReadyPill get() = t("ALL READY ✓", "सब तैयार ✓", "બધું તૈયાર ✓")
     fun amountDue(amt: String) = t("$amt due", "$amt बाकी", "$amt બાકી")
     val sendParcel get() = t("Send parcel to kitchen 🍳", "पार्सल किचन में भेजो 🍳", "પાર્સલ રસોડામાં મોકલો 🍳")
+
+    // ---- inventory: raw materials in hand (not the dish "khatam" switch) ----
+    // Item names and units are the owner's data and stay as he typed them;
+    // numbers and units read the same in every language ("2.5 kg").
+    val inventoryTitle get() = t("Inventory", "इन्वेंटरी", "ઇન્વેન્ટરી")
+    val invSubtitle get() = t(
+        "Raw material: cheese, paneer, butter…",
+        "कच्चा माल: चीज़, पनीर, बटर…",
+        "કાચો માલ: ચીઝ, પનીર, બટર…"
+    )
+    val invAll get() = t("All stock", "सारा माल", "બધો માલ")
+    val invOrderTitle get() = t("Tomorrow's order", "कल का ऑर्डर", "કાલનો ઓર્ડર")
+    fun invOrderTab(n: Int) = "$invOrderTitle ($n)"
+    fun invItemsN(n: Int) = t("$n item" + if (n == 1) "" else "s", "$n चीज़ें", "$n વસ્તુઓ")
+    fun invLowN(n: Int) = t("$n low", "$n कम हैं", "$n ઓછી છે")
+    fun invOutN(n: Int) = t("$n out", "$n खत्म", "$n ખલાસ")
+    val invAllFull get() = t("All stock is full", "सब माल पूरा है", "બધો માલ પૂરો છે")
+    val invEmpty get() = t(
+        "No raw material added yet. Add cheese, paneer, pav… to see what is in hand and what to order for tomorrow.",
+        "अभी कोई कच्चा माल नहीं जोड़ा। चीज़, पनीर, पाव… जोड़ो, फिर दिखेगा कितना माल है और कल क्या मँगाना है।",
+        "હજી કોઈ કાચો માલ ઉમેર્યો નથી. ચીઝ, પનીર, પાવ… ઉમેરો, પછી દેખાશે કેટલો માલ છે અને કાલે શું મંગાવવાનું છે."
+    )
+    val invLow get() = t("LOW", "कम", "ઓછું")
+    val invOut get() = t("OUT", "खत्म", "ખલાસ")
+    val invOk get() = t("OK", "ठीक", "બરાબર")
+    fun invNeed(q: String) = t("Need $q", "चाहिए $q", "જોઈએ $q")
+    fun invOrderQ(q: String) = t("Order $q", "$q मँगाओ", "$q મંગાવો")
+    fun invNow(q: String) = t("now $q", "अभी $q", "હાલ $q")
+    fun invInHand(q: String) = t("In hand: $q", "अभी है: $q", "હાલ છે: $q")
+    fun invToday(inQ: String, outQ: String) = t(
+        "Today: $inQ in · $outQ used",
+        "आज: $inQ आया · $outQ यूज़ हुआ",
+        "આજે: $inQ આવ્યો · $outQ વપરાયું"
+    )
+    val invQty get() = t("How much", "कितना", "કેટલું")
+    val invStockIn get() = t("Stock in", "माल आया", "માલ આવ્યો")
+    val invUsed get() = t("Used", "यूज़ हुआ", "વપરાયું")
+    val invSetCount get() = t("Set count", "गिनती सेट करो", "ગણતરી સેટ કરો")
+    val invQtyFirst get() = t(
+        "Enter how much first (like 2.5)",
+        "पहले लिखो कितना (जैसे 2.5)",
+        "પહેલાં લખો કેટલું (જેમ કે 2.5)"
+    )
+    fun invOnlyInHand(q: String) = t(
+        "Only $q in hand — can't use more than that",
+        "अभी सिर्फ़ $q है — इससे ज़्यादा यूज़ नहीं हो सकता",
+        "હાલ ફક્ત $q છે — એનાથી વધારે વપરાય નહીં"
+    )
+    fun invNameTaken(name: String) = t(
+        "$name is already in the list",
+        "$name पहले से लिस्ट में है",
+        "$name પહેલેથી લિસ્ટમાં છે"
+    )
+    // Another phone removed the item while this one still showed it.
+    fun invGone(name: String) = t(
+        "$name was removed from the list",
+        "$name लिस्ट से हटा दिया गया है",
+        "$name લિસ્ટમાંથી કાઢી નાખ્યું છે"
+    )
+    // What TalkBack says for the − and + beside the quantity field.
+    val invLess get() = t("1 less", "1 कम", "1 ઓછું")
+    val invMore get() = t("1 more", "1 ज़्यादा", "1 વધારે")
+    val invAdd get() = t("Add item", "नया माल", "નવો માલ")
+    val invEdit get() = t("Edit", "बदलो", "બદલો")
+    val invHistory get() = t("History", "हिस्ट्री", "હિસ્ટ્રી")
+    val invShare get() = t("Share list", "लिस्ट भेजो", "લિસ્ટ મોકલો")
+    val invQuick get() = t("QUICK PICK", "जल्दी चुनो", "ઝડપથી પસંદ કરો")
+    val invNameEg get() = t("Name (e.g. Cheese)", "नाम (जैसे Cheese)", "નામ (જેમ કે Cheese)")
+    val invUnit get() = t("UNIT", "यूनिट", "યુનિટ")
+    val invQtyNow get() = t("In hand now", "अभी कितना है", "હાલ કેટલું છે")
+    val invPar get() = t("Needed daily", "रोज़ कितना चाहिए", "રોજ કેટલું જોઈએ")
+    val invParHint get() = t(
+        "When stock goes below the daily need, it shows in tomorrow's order. 0 = never.",
+        "माल रोज़ की ज़रूरत से कम हुआ तो कल के ऑर्डर में दिखेगा। 0 = कभी नहीं।",
+        "માલ રોજની જરૂરથી ઓછો થાય તો કાલના ઓર્ડરમાં દેખાશે. 0 = ક્યારેય નહીં."
+    )
+    val invNameNeeded get() = t("Write the name", "नाम लिखो", "નામ લખો")
+    val invRemove get() = t("Remove from list", "लिस्ट से हटाओ", "લિસ્ટમાંથી કાઢો")
+    fun invRemoveQ(name: String) = t("Remove $name?", "$name हटाएँ?", "$name કાઢવું છે?")
+    val invRemoveBody get() = t(
+        "It leaves the stock list and tomorrow's order. Its history stays.",
+        "यह माल की लिस्ट और कल के ऑर्डर से हट जाएगा। इसकी हिस्ट्री रहेगी।",
+        "આ માલની લિસ્ટ અને કાલના ઓર્ડરમાંથી નીકળી જશે. એની હિસ્ટ્રી રહેશે."
+    )
+    val invRemoveBtn get() = t("Remove", "हटाओ", "કાઢો")
+    fun invRemoved(name: String) = t("$name removed", "$name हटाया", "$name કાઢ્યું")
+    val invNoHistory get() = t("Nothing written yet", "अभी कुछ नहीं लिखा", "હજી કંઈ લખાયું નથી")
+    fun invMoveIn(q: String) = t("+$q in", "+$q आया", "+$q આવ્યો")
+    fun invMoveOut(q: String) = t("−$q used", "−$q यूज़ हुआ", "−$q વપરાયું")
+    fun invMoveCount(q: String) = t("count $q", "गिनती $q", "ગણતરી $q")
+    val invShareNothing get() = t("Nothing to order", "मँगाने को कुछ नहीं", "મંગાવવાનું કંઈ નથી")
 
     // ---- report / audit ----
     val logBtn get() = t("log", "लॉग", "લોગ")

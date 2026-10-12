@@ -13,12 +13,14 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.material3.Badge
 import androidx.compose.material3.BadgedBox
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationBarItemDefaults
@@ -36,7 +38,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -56,6 +61,8 @@ import com.pavbhaji.pos.ui.PbCard
 import com.pavbhaji.pos.ui.S
 import com.pavbhaji.pos.ui.WarnAmber
 import com.pavbhaji.pos.ui.ageMinutes
+import com.pavbhaji.pos.ui.inventory.InvTags
+import com.pavbhaji.pos.ui.inventory.InventoryScreen
 import com.pavbhaji.pos.ui.items as itemsLabel
 import com.pavbhaji.pos.ui.rupees
 import kotlinx.coroutines.delay
@@ -87,6 +94,10 @@ fun ManagerHome(onLogout: () -> Unit, onBack: (() -> Unit)? = null) {
     }
     LaunchedEffect(Unit) { while (true) { delay(20_000); countReady() } }
 
+    // Raw-material stock, opened from the 📦 in the Tables header. Back
+    // returns here (and from here to the admin home, when embedded).
+    var inventoryOpen by rememberSaveable { mutableStateOf(false) }
+
     val sel = selId
     if (sel != null) {
         // Keyed on the table: after a table change the screen starts over on
@@ -102,6 +113,10 @@ fun ManagerHome(onLogout: () -> Unit, onBack: (() -> Unit)? = null) {
         }
         return
     }
+    if (inventoryOpen) {
+        InventoryScreen(onBack = { inventoryOpen = false })
+        return
+    }
     // A manager on the Ready tab: Back goes to Tables first, like any
     // bottom-tab app, instead of closing the POS.
     if (onBack == null) BackHandler(enabled = tab == 1) { tab = 0 }
@@ -110,7 +125,8 @@ fun ManagerHome(onLogout: () -> Unit, onBack: (() -> Unit)? = null) {
             if (tab == 0) {
                 TablesScreen(
                     onOpenTable = { selName = it.name; selKind = it.kind; moveNote = null; selId = it.id },
-                    onLogout = onLogout, onBack = onBack
+                    onLogout = onLogout, onBack = onBack,
+                    onInventory = { inventoryOpen = true }
                 )
             } else {
                 ReadyScreen(onLogout = onLogout, showLogout = onBack == null, onBack = onBack)
@@ -145,11 +161,28 @@ fun ManagerHome(onLogout: () -> Unit, onBack: (() -> Unit)? = null) {
     }
 }
 
+// The way into raw-material stock from the Tables header. An icon, not a
+// word: Logout and the language switch already fill the bar at 360dp, and the
+// title must keep its room. TalkBack reads the screen's name.
+@Composable
+private fun InventoryAction(onClick: () -> Unit) {
+    val label = S.inventoryTitle
+    IconButton(
+        onClick = onClick,
+        modifier = Modifier.size(48.dp).testTag(InvTags.OPEN).semantics { contentDescription = label }
+    ) {
+        Text("📦", fontSize = 20.sp, modifier = Modifier.clearAndSetSemantics {})
+    }
+}
+
+// `onInventory`: only ManagerHome passes it. The cashier uses this screen too
+// and must not get a door the server would answer with 403.
 @Composable
 fun TablesScreen(
     onOpenTable: (TableStateDto) -> Unit,
     onLogout: () -> Unit,
-    onBack: (() -> Unit)?
+    onBack: (() -> Unit)?,
+    onInventory: (() -> Unit)? = null
 ) {
     var tables by remember { mutableStateOf<List<TableStateDto>>(emptyList()) }
     var loaded by remember { mutableStateOf(false) }
@@ -186,7 +219,10 @@ fun TablesScreen(
                     (if (parcelsOpen > 0) " · " + S.parcelsOpenN(parcelsOpen) else "") + " · $who"
             },
             onBack = onBack,
-            actions = { if (onBack == null) LogoutAction(onLogout) }
+            actions = {
+                if (onInventory != null) InventoryAction(onInventory)
+                if (onBack == null) LogoutAction(onLogout)
+            }
         )
         ErrorBanner(loadError)
         if (!loaded) {

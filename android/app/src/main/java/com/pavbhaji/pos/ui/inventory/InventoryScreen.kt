@@ -854,7 +854,9 @@ private fun MoveLine(m: InventoryMoveDto, unit: String) {
                 when (m.kind) {
                     "in" -> S.invMoveIn(qtyUnit(m.delta, unit))
                     "out" -> S.invMoveOut(qtyUnit(-m.delta, unit))
-                    else -> S.invMoveCount(qtyUnit(m.qtyAfter, unit))
+                    "count" -> S.invMoveCount(qtyUnit(m.qtyAfter, unit))
+                    // A kind a newer server writes: the plain signed change.
+                    else -> (if (m.delta < 0) "−" else "+") + qtyUnit(kotlin.math.abs(m.delta), unit)
                 },
                 fontSize = 15.sp, fontWeight = FontWeight.Bold,
                 color = when (m.kind) { "in" -> GoodGreen; "out" -> Pb.danger; else -> InkDark },

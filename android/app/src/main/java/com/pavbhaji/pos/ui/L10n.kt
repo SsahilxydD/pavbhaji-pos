@@ -763,8 +763,9 @@ object S {
     val invQuick get() = t("QUICK PICK", "जल्दी चुनो", "ઝડપથી પસંદ કરો")
     val invNameEg get() = t("Name (e.g. Cheese)", "नाम (जैसे Cheese)", "નામ (જેમ કે Cheese)")
     val invUnit get() = t("UNIT", "यूनिट", "યુનિટ")
-    val invQtyNow get() = t("In hand now", "अभी कितना है", "હાલ કેટલું છે")
-    val invPar get() = t("Needed daily", "रोज़ कितना चाहिए", "રોજ કેટલું જોઈએ")
+    // Short: the two boxes sit side by side in the Add form, half a dialog each.
+    val invQtyNow get() = t("In hand", "अभी है", "હાલ છે")
+    val invPar get() = t("Daily need", "रोज़ चाहिए", "રોજ જોઈએ")
     val invParHint get() = t(
         "When stock goes below the daily need, it shows in tomorrow's order. 0 = never.",
         "माल रोज़ की ज़रूरत से कम हुआ तो कल के ऑर्डर में दिखेगा। 0 = कभी नहीं।",

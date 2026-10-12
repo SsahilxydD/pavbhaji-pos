@@ -6,11 +6,11 @@ import android.content.Intent
 import android.view.HapticFeedbackConstants
 import android.widget.Toast
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -25,8 +25,11 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
@@ -51,6 +54,8 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
@@ -59,6 +64,7 @@ import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
@@ -633,7 +639,7 @@ private fun MoveDialog(
 // Add (item == null) and Edit share this form. Add also takes what is in hand
 // now and offers the quick picks; Edit sends only what changed and can remove
 // the item from the list (its history stays on the server).
-@OptIn(ExperimentalLayoutApi::class)
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun ItemFormDialog(
     item: InventoryItemDto?,
@@ -653,6 +659,11 @@ private fun ItemFormDialog(
     var busy by remember { mutableStateOf(false) }
     var askRemove by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
+    // The keyboard's Next key walks name -> in hand -> daily need.
+    val qtyFocus = remember { FocusRequester() }
+    val parFocus = remember { FocusRequester() }
+    // Lets the unit strip slide to the unit a quick pick has just set.
+    val unitInView = remember { mutableMapOf<String, BringIntoViewRequester>() }
 
     fun save() {
         if (busy) return
@@ -687,24 +698,39 @@ private fun ItemFormDialog(
         containerColor = MaterialTheme.colorScheme.surface,
         title = { Text(if (item == null) S.invAdd else S.invEdit, fontWeight = FontWeight.Bold) },
         text = {
+            // Kept short on purpose: the boxes and the Add button have to be on
+            // screen together, also on a small phone with the keyboard up. So
+            // each chip group is one line that slides sideways, and the two
+            // quantities share a line.
             Column(Modifier.verticalScroll(rememberScrollState())) {
                 OutlinedTextField(
                     value = name,
                     onValueChange = { name = it.take(40); dErr = null },
                     label = { Text(S.invNameEg) },
                     singleLine = true,
-                    keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
+                    keyboardOptions = KeyboardOptions(
+                        capitalization = KeyboardCapitalization.Sentences, imeAction = ImeAction.Next
+                    ),
+                    keyboardActions = KeyboardActions(
+                        onNext = { (if (item == null) qtyFocus else parFocus).requestFocus() }
+                    ),
                     modifier = Modifier.fillMaxWidth().testTag(InvTags.NAME)
                 )
                 if (item == null) {
                     val picks = QuickPicks.filter { p -> taken.none { it.trim().equals(p.first, ignoreCase = true) } }
                     if (picks.isNotEmpty()) {
                         SectionTitle(S.invQuick)
-                        FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Row(
+                            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
                             picks.forEach { (pickName, pickUnit) ->
                                 FilterChip(
                                     selected = name == pickName,
-                                    onClick = { name = pickName; unit = pickUnit; dErr = null },
+                                    onClick = {
+                                        name = pickName; unit = pickUnit; dErr = null
+                                        scope.launch { unitInView[pickUnit]?.bringIntoView() }
+                                    },
                                     label = { Text(pickName) },
                                     modifier = Modifier.testTag(InvTags.PICK + pickName)
                                 )
@@ -713,37 +739,57 @@ private fun ItemFormDialog(
                     }
                 }
                 SectionTitle(S.invUnit)
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    // An item keeps a unit that is no longer on the server's list.
-                    (units + unit).distinct().forEach { u ->
+                Row(
+                    Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    // The item's own unit leads, so the chosen one is on screen
+                    // when Edit opens; it also keeps a unit that is no longer
+                    // on the server's list.
+                    (listOfNotNull(item?.unit) + units + unit).distinct().forEach { u ->
                         FilterChip(
                             selected = unit == u,
                             onClick = { unit = u },
                             label = { Text(u) },
-                            modifier = Modifier.testTag(InvTags.UNIT + u)
+                            modifier = Modifier
+                                .bringIntoViewRequester(unitInView.getOrPut(u) { BringIntoViewRequester() })
+                                .testTag(InvTags.UNIT + u)
                         )
                     }
                 }
-                if (item == null) {
+                Row(
+                    Modifier.fillMaxWidth().padding(top = 10.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    if (item == null) {
+                        OutlinedTextField(
+                            value = qtyText,
+                            onValueChange = { qtyText = cleanQtyInput(it); dErr = null },
+                            label = { Text(S.invQtyNow) },
+                            suffix = { Text(unit) },
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(
+                                keyboardType = KeyboardType.Decimal, imeAction = ImeAction.Next
+                            ),
+                            keyboardActions = KeyboardActions(onNext = { parFocus.requestFocus() }),
+                            modifier = Modifier.weight(1f).focusRequester(qtyFocus).testTag(InvTags.NEW_QTY)
+                        )
+                    }
                     OutlinedTextField(
-                        value = qtyText,
-                        onValueChange = { qtyText = cleanQtyInput(it); dErr = null },
-                        label = { Text(S.invQtyNow) },
+                        value = parText,
+                        onValueChange = { parText = cleanQtyInput(it); dErr = null },
+                        label = { Text(S.invPar) },
                         suffix = { Text(unit) },
                         singleLine = true,
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                        modifier = Modifier.fillMaxWidth().padding(top = 10.dp).testTag(InvTags.NEW_QTY)
+                        keyboardOptions = KeyboardOptions(
+                            keyboardType = KeyboardType.Decimal, imeAction = ImeAction.Done
+                        ),
+                        modifier = Modifier.weight(1f).focusRequester(parFocus).testTag(InvTags.PAR)
                     )
                 }
-                OutlinedTextField(
-                    value = parText,
-                    onValueChange = { parText = cleanQtyInput(it); dErr = null },
-                    label = { Text(S.invPar) },
-                    suffix = { Text(unit) },
-                    supportingText = { Text(S.invParHint) },
-                    singleLine = true,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                    modifier = Modifier.fillMaxWidth().padding(top = 10.dp).testTag(InvTags.PAR)
+                Text(
+                    S.invParHint, fontSize = 12.sp, lineHeight = 16.sp, color = Pb.ink2,
+                    modifier = Modifier.padding(top = 6.dp)
                 )
                 dErr?.let {
                     Text(

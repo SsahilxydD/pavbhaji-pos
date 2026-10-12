@@ -312,6 +312,7 @@
 <div class="dirtybar" id="dirtyBar" hidden><span id="dirtyN"></span><button class="primary" onclick="saveAll()" id="saveAllBtn">Save all</button></div>
 <div id="toasts"></div>
 
+<script src="/inventory.js"></script>
 <script>
 'use strict';
 let token = '', me = null, tab = 'dashboard', dashTimer = null;
@@ -354,6 +355,7 @@ function strings() {
     logout: t('logout', 'बाहर निकलो', 'બહાર નીકળો'),
     tabs: {
       dashboard: t('Dashboard', 'डैशबोर्ड', 'ડેશબોર્ડ'), stock: t('Stock', 'स्टॉक', 'સ્ટોક'),
+      inventory: t('Inventory', 'इन्वेंटरी', 'ઇન્વેન્ટરી'),
       menu: t('Menu & colours', 'मेनू और रंग', 'મેનૂ અને રંગ'), staff: t('Staff & PINs', 'स्टाफ़ और PIN', 'સ્ટાફ અને PIN'),
       tables: t('Tables', 'टेबल', 'ટેબલ'), billing: t('Billing', 'बिलिंग', 'બિલિંગ'), bills: t('Bills', 'बिल', 'બિલ'),
       report: t('Day report', 'दिन की रिपोर्ट', 'દિવસનો રિપોર્ટ'), log: t('Audit log', 'ऑडिट लॉग', 'ઓડિટ લોગ'),
@@ -513,8 +515,10 @@ $('backupBtn').onclick = async () => {
   toast(S.backupDone, 'ok');
 };
 
+// (Stock is the dish-level khatam switch and keeps 📦; Inventory, the raw
+// material on the shelf, sits right after it under its own icon)
 const TABS = {
-  dashboard:'📊', stock:'📦', menu:'🎨', staff:'👥', tables:'🪑', billing:'🧾', bills:'💳', report:'📈', log:'📜'
+  dashboard:'📊', stock:'📦', inventory:'🧀', menu:'🎨', staff:'👥', tables:'🪑', billing:'🧾', bills:'💳', report:'📈', log:'📜'
 };
 
 // the language chip in the sidebar: re-words the whole page in place
@@ -539,11 +543,12 @@ function show(t) {
   if (tab === 'menu' && t !== 'menu' && dirtyRows().length && !confirm(S.leaveUnsaved(dirtyRows().length))) return;
   $('dirtyBar').hidden = true; document.body.classList.remove('dirty');
   tab = t; clearInterval(dashTimer);
+  if (window.PBInventory) PBInventory.unmount();   // its poll and live socket stop with the tab
   $('tabs').innerHTML = Object.entries(TABS).map(([k,ic]) =>
     `<button class="${k===tab?'on':''}" onclick="show('${k}')" ${k===tab?'aria-current="page"':''}><span class="ic">${ic}</span>${esc(S.tabs[k])}</button>`).join('');
   // on a phone the strip scrolls sideways: keep the page you're on in view
   $('tabs').querySelector('.on')?.scrollIntoView({ block:'nearest', inline:'center' });
-  ({dashboard, stock, menu, staff, tables, billing, bills, report, log})[t]();
+  ({dashboard, stock, inventory, menu, staff, tables, billing, bills, report, log})[t]();
 }
 
 // ---- dashboard ----
@@ -618,6 +623,16 @@ function paintStockRow(row) {
   row.classList.toggle('off', !on);
   row.querySelector('.state').textContent = on ? S.inStock : S.outOfStock;
   document.querySelector('.stockhd b').textContent = S.outCount(document.querySelectorAll('.stockrow.off').length);
+}
+
+// ---- inventory ----
+// Raw material (cheese, paneer, pav): what is in hand and what to order for
+// tomorrow. Not the Stock tab above, which switches a DISH off. The view is
+// /inventory.js, the same one the manager page opens; it gets this page's
+// api(), toast() and language, so it behaves like every other tab here.
+function inventory() {
+  if (!window.PBInventory) { $('view').innerHTML = `<p class="mut">${esc(S.noServer)}</p>`; return; }
+  PBInventory.mount({ el: $('view'), api, toast, lang: () => lang, token: () => token, heading: true });
 }
 
 // ---- menu ----

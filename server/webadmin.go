@@ -20,6 +20,9 @@ var webCashierHTML []byte
 //go:embed webshared.css
 var webSharedCSS []byte
 
+//go:embed webinventory.js
+var webInventoryJS []byte
+
 func servePage(w http.ResponseWriter, body []byte) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	// The shell is tiny and changes only on deploy; the staff's phones should
@@ -58,4 +61,13 @@ func (s *Server) handleWebCSS(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/css; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Write(webSharedCSS)
+}
+
+// GET /inventory.js — the raw-material inventory view, one copy loaded by
+// both the admin and the manager page. Like the pages it is public and holds
+// no data: every number it shows comes from the role-guarded /api/inventory.
+func (s *Server) handleWebInventoryJS(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/javascript; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Write(webInventoryJS)
 }

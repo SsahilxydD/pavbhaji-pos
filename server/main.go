@@ -146,6 +146,7 @@ func buildServer(port int, dataDir string) (*Server, *http.ServeMux, error) {
 	mux.HandleFunc("GET /manager", s.handleWebManager)
 	mux.HandleFunc("GET /cashier", s.handleWebCashier)
 	mux.HandleFunc("GET /pos.css", s.handleWebCSS)
+	mux.HandleFunc("GET /inventory.js", s.handleWebInventoryJS)
 	mux.HandleFunc("GET /qr.png", s.handleQR)
 	mux.HandleFunc("GET /api/ping", s.handlePing)
 	mux.HandleFunc("POST /api/login", s.handleLogin)

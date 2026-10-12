@@ -25,6 +25,7 @@
 <div id="bar"></div>
 <div id="toasts"></div>
 
+<script src="/inventory.js"></script>
 <script>
 'use strict';
 var TOK = 'pbpos.token', WHO = 'pbpos.staff';
@@ -458,6 +459,7 @@ function redraw() {
   paintTabs();
   if (pane === 'picker') { paintPickerText(); return; }
   if (pane === 'table') { paintTable(); return; }
+  if (pane === 'inventory') { paintInventory(); return; }
   setTop('🍽', S.title, me.name, null);
   if (tab === 'parcel') { paintParcelForm(); if (repaint) repaint().catch(function () {}); return; }
   if (repaint) repaint().catch(function () {});
@@ -469,6 +471,7 @@ $('tabs').addEventListener('click', function (e) {
 
 function show(t) {
   tab = t; clearInterval(timer); repaint = null; nav++; pane = '';
+  if (window.PBInventory) PBInventory.unmount();   // its poll and live socket stop when the screen is left
   openTable = null; newCart(); parcelMode = false;
   $('bar').className = ''; $('bar').innerHTML = '';
   $('tabs').hidden = false;
@@ -504,7 +507,7 @@ async function loadMenu() {
 async function tables() {
   var paint = async function () {
     var d = await api('GET', '/api/tables');
-    if (tab !== 'tables' || openTable) return;
+    if (tab !== 'tables' || openTable || pane === 'inventory') return;
     var list = (d.tables || []).filter(function (t) { return t.kind !== 'parcel'; });
     var parcels = (d.tables || []).filter(function (t) { return t.kind === 'parcel' && t.order; });
     // The room at a glance, in the header (the app's "9 of 24 occupied").
@@ -514,7 +517,7 @@ async function tables() {
     $('who').textContent = S.occupied(busy, list.length) + (ready ? ' · ' + S.readyN(ready) : '') + ' · ' + me.name;
     // Running parcels are few and time-critical: they go on top, not after
     // all 24 tables.
-    $('view').innerHTML =
+    $('view').innerHTML = invEntry() +
       (parcels.length ? '<h2>🥡 ' + esc(S.runningParcels) + '</h2><div class="grid">' + parcels.map(tableTile).join('') + '</div>' : '') +
       '<h2>' + esc(S.tabTables) + '</h2><div class="grid">' + list.map(tableTile).join('') + '</div>';
   };
@@ -563,9 +566,39 @@ function tableTile(t) {
 }
 
 $('view').addEventListener('click', function (e) {
+  if (e.target.closest('#invEntry')) { openInventory(); return; }
   var t = e.target.closest('button[data-table]');
   if (t) openTableView(Number(t.dataset.table), t.dataset.name, t.dataset.kind).catch(oops);
 });
+
+// ---------------------------------------------------------------- inventory
+// Raw material (cheese, paneer, pav): what is in hand, what to order for
+// tomorrow. Its door is the first thing on the tables screen, not a fourth
+// tab or a header button: at 390px the header already holds the title, the
+// language chip and logout. It opens full screen, and the header's ‹ is the
+// way back to the tables. The view is /inventory.js, the same one the admin
+// page shows as a tab; it gets this page's api(), toast() and language.
+function invEntry() {
+  if (!window.PBInventory) return '';
+  var w = PBInventory.words(lang);
+  return '<button class="inv-entry" id="invEntry"><span class="ic">📦</span>' +
+    '<span class="g"><b>' + esc(w.title) + '</b><small>' + esc(w.sub) + '</small></span>' +
+    '<span class="go">›</span></button>';
+}
+function paintInventory() {
+  var w = PBInventory.words(lang);
+  setTop('‹', '📦 ' + w.title, w.sub, function () { show('tables'); });
+  PBInventory.mount({ el: $('view'), api: api, toast: toast, heading: false,
+    lang: function () { return lang; }, token: function () { return token; } });
+}
+function openInventory() {
+  clearInterval(timer); nav++; pane = 'inventory'; openTable = null;
+  repaint = function () { return PBInventory.refresh(); };   // the net strip's "back online" refresh
+  $('tabs').hidden = true;
+  $('bar').className = ''; $('bar').innerHTML = '';
+  paintInventory();
+  window.scrollTo(0, 0);
+}
 
 // ------------------------------------------------------- one table's order
 // Load first, switch screens after: with no network the grid stays where it

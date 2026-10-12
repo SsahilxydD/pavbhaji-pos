@@ -200,6 +200,14 @@ func buildServer(port int, dataDir string) (*Server, *http.ServeMux, error) {
 	mux.HandleFunc("POST /api/items/{id}/status", s.requireRole("*", s.handleItemStatus))
 	mux.HandleFunc("POST /api/items/{id}/cancel", s.requireRole("manager admin parcel", s.handleItemCancel))
 
+	// Raw-material inventory (cheese, paneer, pav): the floor's job — manager
+	// and admin. Not the Stock tab, which is the dish-level khatam switch.
+	mux.HandleFunc("GET /api/inventory", s.requireRole("manager admin", s.handleInventoryList))
+	mux.HandleFunc("POST /api/inventory", s.requireRole("manager admin", s.handleInventoryCreate))
+	mux.HandleFunc("PATCH /api/inventory/{id}", s.requireRole("manager admin", s.handleInventoryPatch))
+	mux.HandleFunc("POST /api/inventory/{id}/move", s.requireRole("manager admin", s.handleInventoryMove))
+	mux.HandleFunc("GET /api/inventory/{id}/moves", s.requireRole("manager admin", s.handleInventoryMoves))
+
 	// Admin only
 	mux.HandleFunc("POST /api/admin/categories", s.requireRole("admin", s.handleCategoryCreate))
 	mux.HandleFunc("PATCH /api/admin/categories/{id}", s.requireRole("admin", s.handleCategoryPatch))

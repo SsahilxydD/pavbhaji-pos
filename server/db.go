@@ -160,6 +160,38 @@ CREATE TABLE IF NOT EXISTS events (
   detail TEXT NOT NULL DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS events_by_at ON events(at);
+
+-- Raw-material inventory ("in-house stock": cheese, paneer, pav). Separate
+-- from the dish-level khatam switch (menu_items.available): nothing here is
+-- deducted by sales, the counts are entered by hand. Quantities are integers
+-- in THOUSANDTHS of the unit (2.5 kg = 2500), the way money is paise.
+-- par = what the shop wants in hand for a day; 0 = no order level set.
+CREATE TABLE IF NOT EXISTS inventory_items (
+  id INTEGER PRIMARY KEY,
+  name TEXT NOT NULL,
+  unit TEXT NOT NULL DEFAULT 'kg',
+  qty INTEGER NOT NULL DEFAULT 0,
+  par INTEGER NOT NULL DEFAULT 0,
+  active INTEGER NOT NULL DEFAULT 1,
+  sort INTEGER NOT NULL DEFAULT 0,
+  updated_at INTEGER NOT NULL,
+  updated_by INTEGER
+);
+
+-- One row per stock move, never edited: in = maal aaya, out = use hua,
+-- count = ginti (the quantity was set after counting).
+CREATE TABLE IF NOT EXISTS inventory_moves (
+  id INTEGER PRIMARY KEY,
+  item_id INTEGER NOT NULL REFERENCES inventory_items(id),
+  biz_date TEXT NOT NULL,
+  kind TEXT NOT NULL CHECK(kind IN ('in','out','count')),
+  delta INTEGER NOT NULL,       -- signed change, thousandths
+  qty_after INTEGER NOT NULL,
+  note TEXT NOT NULL DEFAULT '',
+  by_staff INTEGER NOT NULL REFERENCES staff(id),
+  at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS inventory_moves_by_item ON inventory_moves(item_id, at);
 `
 
 func openDB(path string) *sql.DB {

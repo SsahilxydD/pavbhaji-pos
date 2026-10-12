@@ -695,16 +695,20 @@ object S {
     // Item names and units are the owner's data and stay as he typed them;
     // numbers and units read the same in every language ("2.5 kg").
     val inventoryTitle get() = t("Inventory", "इन्वेंटरी", "ઇન્વેન્ટરી")
-    val invSubtitle get() = t(
-        "Raw material: cheese, paneer, butter…",
-        "कच्चा माल: चीज़, पनीर, बटर…",
-        "કાચો માલ: ચીઝ, પનીર, બટર…"
+    // Short: it shares the header with "＋ Add item" at 360dp.
+    val invSubtitle get() = t("Raw materials", "कच्चा माल", "કાચો માલ")
+    // The manager's door on the Tables screen, until the counts have arrived.
+    val invEntryHint get() = t(
+        "Raw materials: cheese, paneer, pav…",
+        "कच्चा माल: चीज़, पनीर, पाव…",
+        "કાચો માલ: ચીઝ, પનીર, પાવ…"
     )
     val invAll get() = t("All stock", "सारा माल", "બધો માલ")
     val invOrderTitle get() = t("Tomorrow's order", "कल का ऑर्डर", "કાલનો ઓર્ડર")
     fun invOrderTab(n: Int) = "$invOrderTitle ($n)"
-    fun invItemsN(n: Int) = t("$n item" + if (n == 1) "" else "s", "$n चीज़ें", "$n વસ્તુઓ")
-    fun invLowN(n: Int) = t("$n low", "$n कम हैं", "$n ઓછી છે")
+    // "आइटम", not "चीज़ें": next to an item called Cheese (चीज़) that reads wrong.
+    fun invItemsN(n: Int) = t("$n item" + if (n == 1) "" else "s", "$n आइटम", "$n આઇટમ")
+    fun invLowN(n: Int) = t("$n low", "$n कम है", "$n ઓછું છે")
     fun invOutN(n: Int) = t("$n out", "$n खत्म", "$n ખલાસ")
     val invAllFull get() = t("All stock is full", "सब माल पूरा है", "બધો માલ પૂરો છે")
     val invEmpty get() = t(

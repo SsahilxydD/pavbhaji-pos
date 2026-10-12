@@ -55,6 +55,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -103,13 +104,13 @@ import kotlinx.serialization.json.put
 // else, and no other role is given a way in.
 //
 // One screen for both: AdminHome opens it from a tile, ManagerHome from the
-// 📦 in the Tables header. Counts are manual (stock in / used / set count);
+// row above its tables. Counts are manual (stock in / used / set count);
 // nothing is deducted from sales.
 
 // The visible words change with the language; these handles never do. UI
 // tests find the controls by them.
 object InvTags {
-    const val OPEN = "inv-open"             // the 📦 in the Tables header
+    const val OPEN = "inv-open"             // the manager's row above the tables
     const val ADD = "inv-add"               // header "＋ Add item"
     const val ADD_FIRST = "inv-add-first"   // the big button on the empty list
     const val TAB_ALL = "inv-tab-all"
@@ -347,6 +348,63 @@ fun InventoryScreen(onBack: () -> Unit) {
             onRemoved = {},
             onDismiss = { addOpen = false }
         )
+    }
+}
+
+// What the manager's door on the Tables screen says before it is opened.
+class InventoryGlance(val items: Int, val out: Int, val low: Int)
+
+// null until the first answer, and for as long as the server cannot be
+// reached: the door opens either way, it just says less.
+@Composable
+fun rememberInventoryGlance(): InventoryGlance? {
+    var glance by remember { mutableStateOf<InventoryGlance?>(null) }
+    LaunchedEffect(Unit) {
+        suspend fun load() {
+            val r = Deps.api.inventory()
+            if (r is ApiResult.Ok) {
+                val items = r.value.items
+                glance = InventoryGlance(items.size, items.count { it.status == "out" }, items.count { it.status == "low" })
+            }
+        }
+        load()
+        Deps.live.topics.collect { if (it == "inventory") load() }
+    }
+    return glance
+}
+
+// The manager's door: one row above the tables that already answers "is
+// anything short?", so the common case needs no tap. Red when something has
+// run out, amber when something is low, green when every level is met.
+@Composable
+fun InventoryEntry(glance: InventoryGlance?, onClick: () -> Unit) {
+    val line: String
+    val fg: Color
+    when {
+        glance == null || glance.items == 0 -> { line = S.invEntryHint; fg = Pb.ink2 }
+        glance.out > 0 -> {
+            line = listOfNotNull(S.invOutN(glance.out), if (glance.low > 0) S.invLowN(glance.low) else null)
+                .joinToString(" · ")
+            fg = Pb.danger
+        }
+        glance.low > 0 -> { line = S.invLowN(glance.low); fg = WarnAmber }
+        else -> { line = S.invAllFull; fg = GoodGreen }
+    }
+    PbCard(onClick = onClick, corner = 14.dp, modifier = Modifier.fillMaxWidth().testTag(InvTags.OPEN)) {
+        Row(
+            Modifier.heightIn(min = 56.dp).padding(horizontal = 14.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text("📦", fontSize = 22.sp, modifier = Modifier.clearAndSetSemantics {})
+            Column(Modifier.weight(1f).padding(start = 12.dp, end = 8.dp)) {
+                Text(S.inventoryTitle, fontSize = 15.sp, fontWeight = FontWeight.Bold, color = InkDark)
+                Text(line, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, color = fg, lineHeight = 17.sp)
+            }
+            Text(
+                "›", fontSize = 22.sp, fontWeight = FontWeight.Bold, color = Pb.ink3,
+                modifier = Modifier.clearAndSetSemantics {}
+            )
+        }
     }
 }
 

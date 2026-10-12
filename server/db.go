@@ -184,7 +184,7 @@ CREATE TABLE IF NOT EXISTS inventory_moves (
   id INTEGER PRIMARY KEY,
   item_id INTEGER NOT NULL REFERENCES inventory_items(id),
   biz_date TEXT NOT NULL,
-  kind TEXT NOT NULL CHECK(kind IN ('in','out','count')),
+  kind TEXT NOT NULL,           -- in | out | count; checked by the handler, so a new kind needs no table rebuild
   delta INTEGER NOT NULL,       -- signed change, thousandths
   qty_after INTEGER NOT NULL,
   note TEXT NOT NULL DEFAULT '',

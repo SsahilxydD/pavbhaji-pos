@@ -645,9 +645,9 @@ function shareText() {
     return i.name + ': ' + qty(i.short, i.unit);
   })).join('\n');
 }
-// The shop reaches this page over plain http on its WiFi, where the browser
-// offers neither navigator.share nor navigator.clipboard: the old
-// select-and-copy still works there.
+// A browser that offers neither navigator.share nor navigator.clipboard (an
+// old WebView, or the page opened over plain http): the old select-and-copy
+// still works there.
 function copyOld(text) {
   var ta = document.createElement('textarea');
   ta.value = text; ta.setAttribute('readonly', '');

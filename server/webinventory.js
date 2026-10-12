@@ -100,16 +100,21 @@ var CSS = [
   '.inv-hrow b{display:block;font-size:14.5px}',
   '.inv-hrow small{display:block;color:var(--ink2);font-size:12.5px;overflow-wrap:anywhere}',
   '.inv-hrow .a{flex:0 0 auto;font-weight:800;font-size:14px;white-space:nowrap;font-variant-numeric:tabular-nums}',
-  /* the door on the manager's tables screen */
-  '.inv-entry{display:flex;align-items:center;gap:11px;width:100%;text-align:left;font:inherit;color:var(--ink);cursor:pointer;',
-  '  min-height:58px;padding:9px 14px;margin-bottom:4px;background:var(--card);border:1px solid var(--line);',
+  /* the door on the manager's tables screen: one row, the state of the shelf on its right */
+  '.inv-entry{display:flex;align-items:center;gap:10px;width:100%;text-align:left;font:inherit;color:var(--ink);cursor:pointer;',
+  '  min-height:50px;padding:6px 14px;margin-bottom:4px;background:var(--card);border:1px solid var(--line);',
   '  border-radius:var(--r);box-shadow:var(--shadow)}',
   '.inv-entry:active{border-color:var(--red)}',
-  '.inv-entry .ic{flex:0 0 auto;font-size:24px}',
-  '.inv-entry .g{flex:1;min-width:0}',
-  '.inv-entry b{display:block;font-size:15.5px}',
-  '.inv-entry small{display:block;font-size:12.5px;color:var(--ink2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
-  '.inv-entry .go{flex:0 0 auto;font-size:22px;color:var(--ink3)}'
+  '.inv-entry .ic{flex:0 0 auto;font-size:22px;line-height:1}',
+  '.inv-entry b{flex:0 0 auto;font-size:15.5px}',
+  '.inv-entry .sub{flex:1;min-width:0;font-size:12.5px;font-weight:500;color:var(--ink2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}',
+  '.inv-entry.st .sub{display:none}',
+  '.inv-entry .es{flex:0 0 auto;margin-left:auto;font-size:12.5px;font-weight:800;white-space:nowrap;padding:5px 11px;border-radius:99px}',
+  '.inv-entry .es:empty{display:none}',
+  '.inv-entry .es.ok{padding:5px 0;font-weight:700;color:var(--green)}',
+  '.inv-entry .es.low{background:var(--amber-bg);color:var(--amber)}',
+  '.inv-entry .es.out{background:var(--danger-bg);color:var(--danger)}',
+  '.inv-entry .go{flex:0 0 auto;font-size:22px;line-height:1;color:var(--ink3)}'
 ].join('\n');
 var st = document.createElement('style');
 st.id = 'inv-css';
@@ -124,12 +129,14 @@ var QUICK = [['Cheese', 'kg'], ['Paneer', 'kg'], ['Butter', 'kg'], ['Pav', 'ladi
 var UNITS = ['kg', 'g', 'L', 'ml', 'pcs', 'packet', 'ladi', 'dozen', 'box', 'bottle', 'tin'];
 var MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
-var host = null;            // { el, api, toast, lang(), token(), heading }
+var host = null;            // { el, api, toast, lang(), heading }
 var items = [], units = UNITS, loaded = false, failed = '';
 var seg = 'all';            // 'all' | 'order'
 var gen = 0;                // bumped on mount/unmount: a late answer for an old screen is dropped
-var timer = null, ws = null, wsRetry = null, soon = null;
-var stale = false;          // a background change arrived while a sheet was open
+var timer = null;
+var lastAt = 0;             // when the list was last asked for (the door's poll counts from it)
+var doorLang = 'hg';
+var stale = false;          // a background refresh was skipped while a sheet was open
 var dlg = null, sending = false;
 var S = {};
 
@@ -142,11 +149,22 @@ function words(lang) {
     sub: t('Kaccha maal: cheese, paneer, butter…', 'कच्चा माल: चीज़, पनीर, बटर…', 'કાચો માલ: ચીઝ, પનીર, બટર…'),
     segAll: t('Sab maal', 'सब माल', 'બધો માલ'),
     segOrder: function (n) { return t('Kal ka order', 'कल का ऑर्डर', 'કાલનો ઓર્ડર') + ' (' + n + ')'; },
+    // "items", not "cheezein": चीज़ (a thing) reads as cheese next to an item called Cheese
     summary: function (n, low) {
-      var a = t(n + (n === 1 ? ' cheez' : ' cheezein'), n + (n === 1 ? ' चीज़' : ' चीज़ें'), n + (n === 1 ? ' વસ્તુ' : ' વસ્તુઓ'));
-      var b = low ? t(low + ' kam hai', low + ' कम हैं', low + ' ઓછી છે') : t('sab poora hai', 'सब पूरा है', 'બધું પૂરું છે');
+      var a = t(n + (n === 1 ? ' item' : ' items'), n + ' आइटम', n + ' આઇટમ');
+      var b = low ? t(low + ' kam hai', low + ' कम है', low + ' ઓછું છે') : t('sab poora hai', 'सब पूरा है', 'બધું પૂરું છે');
       return a + ' · ' + b;
     },
+    // the door on the manager's tables screen
+    doorLow: function (n) { return t(n + ' kam hai', n + ' कम है', n + ' ઓછું છે'); },
+    doorOut: function (o, l) {
+      return t(o + ' khatam', o + ' खत्म', o + ' ખતમ') + (l ? ' · ' + t(l + ' kam', l + ' कम', l + ' ઓછું') : '');
+    },
+    doorOk: t('sab poora', 'सब पूरा', 'બધું પૂરું'),
+    // the server's three refusals, said in this page's language
+    onlyHave: function (q) { return t('Sirf ' + q + ' hai', 'सिर्फ़ ' + q + ' है', 'ફક્ત ' + q + ' છે'); },
+    dupName: function (n) { return t(n + ' pehle se list me hai', n + ' पहले से लिस्ट में है', n + ' પહેલેથી લિસ્ટમાં છે'); },
+    goneItem: function (n) { return t(n + ' list se hata diya gaya hai', n + ' लिस्ट से हटा दिया गया है', n + ' લિસ્ટમાંથી હટાવી દેવાયું છે'); },
     add: t('＋ Naya maal', '＋ नया माल', '＋ નવો માલ'),
     addT: t('Naya maal', 'नया माल', 'નવો માલ'),
     need: function (q) { return t('Chahiye ' + q, 'चाहिए ' + q, 'જોઈએ ' + q); },
@@ -273,6 +291,7 @@ function render() {
 async function load(quiet) {
   if (!host) return;
   var my = gen;
+  lastAt = Date.now();
   try {
     var d = await host.api('GET', '/api/inventory');
     if (my !== gen) return;
@@ -290,41 +309,78 @@ async function load(quiet) {
 // list is redrawn whole; a redraw mid-typing is the trap the other screens
 // already fell into). It is remembered and runs when the sheet closes.
 function busy() {
-  if (dlg) return true;
-  var a = document.activeElement;
+  if (dlg || document.querySelector('.modal')) return true;
+  var a = document.activeElement;     // (not SELECT: the language chip keeps focus after a pick)
   return !!a && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA');
 }
+// A change made on another device arrives with the 20s poll. Neither page
+// holds a /ws connection, and this view does not open one: the hub counts
+// every socket as a phone, so a browser on this screen would make the
+// dashboard's "phones online" read one too many.
 function background() {
   if (!host) return;
   if (document.hidden || busy()) { stale = true; return; }
   load(true);
 }
-function backgroundSoon() {       // a burst of live messages is one refresh
-  clearTimeout(soon);
-  soon = setTimeout(background, 200);
-}
 function onVisible() { if (!document.hidden && stale && !busy()) load(true); }
 
-// The server says {"topic":"inventory"} on /ws after every change, from
-// any device. The 20s poll under it covers a socket that died quietly.
-function live() {
-  if (!host || !window.WebSocket) return;
-  var my = gen, sock;
-  try {
-    sock = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host +
-      '/ws?token=' + encodeURIComponent(host.token()));
-  } catch (e) { return; }
-  ws = sock;
-  sock.onmessage = function (ev) {
-    var m = null;
-    try { m = JSON.parse(ev.data); } catch (e) { return; }
-    if (my === gen && m && m.topic === 'inventory') backgroundSoon();
-  };
-  sock.onclose = function () {
-    if (my !== gen) return;
-    ws = null;
-    wsRetry = setTimeout(live, 5000);
-  };
+// ---------------------------------------------------------------- the door
+// The manager's tables screen shows one row that opens this view, with the
+// state of the shelf on its right: red when something is khatam, amber when
+// something is under its order level, a quiet green when all is there, and
+// nothing while the list is empty. It is drawn from the copy held here, so
+// it is right the moment the manager comes back from the view.
+function doorState() {
+  if (!loaded || !items.length) return null;
+  var out = 0, low = 0;
+  items.forEach(function (i) { if (i.status === 'out') out++; else if (i.status === 'low') low++; });
+  if (out) return { k: 'out', text: S.doorOut(out, low) };
+  if (low) return { k: 'low', text: S.doorLow(low) };
+  return { k: 'ok', text: S.doorOk };
+}
+function entry(lang) {
+  doorLang = lang;
+  S = words(lang);
+  var s = doorState();
+  return '<button type="button" class="inv-entry' + (s ? ' st' : '') + '" id="invEntry"><span class="ic">📦</span>' +
+    '<b>' + esc(S.title) + '</b><span class="sub">' + esc(S.sub) + '</span>' +
+    '<span class="es' + (s ? ' ' + s.k : '') + '" id="invEntrySt">' + esc(s ? s.text : '') + '</span>' +
+    '<span class="go">›</span></button>';
+}
+// In place, never a new button: a repaint between finger down and finger up
+// would swallow the tap.
+function paintDoor() {
+  var b = document.getElementById('invEntry'), e = document.getElementById('invEntrySt');
+  if (!b || !e) return;
+  S = words(doorLang);
+  var s = doorState();
+  b.className = 'inv-entry' + (s ? ' st' : '');
+  e.className = 'es' + (s ? ' ' + s.k : '');
+  e.textContent = s ? s.text : '';
+}
+// The tables screen calls this on each of its own repaints (every 10s); the
+// list is asked for at most every 20s, and not under a dialog, in a field,
+// or in a hidden tab. A miss keeps what the door says.
+async function peek(api) {
+  if (host || document.hidden || busy() || Date.now() - lastAt < 15000) return;
+  lastAt = Date.now();
+  var d;
+  try { d = await api('GET', '/api/inventory'); } catch (e) { return; }
+  if (host) return;           // the view opened meanwhile and reads for itself
+  items = d.items || [];
+  if (d.units && d.units.length) units = d.units;
+  loaded = true; failed = '';
+  paintDoor();
+}
+
+// The server refuses in English. Its three inventory refusals are said in
+// the page's language; anything else is shown as it was sent.
+function refusal(msg) {
+  var s = String(msg || ''), m;
+  if ((m = /^only (.+?) of .+ in hand$/.exec(s))) return S.onlyHave(m[1]);
+  if ((m = /^(.+) is already in the inventory$/.exec(s))) return S.dupName(m[1]);
+  if ((m = /^(.+) has been removed from the inventory$/.exec(s))) return S.goneItem(m[1]);
+  return s;
 }
 
 // ---------------------------------------------------------------- sheets
@@ -419,6 +475,9 @@ async function move(it, kind) {
   var v = parseQty(raw);
   if (v === null) { showErr(S.badQty); return; }
   if (kind !== 'count' && v === 0) { showErr(S.needQty); return; }
+  // Using more than is in hand: the server would refuse it, so say it at once.
+  var cur = byId(it.id) || it;
+  if (kind === 'out' && v > cur.qty) { showErr(S.onlyHave(qty(cur.qty, cur.unit))); return; }
   var my = gen;
   lock(true);
   try {
@@ -431,7 +490,8 @@ async function move(it, kind) {
   } catch (e) {
     if (my !== gen) return;
     lock(false);
-    showErr(e.message);       // the server's own words, as on the rest of the page
+    stale = true;             // a refusal means our copy is old: read again when the sheet closes
+    showErr(refusal(e.message));
   }
 }
 
@@ -457,7 +517,7 @@ function openEdit(id) {
     } catch (e) {
       if (my !== gen) return;
       lock(false);
-      showErr(e.message);
+      showErr(refusal(e.message));
     }
   };
   sheet(S.editT(it.name),
@@ -499,7 +559,7 @@ function askRemove(id) {
     } catch (e) {
       if (my !== gen) return;
       lock(false);
-      showErr(e.message);
+      showErr(refusal(e.message));
     }
   };
 }
@@ -550,7 +610,7 @@ function openAdd() {
     } catch (e) {
       if (my !== gen) return;
       lock(false);
-      showErr(e.message);
+      showErr(refusal(e.message));
     }
   };
   sheet(S.addT,
@@ -629,8 +689,7 @@ function unmount() {
   host.el.removeEventListener('click', onClick);
   document.removeEventListener('keydown', onKey, true);
   document.removeEventListener('visibilitychange', onVisible);
-  clearInterval(timer); clearTimeout(wsRetry); clearTimeout(soon);
-  if (ws) { ws.onclose = null; try { ws.close(); } catch (e) {} ws = null; }
+  clearInterval(timer);
   if (dlg) { dlg.remove(); dlg = null; }
   sending = false;
   host = null;
@@ -645,13 +704,14 @@ function mount(h) {
   render();
   load(false);
   timer = setInterval(background, 20000);
-  live();
 }
 
 window.PBInventory = {
   mount: mount,
   unmount: unmount,
   refresh: function () { return load(true); },
+  entry: entry,
+  peek: peek,
   words: function (lang) { var w = words(lang); return { title: w.title, sub: w.sub }; }
 };
 })();

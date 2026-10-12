@@ -543,7 +543,7 @@ function show(t) {
   if (tab === 'menu' && t !== 'menu' && dirtyRows().length && !confirm(S.leaveUnsaved(dirtyRows().length))) return;
   $('dirtyBar').hidden = true; document.body.classList.remove('dirty');
   tab = t; clearInterval(dashTimer);
-  if (window.PBInventory) PBInventory.unmount();   // its poll and live socket stop with the tab
+  if (window.PBInventory) PBInventory.unmount();   // its poll stops with the tab
   $('tabs').innerHTML = Object.entries(TABS).map(([k,ic]) =>
     `<button class="${k===tab?'on':''}" onclick="show('${k}')" ${k===tab?'aria-current="page"':''}><span class="ic">${ic}</span>${esc(S.tabs[k])}</button>`).join('');
   // on a phone the strip scrolls sideways: keep the page you're on in view
@@ -632,7 +632,7 @@ function paintStockRow(row) {
 // api(), toast() and language, so it behaves like every other tab here.
 function inventory() {
   if (!window.PBInventory) { $('view').innerHTML = `<p class="mut">${esc(S.noServer)}</p>`; return; }
-  PBInventory.mount({ el: $('view'), api, toast, lang: () => lang, token: () => token, heading: true });
+  PBInventory.mount({ el: $('view'), api, toast, lang: () => lang, heading: true });
 }
 
 // ---- menu ----

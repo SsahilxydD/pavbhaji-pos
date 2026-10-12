@@ -471,7 +471,7 @@ $('tabs').addEventListener('click', function (e) {
 
 function show(t) {
   tab = t; clearInterval(timer); repaint = null; nav++; pane = '';
-  if (window.PBInventory) PBInventory.unmount();   // its poll and live socket stop when the screen is left
+  if (window.PBInventory) PBInventory.unmount();   // its poll stops when the screen is left
   openTable = null; newCart(); parcelMode = false;
   $('bar').className = ''; $('bar').innerHTML = '';
   $('tabs').hidden = false;
@@ -520,6 +520,7 @@ async function tables() {
     $('view').innerHTML = invEntry() +
       (parcels.length ? '<h2>🥡 ' + esc(S.runningParcels) + '</h2><div class="grid">' + parcels.map(tableTile).join('') + '</div>' : '') +
       '<h2>' + esc(S.tabTables) + '</h2><div class="grid">' + list.map(tableTile).join('') + '</div>';
+    if (window.PBInventory) PBInventory.peek(api);
   };
   var my = nav;
   repaint = paint;
@@ -578,18 +579,17 @@ $('view').addEventListener('click', function (e) {
 // language chip and logout. It opens full screen, and the header's ‹ is the
 // way back to the tables. The view is /inventory.js, the same one the admin
 // page shows as a tab; it gets this page's api(), toast() and language.
+// The door is one row and says how the shelf stands ("2 kam hai", "1 khatam
+// · 2 kam", "sab poora"). The tables repaint (every 10s) redraws it from the
+// copy /inventory.js holds, and peek() re-reads that copy every 20s.
 function invEntry() {
-  if (!window.PBInventory) return '';
-  var w = PBInventory.words(lang);
-  return '<button class="inv-entry" id="invEntry"><span class="ic">📦</span>' +
-    '<span class="g"><b>' + esc(w.title) + '</b><small>' + esc(w.sub) + '</small></span>' +
-    '<span class="go">›</span></button>';
+  return window.PBInventory ? PBInventory.entry(lang) : '';
 }
 function paintInventory() {
   var w = PBInventory.words(lang);
   setTop('‹', '📦 ' + w.title, w.sub, function () { show('tables'); });
   PBInventory.mount({ el: $('view'), api: api, toast: toast, heading: false,
-    lang: function () { return lang; }, token: function () { return token; } });
+    lang: function () { return lang; } });
 }
 function openInventory() {
   clearInterval(timer); nav++; pane = 'inventory'; openTable = null;

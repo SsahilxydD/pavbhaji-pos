@@ -13,13 +13,22 @@ import (
 // to every connected phone. Phones then refetch whatever screen they're on.
 // Refetch-on-nudge is deliberately dumb: there is no delta-application logic
 // to get out of sync, and at one-restaurant scale the refetches are trivial.
+//
+// gorilla allows exactly one writer per connection, so each phone gets its own
+// writer goroutine that owns every data frame and ping; Broadcast only drops
+// the message into that phone's queue and never waits on a slow socket.
 type Hub struct {
 	mu    sync.Mutex
-	conns map[*websocket.Conn]bool
+	conns map[*wsClient]bool
+}
+
+type wsClient struct {
+	conn *websocket.Conn
+	send chan []byte
 }
 
 func newHub() *Hub {
-	return &Hub{conns: map[*websocket.Conn]bool{}}
+	return &Hub{conns: map[*wsClient]bool{}}
 }
 
 func (h *Hub) Count() int {
@@ -34,10 +43,51 @@ func (h *Hub) Broadcast(topics ...string) {
 	for _, topic := range topics {
 		msg := []byte(`{"topic":"` + topic + `"}`)
 		for c := range h.conns {
-			c.SetWriteDeadline(time.Now().Add(5 * time.Second))
-			if err := c.WriteMessage(websocket.TextMessage, msg); err != nil {
-				c.Close()
+			select {
+			case c.send <- msg:
+			default:
+				// A phone that let 16 nudges pile up is gone in all but name.
+				// Cut it loose; its read loop ends and the app redials.
 				delete(h.conns, c)
+				c.conn.Close()
+			}
+		}
+	}
+}
+
+// CloseAll tells every phone the server is going away so they redial at once
+// instead of waiting out a dead socket. Close frames are safe from any goroutine.
+func (h *Hub) CloseAll() {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	bye := websocket.FormatCloseMessage(websocket.CloseGoingAway, "server restarting")
+	for c := range h.conns {
+		c.conn.WriteControl(websocket.CloseMessage, bye, time.Now().Add(time.Second))
+		c.conn.Close()
+		delete(h.conns, c)
+	}
+}
+
+// writeLoop is the only goroutine that writes data frames or pings to c.
+func (c *wsClient) writeLoop(stop <-chan struct{}) {
+	// Ping every 20s so half-dead WiFi connections get cleaned up.
+	t := time.NewTicker(20 * time.Second)
+	defer t.Stop()
+	for {
+		select {
+		case <-stop:
+			return
+		case msg := <-c.send:
+			c.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+			if err := c.conn.WriteMessage(websocket.TextMessage, msg); err != nil {
+				c.conn.Close()
+				return
+			}
+		case <-t.C:
+			c.conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+			if err := c.conn.WriteMessage(websocket.PingMessage, nil); err != nil {
+				c.conn.Close()
+				return
 			}
 		}
 	}
@@ -54,8 +104,9 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		return
 	}
+	c := &wsClient{conn: conn, send: make(chan []byte, 16)}
 	s.hub.mu.Lock()
-	s.hub.conns[conn] = true
+	s.hub.conns[c] = true
 	n := len(s.hub.conns)
 	s.hub.mu.Unlock()
 	log.Printf("device connected (%d online)", n)
@@ -66,24 +117,8 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 		return nil
 	})
 
-	// Ping every 20s so half-dead WiFi connections get cleaned up.
 	stop := make(chan struct{})
-	go func() {
-		t := time.NewTicker(20 * time.Second)
-		defer t.Stop()
-		for {
-			select {
-			case <-stop:
-				return
-			case <-t.C:
-				conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
-				if err := conn.WriteMessage(websocket.PingMessage, nil); err != nil {
-					conn.Close()
-					return
-				}
-			}
-		}
-	}()
+	go c.writeLoop(stop)
 
 	for {
 		if _, _, err := conn.ReadMessage(); err != nil {
@@ -93,7 +128,7 @@ func (s *Server) handleWS(w http.ResponseWriter, r *http.Request) {
 	}
 	close(stop)
 	s.hub.mu.Lock()
-	delete(s.hub.conns, conn)
+	delete(s.hub.conns, c)
 	n = len(s.hub.conns)
 	s.hub.mu.Unlock()
 	conn.Close()

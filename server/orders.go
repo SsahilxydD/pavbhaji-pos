@@ -101,26 +101,35 @@ func (s *Server) loadMenu() []Category {
 		c.Items = []MenuItem{}
 		cats = append(cats, c)
 	}
-	for i := range cats {
-		irows, err := s.db.Query(
-			`SELECT id, name, price, available, sort, colour, station, serve_with_food, batch_cap, batch_age_min FROM menu_items
-			 WHERE active=1 AND category_id=? ORDER BY sort, id`, cats[i].ID)
-		if err != nil {
+	rows.Close()
+	// One pass over every active item; items of a hidden category have no slot and drop out.
+	at := make(map[int64]int, len(cats))
+	for i, c := range cats {
+		at[c.ID] = i
+	}
+	irows, err := s.db.Query(
+		`SELECT category_id, id, name, price, available, sort, colour, station, serve_with_food, batch_cap, batch_age_min FROM menu_items
+		 WHERE active=1 ORDER BY sort, id`)
+	if err != nil {
+		return cats
+	}
+	defer irows.Close()
+	for irows.Next() {
+		var m MenuItem
+		var catID int64
+		var bc, ba sql.NullInt64
+		irows.Scan(&catID, &m.ID, &m.Name, &m.Price, &m.Available, &m.Sort, &m.Colour, &m.Station, &m.ServeWithFood, &bc, &ba)
+		i, ok := at[catID]
+		if !ok {
 			continue
 		}
-		for irows.Next() {
-			var m MenuItem
-			var bc, ba sql.NullInt64
-			irows.Scan(&m.ID, &m.Name, &m.Price, &m.Available, &m.Sort, &m.Colour, &m.Station, &m.ServeWithFood, &bc, &ba)
-			if bc.Valid {
-				m.BatchCap = &bc.Int64
-			}
-			if ba.Valid {
-				m.BatchAgeMin = &ba.Int64
-			}
-			cats[i].Items = append(cats[i].Items, m)
+		if bc.Valid {
+			m.BatchCap = &bc.Int64
 		}
-		irows.Close()
+		if ba.Valid {
+			m.BatchAgeMin = &ba.Int64
+		}
+		cats[i].Items = append(cats[i].Items, m)
 	}
 	return cats
 }
@@ -145,13 +154,24 @@ func (s *Server) loadTables() []TableState {
 	rows, err := s.db.Query(`
 		SELECT t.id, t.name, t.kind,
 		       o.id, o.order_no, o.opened_at, st.name, o.customer_name, o.customer_phone,
-		       (SELECT COALESCE(SUM(qty),0)        FROM ticket_items ti JOIN tickets tk ON tk.id=ti.ticket_id WHERE tk.order_id=o.id AND ti.status!='cancelled'),
-		       (SELECT COALESCE(SUM(qty),0)        FROM ticket_items ti JOIN tickets tk ON tk.id=ti.ticket_id WHERE tk.order_id=o.id AND ti.status IN ('pending','preparing')),
-		       (SELECT COALESCE(SUM(qty),0)        FROM ticket_items ti JOIN tickets tk ON tk.id=ti.ticket_id WHERE tk.order_id=o.id AND ti.status='ready'),
-		       (SELECT COALESCE(SUM(qty*price),0)  FROM ticket_items ti JOIN tickets tk ON tk.id=ti.ticket_id WHERE tk.order_id=o.id AND ti.status!='cancelled')
+		       a.icount, a.pcount, a.rcount, a.total
 		FROM dining_tables t
 		LEFT JOIN orders o ON o.table_id = t.id AND o.status='open'
 		LEFT JOIN staff st ON st.id = o.opened_by
+		LEFT JOIN (
+			-- Counts for every open order in one grouped pass, instead of four
+			-- correlated subqueries per table.
+			SELECT tk.order_id,
+			       SUM(CASE WHEN ti.status!='cancelled' THEN ti.qty ELSE 0 END)                AS icount,
+			       SUM(CASE WHEN ti.status IN ('pending','preparing') THEN ti.qty ELSE 0 END)  AS pcount,
+			       SUM(CASE WHEN ti.status='ready' THEN ti.qty ELSE 0 END)                     AS rcount,
+			       SUM(CASE WHEN ti.status!='cancelled' THEN ti.qty*ti.price ELSE 0 END)       AS total
+			FROM orders oo
+			JOIN tickets tk ON tk.order_id=oo.id
+			JOIN ticket_items ti ON ti.ticket_id=tk.id
+			WHERE oo.status='open'
+			GROUP BY tk.order_id
+		) a ON a.order_id = o.id
 		WHERE t.active=1
 		ORDER BY t.sort, t.id`)
 	if err != nil {
@@ -207,25 +227,35 @@ func (s *Server) loadOrderDetail(orderID int64) (*OrderDetail, error) {
 		tk.Items = []OrderItem{}
 		d.Tickets = append(d.Tickets, tk)
 	}
-	for i := range d.Tickets {
-		irows, err := s.db.Query(`
-			SELECT ti.id, ti.menu_item_id, ti.name, ti.price, ti.qty, ti.note, ti.status,
-			       COALESCE(ti.cancel_reason,''), ti.station, COALESCE(m.colour,'')
-			FROM ticket_items ti LEFT JOIN menu_items m ON m.id=ti.menu_item_id
-			WHERE ti.ticket_id=? ORDER BY ti.id`, d.Tickets[i].ID)
-		if err != nil {
+	rows.Close()
+	at := make(map[int64]int, len(d.Tickets))
+	for i, tk := range d.Tickets {
+		at[tk.ID] = i
+	}
+	irows, err := s.db.Query(`
+		SELECT ti.ticket_id, ti.id, ti.menu_item_id, ti.name, ti.price, ti.qty, ti.note, ti.status,
+		       COALESCE(ti.cancel_reason,''), ti.station, COALESCE(m.colour,'')
+		FROM ticket_items ti
+		JOIN tickets tk ON tk.id=ti.ticket_id
+		LEFT JOIN menu_items m ON m.id=ti.menu_item_id
+		WHERE tk.order_id=? ORDER BY ti.id`, orderID)
+	if err != nil {
+		return &d, nil
+	}
+	defer irows.Close()
+	for irows.Next() {
+		var it OrderItem
+		var ticketID int64
+		irows.Scan(&ticketID, &it.ID, &it.MenuItemID, &it.Name, &it.Price, &it.Qty, &it.Note, &it.Status,
+			&it.CancelReason, &it.Station, &it.Colour)
+		i, ok := at[ticketID]
+		if !ok {
 			continue
 		}
-		for irows.Next() {
-			var it OrderItem
-			irows.Scan(&it.ID, &it.MenuItemID, &it.Name, &it.Price, &it.Qty, &it.Note, &it.Status,
-				&it.CancelReason, &it.Station, &it.Colour)
-			d.Tickets[i].Items = append(d.Tickets[i].Items, it)
-			if it.Status != "cancelled" {
-				d.Total += it.Price * it.Qty
-			}
+		d.Tickets[i].Items = append(d.Tickets[i].Items, it)
+		if it.Status != "cancelled" {
+			d.Total += it.Price * it.Qty
 		}
-		irows.Close()
 	}
 	return &d, nil
 }
@@ -1192,32 +1222,44 @@ func (s *Server) handleKitchen(w http.ResponseWriter, r *http.Request) {
 		}
 		rows.Close()
 	}
-	out := buckets[:0]
-	for i := range buckets {
-		// Ready lines ride along flagged done: a taken bucket keeps showing a
-		// ticked-off variety (greyed, ✓) until the whole bucket closes, so the
-		// chef sees their tick land. Qty stays live-to-cook only — it drives
-		// the fill bar, the ready-button count and the hide rule below.
+	// Every live bucket's lines in one query. Ready lines ride along flagged
+	// done: a taken bucket keeps showing a ticked-off variety (greyed, ✓) until
+	// the whole bucket closes, so the chef sees their tick land. Qty stays
+	// live-to-cook only — it drives the fill bar, the ready-button count and
+	// the hide rule below.
+	at := make(map[int64]int, len(buckets))
+	for i, b := range buckets {
+		at[b.ID] = i
+	}
+	if len(buckets) > 0 {
 		irows, err := s.db.Query(`
-			SELECT ti.id, dt.name, ti.qty, ti.note, ti.name, ti.menu_item_id, ti.status='ready', tk.created_at
-			FROM ticket_items ti
+			SELECT ti.batch_id, ti.id, dt.name, ti.qty, ti.note, ti.name, ti.menu_item_id, ti.status='ready', tk.created_at
+			FROM batches b
+			JOIN ticket_items ti ON ti.batch_id=b.id
 			JOIN tickets tk ON tk.id=ti.ticket_id
 			JOIN orders o ON o.id=tk.order_id
 			JOIN dining_tables dt ON dt.id=o.table_id
-			WHERE ti.batch_id=? AND ti.status IN ('pending','preparing','ready')
-			ORDER BY ti.id`, buckets[i].ID)
-		if err != nil {
-			continue
-		}
-		for irows.Next() {
-			var l BucketLine
-			irows.Scan(&l.ID, &l.TableName, &l.Qty, &l.Note, &l.Name, &l.MenuItemID, &l.Done, &l.Since)
-			buckets[i].Lines = append(buckets[i].Lines, l)
-			if !l.Done {
-				buckets[i].Qty += l.Qty
+			WHERE b.status IN ('open','full','taken') AND ti.status IN ('pending','preparing','ready')
+			ORDER BY ti.id`)
+		if err == nil {
+			for irows.Next() {
+				var l BucketLine
+				var batchID int64
+				irows.Scan(&batchID, &l.ID, &l.TableName, &l.Qty, &l.Note, &l.Name, &l.MenuItemID, &l.Done, &l.Since)
+				i, ok := at[batchID]
+				if !ok {
+					continue
+				}
+				buckets[i].Lines = append(buckets[i].Lines, l)
+				if !l.Done {
+					buckets[i].Qty += l.Qty
+				}
 			}
+			irows.Close()
 		}
-		irows.Close()
+	}
+	out := buckets[:0]
+	for i := range buckets {
 		// Title = the varieties actually inside, so a clubbed bucket reads
 		// "Pav Bhaji + Cheese Pav Bhaji", not just whichever dish opened it.
 		seen := map[string]bool{}

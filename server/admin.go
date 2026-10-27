@@ -448,6 +448,7 @@ func (s *Server) handleStaffPatch(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.Name != nil && strings.TrimSpace(*req.Name) != "" {
 		s.db.Exec(`UPDATE staff SET name=? WHERE id=?`, strings.TrimSpace(*req.Name), id)
+		s.sessions.dropStaff(id)
 	}
 	if req.Pin != nil {
 		if !pinRe.MatchString(*req.Pin) {
@@ -460,6 +461,7 @@ func (s *Server) handleStaffPatch(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		s.db.Exec(`DELETE FROM sessions WHERE staff_id=?`, id)
+		s.sessions.dropStaff(id)
 		audit(s.db, me.ID, me.Name, "staff", "reset PIN for "+curName)
 	}
 	if req.Role != nil {
@@ -469,12 +471,14 @@ func (s *Server) handleStaffPatch(w http.ResponseWriter, r *http.Request) {
 		}
 		s.db.Exec(`UPDATE staff SET role=? WHERE id=?`, *req.Role, id)
 		s.db.Exec(`DELETE FROM sessions WHERE staff_id=?`, id)
+		s.sessions.dropStaff(id)
 		audit(s.db, me.ID, me.Name, "staff", curName+" role changed to "+*req.Role)
 	}
 	if req.Active != nil {
 		s.db.Exec(`UPDATE staff SET active=? WHERE id=?`, boolInt(*req.Active), id)
 		if !*req.Active {
 			s.db.Exec(`DELETE FROM sessions WHERE staff_id=?`, id)
+			s.sessions.dropStaff(id)
 			audit(s.db, me.ID, me.Name, "staff", "deactivated "+curName)
 		} else {
 			audit(s.db, me.ID, me.Name, "staff", "reactivated "+curName)
@@ -717,6 +721,8 @@ func (s *Server) autoBackup() {
 	os.MkdirAll(dir, 0o755)
 	lastAuditDay := ""
 	for {
+		s.pruneSessions()
+		s.db.Exec(`PRAGMA optimize`)
 		day := time.Now().Format("2006-01-02")
 		name := filepath.Join(dir, "auto-"+day+".db")
 		tmp := name + ".tmp"

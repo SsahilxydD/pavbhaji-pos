@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"log"
@@ -126,10 +127,11 @@ func buildServer(port int, dataDir string) (*Server, *http.ServeMux, error) {
 	seedIfEmpty(db)
 
 	s := &Server{
-		db:      db,
-		hub:     newHub(),
-		port:    port,
-		dataDir: dataDir,
+		db:       db,
+		hub:      newHub(),
+		sessions: newSessionCache(),
+		port:     port,
+		dataDir:  dataDir,
 	}
 	s.dayStartHour, _ = strconv.Atoi(getMeta(db, "day_start_hour", "6"))
 	s.serverID = ensureServerID(db)
@@ -242,7 +244,7 @@ func buildServer(port int, dataDir string) (*Server, *http.ServeMux, error) {
 // serveHeadless runs the server in the foreground with a console banner. Used on
 // Linux, and on Windows when -headless is passed.
 func serveHeadless(port int, dataDir string) {
-	_, mux, err := buildServer(port, dataDir)
+	srv, mux, err := buildServer(port, dataDir)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -259,8 +261,38 @@ func serveHeadless(port int, dataDir string) {
 	fmt.Println("  keep this window open while the shop is running")
 	fmt.Println("──────────────────────────────────────────────")
 
-	addr := fmt.Sprintf(":%d", port)
-	if err := http.ListenAndServe(addr, mux); err != nil {
+	// No read/write timeouts: /ws and the backup download legitimately stay
+	// open. ReadHeaderTimeout alone stops a stalled client pinning a socket.
+	hs := &http.Server{
+		Addr:              fmt.Sprintf(":%d", port),
+		Handler:           mux,
+		ReadHeaderTimeout: 10 * time.Second,
+		IdleTimeout:       120 * time.Second,
+	}
+	// Shutdown never touches hijacked sockets, so phones get an explicit
+	// close frame and redial straight away.
+	hs.RegisterOnShutdown(srv.hub.CloseAll)
+
+	// On SIGTERM (systemctl restart) let in-flight requests finish and close
+	// the database cleanly instead of dying mid-write.
+	sig := make(chan os.Signal, 1)
+	signal.Notify(sig, os.Interrupt, syscall.SIGTERM)
+	done := make(chan struct{})
+	go func() {
+		<-sig
+		log.Printf("stopping: draining requests")
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := hs.Shutdown(ctx); err != nil {
+			log.Printf("drain: %v", err)
+		}
+		close(done)
+	}()
+
+	if err := hs.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		log.Fatal(err)
 	}
+	<-done
+	srv.db.Close()
+	log.Printf("stopped cleanly")
 }

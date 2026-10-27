@@ -241,6 +241,23 @@ func openDB(path string) *sql.DB {
 	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS batches_by_colour_status ON batches(colour, status)`); err != nil {
 		log.Fatalf("migrate index: %v", err)
 	}
+	// The pickup board, the served list, the dashboard and the kitchen screen
+	// all filter on status; without these every refresh walked every line ever
+	// punched.
+	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS ticket_items_by_status ON ticket_items(status, status_at)`); err != nil {
+		log.Fatalf("migrate index: %v", err)
+	}
+	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS batches_by_status ON batches(status)`); err != nil {
+		log.Fatalf("migrate index: %v", err)
+	}
+	// Give the planner real row counts. Without sqlite_stat1 it treats any
+	// index equality as selective, and the status index above lured the pickup
+	// board's per-order subqueries into walking every served line ever punched
+	// (80ms instead of under 1ms). On a database this size ANALYZE takes
+	// milliseconds; PRAGMA optimize in autoBackup keeps the numbers current.
+	if _, err := db.Exec(`ANALYZE`); err != nil {
+		log.Printf("analyze: %v", err)
+	}
 	// staff.role's CHECK has grown over time (admin/waiter/chef → +manager →
 	// +cashier/+parcel); SQLite cannot alter a CHECK, so databases created
 	// before the newest role get one table rebuild to admit them all.
